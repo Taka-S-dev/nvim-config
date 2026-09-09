@@ -20,7 +20,7 @@ winget install GNU.GLOBAL                 # gtags (レガシー C ナビ用) -- 
 winget install universal-ctags.ctags      # ctags (gtags のフォールバック) -- 必ず Universal 版を!
 ```
 
-すでに入っているものはスキップで OK。
+すでに入っているものはスキップしてよい。
 
 > **なぜ zig が必要?** treesitter パーサ (C コード) のコンパイルに `zig cc` を使う。詳細は[このセクション](#treesitter-ビルドが-zig-cc-経由な理由)。
 >
@@ -44,7 +44,7 @@ scoop install JetBrainsMono-NF
 ### 3. 設定をクローン
 
 ```powershell
-git clone https://github.com/<your>/nvim-config.git $env:LOCALAPPDATA\nvim
+git clone https://github.com/Taka-S-dev/nvim-config.git $env:LOCALAPPDATA\nvim
 ```
 
 > 既存の `$env:LOCALAPPDATA\nvim` がある場合は退避してから。
@@ -67,7 +67,7 @@ PowerShell を開き直せば `nv` が使える。
 
 > **なぜ dot-source?** 中身を `$PROFILE` に貼り付けると、エイリアスを修正するたび全マシンで貼り直しになる。dot-source なら repo を pull するだけで全マシンに反映される。
 >
-> `open-in-nvim.cmd` を使わない(外部からファイルを送らない)なら、この手順はスキップして `nvim` を直接使えば OK。
+> `open-in-nvim.cmd` を使わない(外部からファイルを送らない)なら、この手順はスキップして `nvim` を直接使えばよい。
 
 ### 5. 初回起動
 
@@ -81,7 +81,7 @@ nv
 
 ### 6. 確認
 
-`:checkhealth nvim-treesitter` で全パーサが入っていれば完了。アイコンが正しく描画されてれば Nerd Font も OK。
+`:checkhealth nvim-treesitter` で全パーサが入っていれば完了。アイコンが正しく描画されていれば Nerd Font も問題ない。
 
 ---
 
@@ -115,13 +115,15 @@ nv
 | キー | 動作 |
 |---|---|
 | `<C-]>` または `Ctrl+クリック` | 定義へジャンプ |
-| `<A-Left>` または `<C-o>` | ジャンプ元へ戻る(VS Code の戻る相当) |
-| `<A-Right>` または `<C-i>` | 進む |
+| `<C-o>` | ジャンプ元へ戻る(VS Code の戻る相当) |
+| `<C-i>` | 進む |
 | `gd` (LSP) | LSP 経由の定義ジャンプ |
 | `gr` (LSP) | 参照一覧 |
 | `K` (LSP) | カーソル下のドキュメント表示 |
 | `<leader>co` | シンボルアウトライン (Aerial) を開閉 — 関数/マクロ/構造体一覧 |
 | `<leader>cO` | シンボルナビゲーションのポップアップ |
+
+`<A-Left>` / `<A-Right>` も戻る / 進むに割り当ててあるが、ターミナル側が Alt+矢印をペイン移動などに使っている環境(WezTerm 等)では届かない。`<C-o>` / `<C-i>` を基本にする。
 
 gtags 専用機能(呼び出し元検索 等)は[このセクション](#レガシー-c-ナビゲーション-gtags--cscope_mapsnvim)参照。
 
@@ -274,7 +276,7 @@ git pull
 | **全プラグインを最新版に上げたい** | `:Lazy sync` または `:Lazy update` | git で最新を fetch + install。`lazy-lock.json` も更新される(commit して push する想定)。 |
 | **プラグイン削除した側 / 取り込んだ側** | `:Lazy clean` (or `:Lazy sync`) | 不要になったプラグインを削除 |
 
-→ 普段は **「起動するだけ」** で済むケースがほとんど。`:Lazy sync` を打つのは「自分から最新化したい時」だけです。
+→ 普段は **「起動するだけ」** で済むケースがほとんど。`:Lazy sync` を打つのは「自分から最新化したい時」だけ。
 
 ---
 
@@ -317,7 +319,7 @@ nv                                                    # listener を立ててお
 & "$env:LOCALAPPDATA\nvim\bin\open-in-nvim.cmd" "C:\path\to\file.txt" 42
 ```
 
-listener 側 nvim に `file.txt` がタブで開き、42 行目にカーソルが飛べば OK。
+listener 側 nvim に `file.txt` がタブで開き、42 行目にカーソルが飛べば成功。
 
 ---
 
@@ -396,15 +398,21 @@ gtags は C/C++/Java など主要言語以外をほぼ取りこぼす。C コー
 
 ### 動き方
 
-- ファイルを開くと自動で `tags` ファイルを生成(`$XDG_CACHE_HOME/nvim/gutentags/` 配下に保存、プロジェクトを汚さない)
-- ファイル保存のたびに差分更新
+- プロジェクトの直下に空の `.gutctags-root` を置き、nvim で `:GutentagsUpdate!` を 1 回実行すると `tags` ができる(`$XDG_CACHE_HOME/nvim/gutentags/` 配下に保存、プロジェクトを汚さない)
+- 以後はファイル保存のたびに差分更新
+- 何もしなければ tags は作られない。複数のソースツリーを並べただけの親ディレクトリで巨大な tags を作ってしまう事故を防ぐため、自動生成は無効にしてある
+- 除外したいディレクトリなど、マシン固有の設定は `lua/config/local.lua`(git 管理外)に書く。例:
+
+  ```lua
+  vim.g.gutentags_exclude_project_root = { vim.fn.expand("~/src/all-projects") }
+  ```
 - cscope_maps の `:Cstag`(`<C-]>` / `Ctrl+クリック`)は gtags が空振りすると **自動で vim の taglist にフォールバック** するので、gtags が効く所は gtags、ダメな所は ctags、と透過的に切り替わる
 
 ### ハマりどころ
 
 - **Strawberry Perl 同梱の Exuberant Ctags 5.8 (2009) は使わない**。`winget install universal-ctags.ctags` で Universal Ctags を入れ、PATH 優先度を上げる
 - Shift-JIS ソースを扱う場合は、Universal Ctags なら `--input-encoding=shift_jis` を `~/.ctags.d/*.ctags` で指定可能
-- gtags でも動かない・ctags でも動かない言語の場合は、ファイル拡張子のマッピング(`--langmap`)を ctags 設定に追加する必要があるかも
+- gtags でも動かない・ctags でも動かない言語の場合は、ファイル拡張子のマッピング(`--langmap`)を ctags 設定に追加する必要がある
 
 ---
 
@@ -435,13 +443,14 @@ $env:LOCALAPPDATA\nvim\
 ├── lua\
 │   ├── config\
 │   │   ├── options.lua     # CC 設定はここ
+│   │   ├── local.lua       # マシン固有の設定 (git 管理外、あれば読む)
 │   │   ├── keymaps.lua
 │   │   ├── autocmds.lua
 │   │   └── lazy.lua
 │   └── plugins\            # 追加プラグイン定義
 │       ├── aerial.lua      # シンボルアウトライン
 │       ├── gtags.lua       # cscope_maps.nvim (gtags ナビ)
-│       ├── gutentags.lua   # ctags 自動生成 (gtags fallback)
+│       ├── gutentags.lua   # ctags で tags を維持 (gtags fallback)
 │       └── treesitter.lua  # 追加パーサ
 ├── init.lua
 ├── lazy-lock.json          # プラグイン版数ロック (commit する)
