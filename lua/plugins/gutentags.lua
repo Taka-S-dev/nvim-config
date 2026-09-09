@@ -17,5 +17,24 @@ return {
     vim.g.gutentags_modules = { "ctags" }
     -- keep tags out of the project tree
     vim.g.gutentags_cache_dir = vim.fn.stdpath("cache") .. "/gutentags"
+
+    -- Strawberry Perl puts Exuberant Ctags 5.8 ahead of scoop on PATH, so
+    -- pin the Universal Ctags shim instead of trusting `ctags` resolution.
+    local uctags = vim.fn.expand("~/scoop/shims/ctags.exe")
+    if vim.fn.executable(uctags) == 1 then
+      vim.g.gutentags_ctags_executable = uctags
+    end
+
+    -- A directory that only groups unrelated source trees must not become
+    -- one project: indexing it takes minutes and produces a tags file over
+    -- 1 GB. Put an empty `.gutctags-root` in the real project directory to
+    -- mark it as the root. Directories to exclude are machine-specific, so
+    -- they are read from lua/config/local.lua (git-ignored) if set there.
+    vim.g.gutentags_project_root = { ".gutctags-root" }
+    vim.g.gutentags_exclude_project_root = vim.g.gutentags_exclude_project_root or {}
+    -- Only index when a tags file already exists or was explicitly requested
+    -- (:GutentagsUpdate); no silent full scans on first open.
+    vim.g.gutentags_generate_on_missing = 0
+    vim.g.gutentags_generate_on_new = 0
   end,
 }
