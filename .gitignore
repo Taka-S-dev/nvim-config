@@ -1,8 +1,26 @@
-tt.*
-.tests
-doc/tags
-debug
-.repro
-foo.*
+# 許可リスト方式: いったん全部無視し、リポジトリの構成ファイルだけ戻す
+*
+!.gitignore
+!.neoconf.json
+!LICENSE
+!README.md
+!init.lua
+!lazy-lock.json
+!lazyvim.json
+!stylua.toml
+!bin/
+!bin/**
+!lua/
+!lua/**
+!docs/
+!docs/**
+
+# 許可の後ろで機密・ローカル設定を再拒否（断片一致は使わず名前で指定）
+lua/config/local.lua
+.env
+.env.*
+secrets.*
+credentials.*
+*.pem
+id_rsa*
 *.log
-data
