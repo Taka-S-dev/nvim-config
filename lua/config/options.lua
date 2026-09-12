@@ -25,3 +25,26 @@ if vim.fn.has("win32") == 1 then
     end)
   end
 end
+
+-- Legacy Japanese sources: detect Shift-JIS (cp932) on load. Neovim's default
+-- is `ucs-bom,utf-8,default,latin1`, which has no entry for it, so a cp932
+-- comment renders as garbage. Order matters:
+--   * ucs-bom stays first, or BOM-tagged UTF-8/UTF-16 files (common output of
+--     Visual Studio and Hidemaru) stop being recognized.
+--   * utf-8 must precede cp932; cp932 accepts almost any byte sequence and
+--     would claim UTF-8 files first.
+--   * latin1 last as a catch-all. It is byte-for-byte reversible, so a file
+--     that matches nothing still opens and writes back unchanged instead of
+--     being mangled through utf-8.
+-- `sjis` is deliberately absent: cp932 is a superset, so it is unreachable.
+--
+-- euc-jp is left out on purpose. Detection takes the first encoding that
+-- decodes without error, and every EUC-JP hiragana byte is also a valid cp932
+-- halfwidth katakana, so a kanji-free EUC-JP file silently decodes as cp932
+-- garbage. An unused candidate is pure misdetection risk; add "euc-jp" after
+-- "cp932" only if such files actually turn up.
+--
+-- For a file detected wrong, reopen it with `:e ++enc=cp932`. To pin a whole
+-- tree instead of guessing, set 'fileencodings' from a BufReadPre autocmd in
+-- lua/config/local.lua, where machine-specific paths belong.
+vim.opt.fileencodings = { "ucs-bom", "utf-8", "cp932", "latin1" }
