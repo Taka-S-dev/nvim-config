@@ -98,6 +98,8 @@ nv
 | `<leader>fr` | 最近開いたファイル (Recent) |
 | `<leader>fb` | 開いているバッファ一覧 |
 | `<leader>e` | 左サイドにファイルツリー表示/トグル |
+| `<C-Left>` / `<C-Right>` (ツリー内) | ツリーの幅を 5 桁ずつ狭める / 広げる |
+| `Ctrl`+ドラッグ (ツリー内) | ツリーの幅をマウス位置に合わせる |
 | `<S-h>` / `<S-l>` | 前 / 次のバッファに切替 |
 | `<leader>bd` | 現在のバッファを閉じる |
 
@@ -344,13 +346,16 @@ Remove-Item -Recurse -Force $env:LOCALAPPDATA\Temp\nvim
 
 ### gtags ジャンプで `E426: Tag not found` が出る
 
-- プロジェクトルートに移動してから nvim を起動しているか確認(`cd <project>; nvim .`)
-- GTAGS DB が無ければ `<leader>jb` で生成
+- GTAGS DB が無ければ `<leader>jb` で生成(下の「初回セットアップ」を参照)
 - `:Cs db show` で `db=GTAGS pre_path=.` 等が出ているか確認(出てなければ `:Cscope reload`)
+
+起動位置は問わない。検索対象の DB は編集中のファイルから親方向に `GTAGS` を探して選ばれるので、別プロジェクトのファイルをタブで開いても、そのファイルが属するツリーの DB が使われる。
 
 ### `database build failed` と出る
 
-`<leader>jb` は内部で `:!gtags` を叩いている。**cwd がプロジェクトルートになっている必要がある**。別ディレクトリで叩いた場合はそこに GTAGS ができてしまうので、`gtags` で出た 3 ファイル (`GTAGS`, `GRTAGS`, `GPATH`) を削除して、ルートで再実行。
+`<leader>jb` は内部で `:!gtags` を叩くので、**cwd がプロジェクトルートになっている必要がある**。別ディレクトリで叩いた場合はそこに GTAGS ができてしまうので、`gtags` で出た 3 ファイル (`GTAGS`, `GRTAGS`, `GPATH`) を削除して、ルートで再実行。
+
+既に GTAGS があるツリーのファイルを開いていれば、cwd はそのルートに自動で移る(ウィンドウローカルの `lcd`)。cwd を意識する必要があるのは**まだ DB が無いツリーの初回生成**だけで、そのときは `cd <project_root>` してから `nvim .` で開く。
 
 ---
 
@@ -379,9 +384,11 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 | `<leader>jc` | この関数の呼び出し元(callers) |
 | `<leader>jt` | テキスト文字列検索 |
 | `<leader>jf` | ファイル名検索 |
-| `<leader>ji` | このファイルを `#include` しているファイル |
+| `<leader>ji` | このファイルを `#include` しているファイル(※下記) |
 
 結果は snacks picker で表示される(LazyVim デフォルトの picker)。
+
+`<leader>ji` は gtags が include 関係を索引しないため、実際にはほぼ 0 件しか返らない。`<leader>jt` で `#include "foo.h"` を文字列検索するほうが確実。cscope にある「この関数が呼んでいる関数一覧」(callees)と「この変数への代入」も gtags-cscope には無い。
 
 ### 設計メモ
 
@@ -389,6 +396,25 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 - **なぜ `<leader>j` プレフィックス?** LazyVim の `<leader>c*` は code 系(format, action, rename 等)と衝突するため別名前空間に分けた。`j` = jump。
 - **なぜ `<leader>jb` だけ `:!gtags` を直接叩く?** cscope_maps の `:Cs db build` はカスタム script に `-d <db>::<path>` 引数を自動付与する設計だが、`gtags` バイナリはその引数を受け付けないため。
 - **なぜ `<C-LeftMouse>` も再マップ?** Vim 標準の `<C-LeftMouse>` は内部で `:tag <cword>` を直接実行し、`<C-]>` の再マップを経由しない。tag ファイルが無いと E426 になるので、`:Cstag` 経由に明示的に流している。
+
+---
+
+## 日本語を含むソース (Shift-JIS / EUC-JP)
+
+Neovim の既定の `fileencodings` は `ucs-bom,utf-8,default,latin1` で日本語の項目を持たないため、cp932 のコメントが文字化けする。`lua/config/options.lua` で cp932 を判定順に加えてある。
+
+| エンコーディング | 判定 |
+|---|---|
+| cp932 (Shift-JIS) | できる |
+| UTF-8 / BOM 付き UTF-8 / UTF-16 | できる |
+| 判定不能なバイト列 | latin1 として開く(バイト列は壊れない) |
+| EUC-JP | 漢字を含めば通ることが多いが、対象外(下記) |
+
+EUC-JP を候補に入れていないのは、EUC-JP のひらがなが cp932 の半角カタカナとしても正当なバイト列で、漢字を含まない EUC-JP ファイルを cp932 と誤判定するため。使わない候補は誤判定の可能性を増やすだけなので外している。遭遇したら `:e ++enc=euc-jp` で開き直すか、`options.lua` の `cp932` の後ろに `"euc-jp"` を足す。
+
+UTF-8 以外のバッファは、ステータスラインにエンコーディング名が警告色で出る。cp932 が表現できない文字(絵文字や他コードページ由来の記号)を打つと、編集時ではなく `:write` の瞬間に `E513` で保存に失敗するため、その予告として表示している。
+
+判定を間違えたファイルは `:e ++enc=cp932` のように明示して開き直す。
 
 ---
 
