@@ -141,6 +141,8 @@ gtags 専用機能(呼び出し元検索 等)は[このセクション](#レガ�
 | `yy` / `dd` / `p` | 行ヤンク / 行削除 / ペースト(OS クリップボードと共有) |
 | `gcc` | 行コメントトグル |
 | `>>` / `<<` | インデント / アンインデント |
+| `<leader>yp` | 現在位置を `path:line` でコピー(ビジュアルモードでは `path:開始-終了`) |
+| `s` | 画面内の任意の位置へジャンプ (flash) — 2 文字打ってラベルを選ぶ |
 
 ### プラグイン管理・診断
 
@@ -279,6 +281,26 @@ git pull
 | **プラグイン削除した側 / 取り込んだ側** | `:Lazy clean` (or `:Lazy sync`) | 不要になったプラグインを削除 |
 
 → 普段は **「起動するだけ」** で済むケースがほとんど。`:Lazy sync` を打つのは「自分から最新化したい時」だけ。
+
+---
+
+## VS Code の nvim 拡張 (vscode-neovim)
+
+`asvetliakov.vscode-neovim` は本物の nvim をバックグラウンドで動かすため、この設定がそのまま読み込まれる。UI は VS Code 側が描くので、UI 系プラグインまで起動すると無駄なうえにキーが衝突する。`lazyvim.json` の `vscode` extra でそれを絞っている。
+
+| | ターミナルの nvim | VS Code 内の nvim |
+|---|---|---|
+| 読み込まれるプラグイン | 35 | 9 |
+| flash (`s`) / mini.ai (`vif`) / treesitter テキストオブジェクト | 読み込む | 読み込む |
+| lualine・bufferline・which-key・gitsigns・noice・trouble・aerial | 読み込む | 読み込まない(VS Code の UI を使う) |
+| conform(保存時整形) / nvim-lspconfig / mason | 読み込む | 読み込まない(VS Code 側の言語拡張に一本化) |
+| gtags (cscope_maps) | 読み込む | 読み込まない(定義ジャンプは VS Code の F12) |
+
+整形と LSP を VS Code 側に一本化しているのは、同じバッファに 2 つのツールチェインが保存時に手を入れるのを避けるため。
+
+VS Code 側だけキーが変わるものがある: `<S-h>` / `<S-l>` はタブ切替、`<leader>/` は全文検索、`<C-/>` はターミナル開閉で、いずれも VS Code のコマンドに繋がる。
+
+extra は `vim.g.vscode` が立っていないと空を返すので、ターミナルの nvim には影響しない。
 
 ---
 
