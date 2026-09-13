@@ -48,3 +48,10 @@ end
 -- tree instead of guessing, set 'fileencodings' from a BufReadPre autocmd in
 -- lua/config/local.lua, where machine-specific paths belong.
 vim.opt.fileencodings = { "ucs-bom", "utf-8", "cp932", "latin1" }
+
+-- One wheel notch scrolls three lines by default, which turns moving through a
+-- long C file into a spin. Ten covers a screen in three notches while still
+-- being short enough to read past. Keyboard motions stay the faster route --
+-- G, <C-d>, and the tag jumps -- but the wheel should not fight the file.
+vim.opt.mousescroll = "ver:10,hor:6"
+
