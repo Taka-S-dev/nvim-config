@@ -36,5 +36,14 @@ return {
     -- (:GutentagsUpdate); no silent full scans on first open.
     vim.g.gutentags_generate_on_missing = 0
     vim.g.gutentags_generate_on_new = 0
+
+    -- Definition jumps try ctags first, so a stale copy in the index is a wrong
+    -- landing, not just noise. Editors that keep local history (.history/) and
+    -- backup files put whole duplicate sources in the tree; the index files of
+    -- the other tools are never source.
+    vim.g.gutentags_ctags_exclude = {
+      ".git", ".history", "*.BAK", "*.bak", "*~",
+      "GTAGS", "GRTAGS", "GPATH", "cscope.out", "tags",
+    }
   end,
 }
