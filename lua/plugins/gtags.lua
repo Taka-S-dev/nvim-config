@@ -15,63 +15,33 @@
 --
 -- Requires `gtags` on PATH (scoop install global, or winget GNU.GLOBAL).
 
--- cscope_maps resolves the gtags database once, in setup(), by walking up from
--- the cwd. Open a file from another project -- which the remote-tab workflow in
--- bin/open-in-nvim.cmd does routinely -- and every query still goes to the
--- first project's GTAGS, so it silently returns nothing.
+-- Every query here asks `global` directly instead of going through cscope_maps.
 --
--- So pick the database from the file being edited, at query time. Doing it on
--- the query rather than from a BufEnter autocmd keeps the cost off file opening,
--- which matters on machines where security software taxes every file access.
---
--- The window-local cwd has to follow: cscope_maps passes the database to
--- gtags-cscope as a path relative to `getcwd()`, so a database outside the cwd
--- is never found. `lcd` keeps that to this window, and has the side benefit of
--- pointing grep and `<leader>jb` at the project the file belongs to.
-local function use_db_of_current_file()
-  local ok, cscope = pcall(require, "cscope")
-  if not ok then
-    return
-  end
-  local name = vim.api.nvim_buf_get_name(0)
-  if name == "" then
-    return
-  end
-  local root = cscope.root(vim.fs.dirname(name), "GTAGS")
-  if not root or root == vim.fs.normalize(vim.fn.getcwd()) then
-    return
-  end
-  require("cscope.db").update_primary_conn(vim.fs.joinpath(root, "GTAGS"), root)
-  vim.cmd.lcd({ vim.fn.fnameescape(root) })
-end
-
--- Wrap a command so the database is in sync before it runs.
-local function with_db(cmd)
-  return function()
-    use_db_of_current_file()
-    vim.cmd(cmd)
-  end
-end
-
--- Definition jump, kept on gtags but taken off cscope_maps' query path.
---
--- cscope_maps answers every jump by starting gtags-cscope.exe, which starts
+-- cscope_maps answers each query by starting gtags-cscope.exe, which starts
 -- global.exe, and waits for both with vim.system():wait(), freezing the editor
 -- until they exit. Asking global directly drops one process start (117 ms to
 -- 36 ms per lookup on the openssl tree), and running it asynchronously means
 -- the editor keeps responding however slow process starts are made by security
--- software. Results are kept per project until its GTAGS changes, so a repeated
--- jump starts no process at all.
+-- software. Each cscope query has a global equivalent that returns the same
+-- matches: definitions -d, references -r, text -g, files -P.
+--
+-- How global is started lives in config/gtags_global.lua, which also handles a
+-- global.exe that cannot write its results to Neovim's pipe.
 --
 -- A resident gtags-cscope was measured and rejected: it still starts global.exe
 -- for every query. Loading every definition up front was rejected too: it is
--- instant on openssl but takes 75 s and 1.3 GB on a Linux kernel tree.
+-- instant on openssl but takes over a minute and 1.3 GB on a Linux kernel tree.
 --
--- When gtags has no answer -- no GTAGS for the file, or a source it could not
--- parse -- the jump falls back to ctags.
+-- The database is picked from the file being edited, not from the cwd, so a
+-- file opened from another project -- routine with the remote-tab workflow in
+-- bin/open-in-nvim.cmd -- queries its own GTAGS.
+
+-- Definition results are kept per project until its GTAGS changes, so a
+-- repeated jump starts no process at all. Other queries are not cached: they
+-- are browsed, not repeated.
 local definitions = {} ---@type table<string, { mtime: integer, symbols: table<string, table[]> }>
 
-local function symbols_of(root)
+local function definitions_of(root)
   local stat = vim.uv.fs_stat(vim.fs.joinpath(root, "GTAGS"))
   local mtime = stat and stat.mtime.sec or 0
   local project = definitions[root]
@@ -82,7 +52,12 @@ local function symbols_of(root)
   return project.symbols
 end
 
--- `global -axd` prints `name  line  absolute-path  source-line`.
+local function gtags_root()
+  local name = vim.api.nvim_buf_get_name(0)
+  return name ~= "" and vim.fs.root(name, "GTAGS") or nil
+end
+
+-- `global -ax*` prints `name  line  absolute-path  source-line`.
 local function parse(output)
   local items = {}
   for line in vim.gsplit(output, "\n", { trimempty = true }) do
@@ -100,12 +75,9 @@ local function jump_with_ctags(symbol)
   end
 end
 
-local function show(symbol, items)
-  if #items == 0 then
-    jump_with_ctags(symbol)
-    return
-  end
-  -- Record the origin like :tag does, so <C-t> returns here.
+-- One result opens directly; several open in the quickfix picker. Either way
+-- the origin is pushed on the tag stack, so <C-t> returns here.
+local function show(title, symbol, items)
   local from = vim.fn.getpos(".")
   from[1] = vim.api.nvim_get_current_buf()
   vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = { { tagname = symbol, from = from } } }, "t")
@@ -116,7 +88,7 @@ local function show(symbol, items)
     vim.cmd("normal! ^")
     return
   end
-  vim.fn.setqflist({}, " ", { title = "Definitions of " .. symbol, items = items })
+  vim.fn.setqflist({}, " ", { title = title, items = items })
   if Snacks and Snacks.picker then
     Snacks.picker.qflist()
   else
@@ -124,31 +96,85 @@ local function show(symbol, items)
   end
 end
 
+-- Run one or more `global` invocations in the project root and hand the merged
+-- results to `done`, on the main loop, only if the user is still where they
+-- asked from.
+local function run_global(root, invocations, done)
+  local win, buf = vim.api.nvim_get_current_win(), vim.api.nvim_get_current_buf()
+  local items, pending = {}, #invocations
+  for _, args in ipairs(invocations) do
+    require("config.gtags_global").run(root, args, function(output)
+      vim.list_extend(items, parse(output))
+      pending = pending - 1
+      if pending == 0 and vim.api.nvim_get_current_win() == win and vim.api.nvim_get_current_buf() == buf then
+        done(items)
+      end
+    end)
+  end
+end
+
 local function jump_to_definition(symbol)
   if not symbol or symbol == "" then
     return
   end
-  local name = vim.api.nvim_buf_get_name(0)
-  local root = name ~= "" and vim.fs.root(name, "GTAGS") or nil
+  local root = gtags_root()
   if not root or vim.fn.executable("global") == 0 then
     jump_with_ctags(symbol)
     return
   end
-  local symbols = symbols_of(root)
+  local symbols = definitions_of(root)
+  local function finish(items)
+    symbols[symbol] = items
+    if #items == 0 then
+      -- gtags has no entry, e.g. for a source it could not parse.
+      jump_with_ctags(symbol)
+    else
+      show("Definitions of " .. symbol, symbol, items)
+    end
+  end
   if symbols[symbol] then
-    show(symbol, symbols[symbol])
+    finish(symbols[symbol])
     return
   end
-  local win, buf = vim.api.nvim_get_current_win(), vim.api.nvim_get_current_buf()
-  vim.system({ "global", "-axd", symbol }, { cwd = root, text = true }, function(result)
-    vim.schedule(function()
-      local items = result.code == 0 and parse(result.stdout or "") or {}
-      symbols[symbol] = items
-      -- Jump only if the user is still where they asked from.
-      if vim.api.nvim_get_current_win() == win and vim.api.nvim_get_current_buf() == buf then
-        show(symbol, items)
-      end
-    end)
+  run_global(root, { { "-axd", symbol } }, finish)
+end
+
+-- The cscope-style queries behind <leader>j*.
+local queries = {
+  s = { title = "Occurrences of", args = function(s) return { { "-axd", s }, { "-axr", s } } end },
+  c = { title = "Callers of", args = function(s) return { { "-axr", s } } end },
+  t = { title = "Text", args = function(s) return { { "-axg", "--literal", s } } end },
+  f = { title = "Files matching", args = function(s) return { { "-axP", s } } end },
+  -- gtags does not index #include, so match the directive text instead.
+  i = {
+    title = "Files including",
+    args = function(s)
+      local name = vim.fn.escape(vim.fs.basename(s), [[.^$*+?()[]{}|\]])
+      return { { "-axg", [=[#[ \t]*include[ \t]*["<](.*/)?]=] .. name .. [=[[">]]=] } }
+    end,
+  },
+}
+
+local function query(kind, symbol)
+  local spec = queries[kind]
+  if not symbol or symbol == "" then
+    return
+  end
+  local root = gtags_root()
+  if not root then
+    vim.notify("No GTAGS for this file. Build one with <leader>jb in the project root.", vim.log.levels.WARN)
+    return
+  end
+  if vim.fn.executable("global") == 0 then
+    vim.notify("global is not on PATH", vim.log.levels.ERROR)
+    return
+  end
+  run_global(root, spec.args(symbol), function(items)
+    if #items == 0 then
+      vim.notify(("%s %s: nothing found"):format(spec.title, symbol), vim.log.levels.WARN)
+    else
+      show(("%s %s"):format(spec.title, symbol), symbol, items)
+    end
   end)
 end
 
@@ -156,6 +182,18 @@ local function selected_text()
   local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
   vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
   return vim.trim(region[1] or "")
+end
+
+-- The file queries take the file name under the cursor, the rest the word.
+local function under_cursor(kind)
+  return vim.fn.expand((kind == "f" or kind == "i") and "<cfile>" or "<cword>")
+end
+
+local function query_key(lhs, kind, desc)
+  return {
+    { lhs, function() query(kind, under_cursor(kind)) end, desc = desc },
+    { lhs, function() query(kind, selected_text()) end, desc = desc, mode = "x" },
+  }
 end
 
 -- Ctrl+click: move the cursor to what was clicked, then jump. Vim's built-in
@@ -169,6 +207,24 @@ local function jump_at_mouse()
   jump_to_definition(vim.fn.expand("<cword>"))
 end
 
+local keys = {
+  { "<C-]>", function() jump_to_definition(vim.fn.expand("<cword>")) end, desc = "Jump to definition" },
+  { "<C-]>", function() jump_to_definition(selected_text()) end, desc = "Jump to definition", mode = "x" },
+  { "<C-LeftMouse>", jump_at_mouse, desc = "Jump to definition (Ctrl+click)", mode = { "n", "x" } },
+  { "<leader>jb", "<cmd>!gtags<cr>", desc = "Build gtags DB (cwd)" },
+  { "<leader>jg", function() jump_to_definition(vim.fn.expand("<cword>")) end, desc = "Find global definition" },
+  { "<leader>jg", function() jump_to_definition(selected_text()) end, desc = "Find global definition", mode = "x" },
+}
+for _, k in ipairs({
+  { "<leader>js", "s", "Find this symbol" },
+  { "<leader>jc", "c", "Find callers" },
+  { "<leader>jt", "t", "Find this text string" },
+  { "<leader>jf", "f", "Find file" },
+  { "<leader>ji", "i", "Find files #including this" },
+}) do
+  vim.list_extend(keys, query_key(k[1], k[2], k[3]))
+end
+
 return {
   "dhananjaylatkar/cscope_maps.nvim",
   event = "VeryLazy",
@@ -177,23 +233,18 @@ return {
     -- LazyVim's ignorecase, the ctags fallback treats SSL_new and ssl_new as the
     -- same tag and stops to ask which one was meant.
     vim.opt.tagcase = "match"
+
+    -- Shows which way global is being started, to tell a missing index from a
+    -- global.exe whose output never reaches Neovim.
+    vim.api.nvim_create_user_command("GtagsTransport", function(opts)
+      local global = require("config.gtags_global")
+      if opts.args == "reset" then
+        global.reset()
+      end
+      vim.notify(global.status())
+    end, { nargs = "?", complete = function() return { "reset" } end })
   end,
-  keys = {
-    { "<C-]>", function() jump_to_definition(vim.fn.expand("<cword>")) end, desc = "Jump to definition" },
-    { "<C-]>", function() jump_to_definition(selected_text()) end, desc = "Jump to definition", mode = "x" },
-    { "<C-LeftMouse>", jump_at_mouse, desc = "Jump to definition (Ctrl+click)", mode = { "n", "x" } },
-    -- The symbol is deliberately omitted: `:Cscope find <op>` falls back to
-    -- the word under the cursor, or the visual selection in visual mode.
-    -- Passing <C-r><C-w> here does not work, because <cmd> runs the command
-    -- without entering command-line mode, so it arrives as a literal "^R^W".
-    { "<leader>jb", "<cmd>!gtags<cr>", desc = "Build gtags DB (cwd)" },
-    { "<leader>js", with_db("Cscope find s"), desc = "Find this symbol", mode = { "n", "v" } },
-    { "<leader>jg", with_db("Cscope find g"), desc = "Find global definition", mode = { "n", "v" } },
-    { "<leader>jc", with_db("Cscope find c"), desc = "Find callers", mode = { "n", "v" } },
-    { "<leader>jt", with_db("Cscope find t"), desc = "Find this text string", mode = { "n", "v" } },
-    { "<leader>jf", with_db("Cscope find f"), desc = "Find file", mode = { "n", "v" } },
-    { "<leader>ji", with_db("Cscope find i"), desc = "Find files #including this", mode = { "n", "v" } },
-  },
+  keys = keys,
   opts = {
     disable_maps = true,
     cscope = {
