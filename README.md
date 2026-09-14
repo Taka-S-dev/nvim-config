@@ -380,10 +380,11 @@ Remove-Item -Recurse -Force $env:LOCALAPPDATA\Temp\nvim
 
 `:TSInstall! <言語名>` で個別再インストール。
 
-### gtags ジャンプで `E426: Tag not found` が出る
+### 定義ジャンプで `No definition found` が出る
 
-- GTAGS DB が無ければ `<leader>jb` で生成(下の「初回セットアップ」を参照)
-- `:Cs db show` で `db=GTAGS pre_path=.` 等が出ているか確認(出てなければ `:Cscope reload`)
+- GTAGS DB が無ければ `<leader>jb` で生成(下の「初回セットアップ」を参照)。DB が無いファイルでは ctags だけが引かれる
+- DB はあるのに見つからない場合、索引がコードより古い可能性が高い。`<leader>jb` で作り直す
+- `<leader>j*` 系で結果が出ない場合は `:Cs db show` で `db=GTAGS pre_path=.` 等が出ているか確認(出てなければ `:Cscope reload`)
 
 起動位置は問わない。検索対象の DB は編集中のファイルから親方向に `GTAGS` を探して選ばれるので、別プロジェクトのファイルをタブで開いても、そのファイルが属するツリーの DB が使われる。
 
@@ -431,7 +432,10 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 - **なぜ vim-gutentags でなく cscope_maps?** Neovim ≥ 0.9 が cscope サポートを削除したため、gutentags の `gtags_cscope` モジュールがロード時にエラー終了する。cscope_maps.nvim は cscope プロトコルを Lua で再実装しているのでこの制約を回避できる。
 - **なぜ `<leader>j` プレフィックス?** LazyVim の `<leader>c*` は code 系(format, action, rename 等)と衝突するため別名前空間に分けた。`j` = jump。
 - **なぜ `<leader>jb` だけ `:!gtags` を直接叩く?** cscope_maps の `:Cs db build` はカスタム script に `-d <db>::<path>` 引数を自動付与する設計だが、`gtags` バイナリはその引数を受け付けないため。
-- **なぜ `<C-LeftMouse>` も再マップ?** Vim 標準の `<C-LeftMouse>` は内部で `:tag <cword>` を直接実行し、`<C-]>` の再マップを経由しない。tag ファイルが無いと E426 になるので、`:Cstag` 経由に明示的に流している。
+- **なぜ `<C-LeftMouse>` も再マップ?** Vim 標準の `<C-LeftMouse>` は内部で `:tag <cword>` を直接実行し、`<C-]>` の再マップを経由しない。クリック位置にカーソルを移してから、`<C-]>` と同じ定義ジャンプに流している。
+- **なぜ定義ジャンプだけ cscope_maps を通さない?** cscope_maps は 1 回のジャンプごとに `gtags-cscope.exe` を起動し、それがさらに `global.exe` を起動して、両方の終了を待つ間エディタが固まる。`<C-]>` は `global` を直接・非同期で呼ぶので、待ち時間があっても操作は止まらない。openssl ツリーでの実測は 1 回 117 ms → 36 ms。一度引いたシンボルは GTAGS が更新されるまでメモリから返す。
+- **常駐させない理由**: `gtags-cscope` を常駐させても、内部で 1 問い合わせごとに `global.exe` を起動するため 1 回 32 ms 前後が下限だった。全定義を起動時に読み込む案は openssl なら 0.3 秒で済むが、Linux カーネルでは 75 秒・1.3 GB かかるので採らなかった。
+- **呼び出し元検索(`<leader>jc`)は従来どおり**: ctags に相当する情報が無く、cscope_maps 経由のまま。
 
 ---
 
@@ -468,7 +472,9 @@ gtags は C/C++/Java など主要言語以外をほぼ取りこぼす。C コー
   ```lua
   vim.g.gutentags_exclude_project_root = { vim.fn.expand("~/src/all-projects") }
   ```
-- cscope_maps の `:Cstag`(`<C-]>` / `Ctrl+クリック`)は gtags が空振りすると **自動で vim の taglist にフォールバック** するので、gtags が効く所は gtags、ダメな所は ctags、と透過的に切り替わる
+- 定義ジャンプ(`<C-]>` / `Ctrl+クリック`)は gtags が空振りすると **自動で ctags にフォールバック** するので、gtags が効く所は gtags、ダメな所は ctags、と透過的に切り替わる
+- タグ名は大文字小文字を区別して照合する(`tagcase=match`)。LazyVim の `ignorecase` のままだと `SSL_new` と `ssl_new` を同じタグとみなし、ジャンプのたびに候補選択で止まる
+- エディタのローカル履歴(`.history/`)やバックアップ、他ツールの索引ファイルは ctags の索引から除外している。古いコピーが索引に入ると、フォールバック時にそちらへ着地するため
 
 ### ハマりどころ
 
