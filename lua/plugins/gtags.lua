@@ -23,7 +23,7 @@
 -- 36 ms per lookup on the openssl tree), and running it asynchronously means
 -- the editor keeps responding however slow process starts are made by security
 -- software. Each cscope query has a global equivalent that returns the same
--- matches: definitions -d, references -r, text -g, files -P.
+-- matches: definitions -d, references -r, other symbols -s, text -g, files -P.
 --
 -- How global is started lives in config/gtags_global.lua, which also handles a
 -- global.exe that cannot write its results to Neovim's pipe.
@@ -141,7 +141,9 @@ end
 
 -- The cscope-style queries behind <leader>j*.
 local queries = {
-  s = { title = "Occurrences of", args = function(s) return { { "-axd", s }, { "-axr", s } } end },
+  -- -s finds names gtags does not record as definitions, such as enum members;
+  -- without it an enum constant used 103 times shows no occurrences at all.
+  s = { title = "Occurrences of", args = function(s) return { { "-axd", s }, { "-axr", s }, { "-axs", s } } end },
   c = { title = "Callers of", args = function(s) return { { "-axr", s } } end },
   t = { title = "Text", args = function(s) return { { "-axg", "--literal", s } } end },
   f = { title = "Files matching", args = function(s) return { { "-axP", s } } end },
