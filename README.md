@@ -3,7 +3,7 @@
 LazyVim ベースの個人 Neovim 設定。複数の Windows マシンで共通利用するため、以下を仕込んである:
 
 - treesitter パーサのビルド問題を `zig cc` ラッパーで回避
-- レガシー C コードを gtags + cscope_maps.nvim でナビ(clangd を当てづらいコードベース向け)
+- レガシー C コードを gtags (GNU Global) でナビ(clangd を当てづらいコードベース向け)
 - gtags が指標化できないソース(Shift-JIS、特殊拡張子等)向けに ctags フォールバック
 
 ## セットアップ手順 (新しい Windows マシン)
@@ -384,7 +384,17 @@ Remove-Item -Recurse -Force $env:LOCALAPPDATA\Temp\nvim
 
 - GTAGS DB が無ければ `<leader>jb` で生成(下の「初回セットアップ」を参照)。DB が無いファイルでは ctags だけが引かれる
 - DB はあるのに見つからない場合、索引がコードより古い可能性が高い。`<leader>jb` で作り直す
-- `<leader>j*` 系で結果が出ない場合は `:Cs db show` で `db=GTAGS pre_path=.` 等が出ているか確認(出てなければ `:Cscope reload`)
+- `<leader>j*` も含め、単体で `global -xr 関数名` を実行すると結果が出るのに nvim からは空になる場合は、下の「global を単体で実行すると出るのに nvim からは空になる」を参照
+
+### global を単体で実行すると出るのに nvim からは空になる
+
+Windows 向けの `global.exe` には Cygwin ビルドがあり、nvim のような通常の Windows プロセスが用意したパイプには結果を書き込めない。終了コードは 0 のまま出力だけが空になる。
+
+これは自動で回避している。直接起動の結果が空だと、ファイルへ出力させる方法、bash(Git for Windows / Cygwin)経由の方法の順に試し、結果が出た方法を覚える。覚えた方法は `stdpath("state")/gtags-transport` に保存し、次回の起動でも最初からそれを使う。セキュリティソフトがプロセス起動のたびに検査する環境では、失敗すると分かっている方法を毎回試すと 1 回あたり数秒かかるため。
+
+- `:GtagsTransport` で現在の方法(`direct` / `file` / `bash`)と、それで結果が出た実績があるかを表示する
+- `global.exe` を入れ替えた後などは `:GtagsTransport reset` で覚えた方法を捨てる
+- `GTAGSROOT` / `GTAGSDBPATH` はバックスラッシュ区切りで渡している。Cygwin ビルドはスラッシュ区切りのパスだと空を返すため
 
 起動位置は問わない。検索対象の DB は編集中のファイルから親方向に `GTAGS` を探して選ばれるので、別プロジェクトのファイルをタブで開いても、そのファイルが属するツリーの DB が使われる。
 
@@ -398,7 +408,7 @@ Remove-Item -Recurse -Force $env:LOCALAPPDATA\Temp\nvim
 
 ## レガシー C ナビゲーション (gtags + cscope_maps.nvim)
 
-clangd を当てづらいレガシー C プロジェクト向けに、定義ジャンプ・呼び出し元検索を gtags + cscope_maps.nvim で実現している。LSP 不要・ビルドシステム不要・古い C 方言でも動く。
+clangd を当てづらいレガシー C プロジェクト向けに、定義ジャンプ・呼び出し元検索を gtags (GNU Global) で実現している。LSP 不要・ビルドシステム不要・古い C 方言でも動く。検索はすべて `global` を直接・非同期で呼ぶので、待ち時間があっても操作は止まらない。
 
 ### 初回セットアップ(プロジェクトごと)
 
@@ -421,11 +431,11 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 | `<leader>jc` | この関数の呼び出し元(callers) |
 | `<leader>jt` | テキスト文字列検索 |
 | `<leader>jf` | ファイル名検索 |
-| `<leader>ji` | このファイルを `#include` しているファイル(※下記) |
+| `<leader>ji` | カーソル下のファイルを `#include` しているファイル(※下記) |
 
 結果は snacks picker で表示される(LazyVim デフォルトの picker)。
 
-`<leader>ji` は gtags が include 関係を索引しないため、実際にはほぼ 0 件しか返らない。`<leader>jt` で `#include "foo.h"` を文字列検索するほうが確実。cscope にある「この関数が呼んでいる関数一覧」(callees)と「この変数への代入」も gtags-cscope には無い。
+`<leader>ji` は、gtags が include 関係を索引しないため `#include "foo.h"` の行を文字列として探している。cscope にある「この関数が呼んでいる関数一覧」(callees)と「この変数への代入」は gtags に相当する情報が無く、用意していない。
 
 ### 設計メモ
 
@@ -433,9 +443,9 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 - **なぜ `<leader>j` プレフィックス?** LazyVim の `<leader>c*` は code 系(format, action, rename 等)と衝突するため別名前空間に分けた。`j` = jump。
 - **なぜ `<leader>jb` だけ `:!gtags` を直接叩く?** cscope_maps の `:Cs db build` はカスタム script に `-d <db>::<path>` 引数を自動付与する設計だが、`gtags` バイナリはその引数を受け付けないため。
 - **なぜ `<C-LeftMouse>` も再マップ?** Vim 標準の `<C-LeftMouse>` は内部で `:tag <cword>` を直接実行し、`<C-]>` の再マップを経由しない。クリック位置にカーソルを移してから、`<C-]>` と同じ定義ジャンプに流している。
-- **なぜ定義ジャンプだけ cscope_maps を通さない?** cscope_maps は 1 回のジャンプごとに `gtags-cscope.exe` を起動し、それがさらに `global.exe` を起動して、両方の終了を待つ間エディタが固まる。`<C-]>` は `global` を直接・非同期で呼ぶので、待ち時間があっても操作は止まらない。openssl ツリーでの実測は 1 回 117 ms → 36 ms。一度引いたシンボルは GTAGS が更新されるまでメモリから返す。
+- **なぜ cscope_maps を通さない?** cscope_maps は 1 回の検索ごとに `gtags-cscope.exe` を起動し、それがさらに `global.exe` を起動して、両方の終了を待つ間エディタが固まる。`<C-]>` と `<leader>j*` は `global` を直接・非同期で呼ぶ。openssl ツリーでの実測は 1 回 117 ms → 36 ms。定義ジャンプは一度引いたシンボルを GTAGS が更新されるまでメモリから返す。cscope の各検索は `global` の同等のオプション(定義 `-d`・参照 `-r`・テキスト `-g`・ファイル `-P`)に置き換えてあり、openssl で `SSL_new` の呼び出し元 39 件は 1 件単位で一致した。
 - **常駐させない理由**: `gtags-cscope` を常駐させても、内部で 1 問い合わせごとに `global.exe` を起動するため 1 回 32 ms 前後が下限だった。全定義を起動時に読み込む案は openssl なら 0.3 秒で済むが、Linux カーネルでは 75 秒・1.3 GB かかるので採らなかった。
-- **呼び出し元検索(`<leader>jc`)は従来どおり**: ctags に相当する情報が無く、cscope_maps 経由のまま。
+- **cscope_maps が残っている理由**: `:Cscope` / `:Cstag` コマンドを使えるようにするため。キー操作からは使っていない。
 
 ---
 
@@ -511,13 +521,14 @@ $env:LOCALAPPDATA\nvim\
 ├── lua\
 │   ├── config\
 │   │   ├── options.lua     # CC 設定はここ
+│   │   ├── gtags_global.lua # global の起動と、出力が届かない global.exe の回避
 │   │   ├── local.lua       # マシン固有の設定 (git 管理外、あれば読む)
 │   │   ├── keymaps.lua
 │   │   ├── autocmds.lua
 │   │   └── lazy.lua
 │   └── plugins\            # 追加プラグイン定義
 │       ├── aerial.lua      # シンボルアウトライン
-│       ├── gtags.lua       # cscope_maps.nvim (gtags ナビ)
+│       ├── gtags.lua       # gtags ナビ(定義ジャンプ・<leader>j*)
 │       ├── gutentags.lua   # ctags で tags を維持 (gtags fallback)
 │       └── treesitter.lua  # 追加パーサ
 ├── init.lua
