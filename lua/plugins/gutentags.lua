@@ -3,9 +3,9 @@
 -- where gtags can't index everything (Shift-JIS-encoded sources,
 -- non-standard file extensions, exotic dialects of legacy C, etc.).
 --
--- cscope_maps's :Cstag tries gtags first and falls back to vim's tag
--- system on miss, so both can coexist transparently: gtags wins where
--- it works, ctags catches the rest.
+-- The definition jump in lua/plugins/gtags.lua asks gtags first and falls
+-- back to vim's tag system on a miss, so both can coexist transparently:
+-- gtags wins where it works, ctags catches the rest.
 --
 -- Requires Universal Ctags on PATH. The Exuberant Ctags 5.8 (2009)
 -- bundled with Strawberry Perl is too old; install a current build:
@@ -37,8 +37,8 @@ return {
     vim.g.gutentags_generate_on_missing = 0
     vim.g.gutentags_generate_on_new = 0
 
-    -- Definition jumps try ctags first, so a stale copy in the index is a wrong
-    -- landing, not just noise. Editors that keep local history (.history/) and
+    -- The ctags fallback lands on the first match, so a stale copy in the index
+    -- is a wrong landing, not just noise. Editors that keep local history (.history/) and
     -- backup files put whole duplicate sources in the tree; the index files of
     -- the other tools are never source.
     vim.g.gutentags_ctags_exclude = {

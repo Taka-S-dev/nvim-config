@@ -40,7 +40,7 @@ local keys = {
   ["<C-Left>"] = "explorer_narrower",
   ["<C-Right>"] = "explorer_wider",
   -- Also bound for the click that starts the drag: the global <C-LeftMouse>
-  -- -> :Cstag mapping in lua/plugins/gtags.lua would otherwise fire on a
+  -- definition jump in lua/plugins/gtags.lua would otherwise fire on a
   -- Ctrl+click inside the tree.
   ["<C-LeftMouse>"] = { "explorer_drag", mode = { "n", "i" } },
   ["<C-LeftDrag>"] = { "explorer_drag", mode = { "n", "i" } },

@@ -1,5 +1,5 @@
-# Sourced from $PROFILE on every PowerShell startup. See README "PowerShell
-# プロファイル設定" for the one-line installer.
+# Sourced from $PROFILE on every PowerShell startup. See README step 4 for
+# the one-line installer.
 #
 # `nv` launches the "primary" nvim with a named-pipe listener so external
 # tools (bin/open-in-nvim.cmd, browser editor integrations, file managers)

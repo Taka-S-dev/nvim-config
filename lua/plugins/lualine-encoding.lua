@@ -1,6 +1,6 @@
 -- Show the file's encoding in the statusline, but only when it isn't UTF-8.
 --
--- With cp932 and euc-jp in 'fileencodings' a legacy file now opens silently and
+-- With cp932 in 'fileencodings' a legacy file now opens silently and
 -- looks like any other buffer, which is the point — and also the risk: typing a
 -- character that cp932 can't represent (⇒, ①-style vendor glyphs from another
 -- code page, emoji) fails at :write with E513, long after the edit. A marker in
