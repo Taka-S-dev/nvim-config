@@ -42,8 +42,16 @@ return {
     -- backup files put whole duplicate sources in the tree; the index files of
     -- the other tools are never source.
     vim.g.gutentags_ctags_exclude = {
-      ".git", ".history", "*.BAK", "*.bak", "*~",
-      "GTAGS", "GRTAGS", "GPATH", "cscope.out", "tags",
+      ".git",
+      ".history",
+      "*.BAK",
+      "*.bak",
+      "*~",
+      "GTAGS",
+      "GRTAGS",
+      "GPATH",
+      "cscope.out",
+      "tags",
     }
   end,
 }

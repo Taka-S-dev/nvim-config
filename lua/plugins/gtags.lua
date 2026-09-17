@@ -398,10 +398,30 @@ end
 local queries = {
   -- -s finds names gtags does not record as definitions, such as enum members;
   -- without it an enum constant used 103 times shows no occurrences at all.
-  s = { title = "Occurrences of", args = function(s) return { { "-axd", s }, { "-axr", s }, { "-axs", s } } end },
-  c = { title = "Callers of", args = function(s) return { { "-axr", s } } end },
-  t = { title = "Text", args = function(s) return { { "-axg", "--literal", s } } end },
-  f = { title = "Files matching", args = function(s) return { { "-axP", s } } end },
+  s = {
+    title = "Occurrences of",
+    args = function(s)
+      return { { "-axd", s }, { "-axr", s }, { "-axs", s } }
+    end,
+  },
+  c = {
+    title = "Callers of",
+    args = function(s)
+      return { { "-axr", s } }
+    end,
+  },
+  t = {
+    title = "Text",
+    args = function(s)
+      return { { "-axg", "--literal", s } }
+    end,
+  },
+  f = {
+    title = "Files matching",
+    args = function(s)
+      return { { "-axP", s } }
+    end,
+  },
   -- gtags does not index #include, so match the directive text instead.
   i = {
     title = "Files including",
@@ -448,8 +468,21 @@ end
 
 local function query_key(lhs, kind, desc)
   return {
-    { lhs, function() query(kind, under_cursor(kind)) end, desc = desc },
-    { lhs, function() query(kind, selected_text()) end, desc = desc, mode = "x" },
+    {
+      lhs,
+      function()
+        query(kind, under_cursor(kind))
+      end,
+      desc = desc,
+    },
+    {
+      lhs,
+      function()
+        query(kind, selected_text())
+      end,
+      desc = desc,
+      mode = "x",
+    },
   }
 end
 
@@ -465,14 +498,53 @@ local function jump_at_mouse()
 end
 
 local keys = {
-  { "<C-]>", function() jump_to_definition(vim.fn.expand("<cword>")) end, desc = "Jump to definition" },
-  { "<C-]>", function() jump_to_definition(selected_text()) end, desc = "Jump to definition", mode = "x" },
+  {
+    "<C-]>",
+    function()
+      jump_to_definition(vim.fn.expand("<cword>"))
+    end,
+    desc = "Jump to definition",
+  },
+  {
+    "<C-]>",
+    function()
+      jump_to_definition(selected_text())
+    end,
+    desc = "Jump to definition",
+    mode = "x",
+  },
   { "<C-LeftMouse>", jump_at_mouse, desc = "Jump to definition (Ctrl+click)", mode = { "n", "x" } },
-  { "<leader>jp", function() peek_definition(vim.fn.expand("<cword>")) end, desc = "Peek definition" },
-  { "<leader>jp", function() peek_definition(selected_text()) end, desc = "Peek definition", mode = "x" },
+  {
+    "<leader>jp",
+    function()
+      peek_definition(vim.fn.expand("<cword>"))
+    end,
+    desc = "Peek definition",
+  },
+  {
+    "<leader>jp",
+    function()
+      peek_definition(selected_text())
+    end,
+    desc = "Peek definition",
+    mode = "x",
+  },
   { "<leader>jb", "<cmd>!gtags<cr>", desc = "Build gtags DB (cwd)" },
-  { "<leader>jg", function() jump_to_definition(vim.fn.expand("<cword>")) end, desc = "Find global definition" },
-  { "<leader>jg", function() jump_to_definition(selected_text()) end, desc = "Find global definition", mode = "x" },
+  {
+    "<leader>jg",
+    function()
+      jump_to_definition(vim.fn.expand("<cword>"))
+    end,
+    desc = "Find global definition",
+  },
+  {
+    "<leader>jg",
+    function()
+      jump_to_definition(selected_text())
+    end,
+    desc = "Find global definition",
+    mode = "x",
+  },
 }
 for _, k in ipairs({
   { "<leader>js", "s", "Find this symbol" },
@@ -507,7 +579,12 @@ return {
         global.reset()
       end
       vim.notify(global.status())
-    end, { nargs = "?", complete = function() return { "reset" } end })
+    end, {
+      nargs = "?",
+      complete = function()
+        return { "reset" }
+      end,
+    })
   end,
   keys = keys,
   opts = {

@@ -62,11 +62,15 @@ end
 M.runners = {}
 
 function M.runners.direct(root, args, done)
-  vim.system(vim.list_extend({ global_exe() }, args), { cwd = root, env = gtags_env(root), text = true }, function(result)
-    vim.schedule(function()
-      done(result.stdout or "")
-    end)
-  end)
+  vim.system(
+    vim.list_extend({ global_exe() }, args),
+    { cwd = root, env = gtags_env(root), text = true },
+    function(result)
+      vim.schedule(function()
+        done(result.stdout or "")
+      end)
+    end
+  )
 end
 
 function M.runners.file(root, args, done)
