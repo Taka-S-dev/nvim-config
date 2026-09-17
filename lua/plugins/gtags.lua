@@ -19,8 +19,8 @@
 --
 -- cscope_maps answers each query by starting gtags-cscope.exe, which starts
 -- global.exe, and waits for both with vim.system():wait(), freezing the editor
--- until they exit. Asking global directly drops one process start (117 ms to
--- 36 ms per lookup on the openssl tree), and running it asynchronously means
+-- until they exit. Asking global directly drops one process start (91 ms to
+-- 21 ms per lookup on the openssl tree), and running it asynchronously means
 -- the editor keeps responding however slow process starts are made by security
 -- software. Each cscope query has a global equivalent that returns the same
 -- matches: definitions -d, references -r, other symbols -s, text -g, files -P.
