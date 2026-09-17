@@ -55,3 +55,13 @@ vim.opt.fileencodings = { "ucs-bom", "utf-8", "cp932", "latin1" }
 -- G, <C-d>, and the tag jumps -- but the wheel should not fight the file.
 vim.opt.mousescroll = "ver:10,hor:6"
 
+-- The markers for a trailing space and a full-width space stay on: both are
+-- invisible, both survive into a diff or a build error, and a warning only
+-- works if it shows while the text is being typed.
+--
+-- The tab marker is dropped. In a tab-indented tree it lands on nearly every
+-- line and buries the other two, and the indentation it marks is already
+-- visible as indentation. Two spaces stand in for it, which renders as
+-- nothing.
+vim.opt.list = true
+vim.opt.listchars:append({ tab = "  " })

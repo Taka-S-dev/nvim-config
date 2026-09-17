@@ -49,3 +49,25 @@ end
 vim.keymap.set("n", "<leader>yp", yank_location(false), { desc = "Yank path:line" })
 vim.keymap.set("x", "<leader>yp", yank_location(true), { desc = "Yank path:range" })
 
+-- Reveal the tab markers for as long as they are needed.
+--
+-- They are off by default because in a tab-indented tree they mark nearly
+-- every line (see lua/config/options.lua). Fixing indentation is the case
+-- where they are the only way to tell a tab from spaces, so they get a key
+-- rather than an edit to the config.
+--
+-- Turning them on also turns on the markers as a whole: list is window-local
+-- and can be off in the window being worked in, and then changing the tab
+-- character alone shows nothing while the toggle reports itself as enabled.
+Snacks.toggle({
+  name = "Tab markers",
+  get = function()
+    return vim.wo.list and vim.opt.listchars:get().tab ~= "  "
+  end,
+  set = function(state)
+    vim.opt.listchars:append({ tab = state and "> " or "  " })
+    if state then
+      vim.opt.list = true
+    end
+  end,
+}):map("<leader>uW")
