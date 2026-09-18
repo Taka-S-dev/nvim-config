@@ -129,29 +129,43 @@ local function lookup_definition(symbol, done, no_database)
     return no_database()
   end
   local symbols = definitions_of(root)
-  local function finish(items)
+  local function finish(items, source)
     symbols[symbol] = items
-    done(items)
+    done(items, source)
   end
   if symbols[symbol] then
-    return finish(symbols[symbol])
+    return finish(symbols[symbol], "memory")
   end
-  run_global(root, { { "-axd", symbol } }, finish)
+  run_global(root, { { "-axd", symbol } }, function(items)
+    finish(items, "global")
+  end)
 end
 
-local function jump_to_definition(symbol)
+-- The last jump, for :GtagsJumpDebug: what started it, where the answer came
+-- from and how long it took. A jump that feels slow from one input and quick
+-- from another is either answered from memory in one case only, or slow before
+-- the mapping runs at all; the numbers say which.
+local jump_trace = {}
+
+local function jump_to_definition(symbol, trigger)
   if not symbol or symbol == "" then
     return
   end
-  lookup_definition(symbol, function(items)
+  jump_trace = { trigger = trigger or "key", symbol = symbol, started = vim.uv.hrtime() }
+  lookup_definition(symbol, function(items, source)
+    jump_trace.source, jump_trace.answered = source, vim.uv.hrtime()
     if #items == 0 then
       -- gtags has no entry, e.g. for a source it could not parse.
+      jump_trace.source = source .. ", then ctags"
       jump_with_ctags(symbol)
     else
       show("Definitions of " .. symbol, symbol, items)
     end
+    jump_trace.landed = vim.uv.hrtime()
   end, function()
+    jump_trace.source, jump_trace.answered = "ctags", vim.uv.hrtime()
     jump_with_ctags(symbol)
+    jump_trace.landed = vim.uv.hrtime()
   end)
 end
 
@@ -514,7 +528,7 @@ local function jump_at_mouse()
     vim.api.nvim_set_current_win(pos.winid)
     vim.api.nvim_win_set_cursor(0, { pos.line, math.max(pos.column - 1, 0) })
   end
-  jump_to_definition(vim.fn.expand("<cword>"))
+  jump_to_definition(vim.fn.expand("<cword>"), "click")
 end
 
 local keys = {
@@ -591,6 +605,25 @@ return {
     -- line it was supposed to keep visible.
     vim.api.nvim_create_user_command("GtagsPeekDebug", function()
       vim.notify(peek_debug)
+    end, {})
+
+    vim.api.nvim_create_user_command("GtagsJumpDebug", function()
+      local t = jump_trace
+      if not t.started then
+        return vim.notify("(no jump yet)")
+      end
+      local function ms(at)
+        return at and ("%.0f ms"):format((at - t.started) / 1e6) or "?"
+      end
+      vim.notify(
+        ("%s %s: from %s, answered in %s, landed in %s"):format(
+          t.trigger,
+          t.symbol,
+          t.source or "(no answer yet)",
+          ms(t.answered),
+          ms(t.landed)
+        )
+      )
     end, {})
 
     vim.api.nvim_create_user_command("GtagsTransport", function(opts)
