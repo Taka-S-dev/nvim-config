@@ -16,11 +16,15 @@ PowerShell で:
 winget install Neovim.Neovim
 winget install zig.zig
 winget install Git.Git
+winget install BurntSushi.ripgrep.MSVC    # ripgrep (grep とファイル検索) -- scoop install ripgrep でも可
 winget install GNU.GLOBAL                 # gtags (レガシー C ナビ用) -- scoop install global でも可
 winget install universal-ctags.ctags      # ctags (gtags のフォールバック) -- 必ず Universal 版を!
 ```
 
 すでに入っているものはスキップしてよい。
+
+> **なぜ ripgrep が必要?** LazyVim は `grepprg` を `rg --vimgrep` に固定し、grep のピッカー(`<leader>/`、`<leader>sg`)も `rg` を直接呼ぶ。入っていないと `:grep` もプロジェクト検索も動かない。ファイル名検索(`<leader>ff`)は `fd` があれば `fd`、なければ `rg` を使うので、`rg` だけ入れておけば両方動く。
+>
 
 > **なぜ zig が必要?** treesitter パーサ (C コード) のコンパイルに `zig cc` を使う。詳細は[このセクション](#treesitter-ビルドが-zig-cc-経由な理由)。
 >
