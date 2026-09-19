@@ -224,16 +224,27 @@ end
 local peek_window
 local peek_debug = "(no window opened yet)"
 local peek_marks = vim.api.nvim_create_namespace("gtags_peek")
+local peek_definition -- defined below; the keys inside the window call it
+-- The peeks left behind by jumping from inside one, newest last, so <C-t> in
+-- the window can walk back through them the way it does through real jumps.
+local peek_history = {}
 
 local function close_peek()
+  pcall(vim.api.nvim_del_augroup_by_name, "gtags_peek")
   if peek_window and vim.api.nvim_win_is_valid(peek_window) then
     vim.api.nvim_win_close(peek_window, true)
   end
   peek_window = nil
 end
 
-local function open_peek(symbol, items)
+---@param opts? { chained?: boolean, view?: table } chained: opened from inside
+---a peek, so the history is kept; view: scroll position to restore.
+local function open_peek(symbol, items, opts)
+  opts = opts or {}
   close_peek()
+  if not opts.chained then
+    peek_history = {}
+  end
   local item = items[1]
   local origin = vim.api.nvim_get_current_win()
   -- Recorded now, while the cursor is still here: by the time Enter is pressed
@@ -444,6 +455,10 @@ local function open_peek(symbol, items)
   -- setup so that a colorscheme loaded later cannot leave it undefined.
   vim.api.nvim_set_hl(0, "GtagsPeekDefinition", { default = true, link = "Visual" })
   vim.api.nvim_buf_set_extmark(buf, peek_marks, item.lnum - first, 0, { line_hl_group = "GtagsPeekDefinition" })
+  if opts.view then
+    -- Coming back with <C-t>: the place that was being read, not the top.
+    vim.fn.winrestview(opts.view)
+  end
 
   -- Bound in visual mode as well: dragging the mouse across the window or
   -- pressing v leaves it selected, and Esc then only dropped the selection,
@@ -456,23 +471,120 @@ local function open_peek(symbol, items)
     vim.api.nvim_set_current_win(origin)
     show("Definitions of " .. symbol, symbol, { item }, origin_pos)
   end, { buffer = buf, nowait = true })
+
+  -- The jump keys, pressed in here, show that definition in a fresh peek. Left
+  -- to the global mappings they load the definition's file into this small
+  -- window: the scratch copy goes, its close keys go with it, and the window
+  -- can no longer be closed from the keyboard. Enter stays the key that leaves.
+  -- The lookup runs from the window the peek was opened from, because the
+  -- scratch copy has no file name to find a GTAGS from.
+  local function back_to_origin()
+    close_peek()
+    if vim.api.nvim_win_is_valid(origin) then
+      vim.api.nvim_set_current_win(origin)
+    end
+  end
+
+  local function peek_earlier()
+    local earlier = table.remove(peek_history)
+    if not earlier then
+      return false
+    end
+    back_to_origin()
+    open_peek(earlier.symbol, earlier.items, { chained = true, view = earlier.view })
+    return true
+  end
+
+  local function peek_again(word)
+    peek_history[#peek_history + 1] = { symbol = symbol, items = items, view = vim.fn.winsaveview() }
+    back_to_origin()
+    -- A word with no definition would otherwise close the peek being read.
+    peek_definition(word, { chained = true, on_missing = peek_earlier })
+  end
+
+  -- <C-t> walks back through the peeks the way it does through real jumps.
+  vim.keymap.set("n", "<C-t>", function()
+    if not peek_earlier() then
+      vim.notify("No earlier peek", vim.log.levels.INFO)
+    end
+  end, { buffer = buf, nowait = true })
+  for _, key in ipairs({ "<C-]>", "<leader>jp", "<leader>jg" }) do
+    vim.keymap.set("n", key, function()
+      peek_again(vim.fn.expand("<cword>"))
+    end, { buffer = buf, nowait = true })
+  end
+  vim.keymap.set("n", "<C-LeftMouse>", function()
+    local pos = vim.fn.getmousepos()
+    if pos.winid ~= peek_window or pos.line == 0 then
+      -- A click outside the peek is an ordinary jump from where it landed.
+      close_peek()
+      if pos.winid ~= 0 and pos.line > 0 then
+        vim.api.nvim_set_current_win(pos.winid)
+        vim.api.nvim_win_set_cursor(0, { pos.line, math.max(pos.column - 1, 0) })
+      end
+      return jump_to_definition(vim.fn.expand("<cword>"), "click")
+    end
+    vim.api.nvim_win_set_cursor(peek_window, { pos.line, math.max(pos.column - 1, 0) })
+    peek_again(vim.fn.expand("<cword>"))
+  end, { buffer = buf, nowait = true })
+
+  local group = vim.api.nvim_create_augroup("gtags_peek", { clear = true })
   -- Leaving the window for any reason, a click elsewhere included, closes it.
-  -- Scoped to this buffer so it cannot fire on a move between other windows.
-  vim.api.nvim_create_autocmd("WinLeave", { buffer = buf, once = true, callback = close_peek })
+  vim.api.nvim_create_autocmd("WinLeave", {
+    group = group,
+    callback = function()
+      if vim.api.nvim_get_current_win() == peek_window then
+        close_peek()
+      end
+    end,
+  })
+  -- Whatever else loads a buffer into this window (:edit, gf, a picker) is
+  -- handed to the window the peek was opened from, and the peek closes: the
+  -- window only ever shows its scratch copy.
+  vim.api.nvim_create_autocmd("BufWinEnter", {
+    group = group,
+    callback = function()
+      vim.schedule(function()
+        if not (peek_window and vim.api.nvim_win_is_valid(peek_window)) then
+          return
+        end
+        local stray = vim.api.nvim_win_get_buf(peek_window)
+        if stray == buf then
+          return
+        end
+        local cursor = vim.api.nvim_win_get_cursor(peek_window)
+        close_peek()
+        if vim.api.nvim_win_is_valid(origin) then
+          vim.api.nvim_set_current_win(origin)
+          vim.api.nvim_win_set_buf(origin, stray)
+          pcall(vim.api.nvim_win_set_cursor, origin, cursor)
+        end
+      end)
+    end,
+  })
 end
 
-local function peek_definition(symbol)
+---@param opts? { chained?: boolean, on_missing?: fun() } on_missing runs when
+---there is nothing to show, after the warning.
+function peek_definition(symbol, opts)
+  opts = opts or {}
+  local function missing(message)
+    vim.notify(message, vim.log.levels.WARN)
+    if opts.on_missing then
+      opts.on_missing()
+    end
+  end
   if not symbol or symbol == "" then
-    return
+    return missing("No word under the cursor")
   end
   lookup_definition(symbol, function(items)
     if #items == 0 then
-      vim.notify("No definition found for " .. symbol, vim.log.levels.WARN)
+      missing("No definition found for " .. symbol)
     else
-      open_peek(symbol, items)
+      open_peek(symbol, items, { chained = opts.chained })
     end
   end, function()
-    vim.notify("No GTAGS for this file", vim.log.levels.WARN)
+    missing("No GTAGS for this file")
   end)
 end
 
