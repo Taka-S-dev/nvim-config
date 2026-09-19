@@ -161,6 +161,7 @@ end
 -- is pushed on the tag stack until something actually moves.
 local peek_window
 local peek_debug = "(no window opened yet)"
+local peek_marks = vim.api.nvim_create_namespace("gtags_peek")
 
 local function close_peek()
   if peek_window and vim.api.nvim_win_is_valid(peek_window) then
@@ -373,6 +374,14 @@ local function open_peek(symbol, items)
   vim.wo[peek_window].number = true
   vim.wo[peek_window].statuscolumn = ("%%{v:lnum + %d} "):format(first - 1)
   vim.api.nvim_win_set_cursor(peek_window, { item.lnum - first + 1, 0 })
+  -- The definition line keeps its own highlight: the cursor line follows the
+  -- cursor, so after scrolling down a long function nothing else marks where
+  -- the definition was. Visual is the selection color every colorscheme makes
+  -- easy to spot; the link is a default, so a colorscheme that defines
+  -- GtagsPeekDefinition itself wins, and it is set here rather than once at
+  -- setup so that a colorscheme loaded later cannot leave it undefined.
+  vim.api.nvim_set_hl(0, "GtagsPeekDefinition", { default = true, link = "Visual" })
+  vim.api.nvim_buf_set_extmark(buf, peek_marks, item.lnum - first, 0, { line_hl_group = "GtagsPeekDefinition" })
 
   -- Bound in visual mode as well: dragging the mouse across the window or
   -- pressing v leaves it selected, and Esc then only dropped the selection,
