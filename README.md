@@ -405,7 +405,7 @@ Remove-Item -Recurse -Force $env:LOCALAPPDATA\Temp\nvim
 ### 定義ジャンプで `No definition found` が出る
 
 - GTAGS DB が無ければ `<leader>jb` で生成(下の「初回セットアップ」を参照)。DB が無いファイルでは ctags だけが引かれる
-- DB はあるのに見つからない場合、索引がコードより古い可能性が高い。`<leader>jb` で作り直す
+- DB はあるのに見つからない場合、索引がコードより古い可能性が高い。`<leader>ju` で差分更新する(直らなければ `<leader>jb` で作り直す)
 - `<leader>j*` も含め、単体で `global -xr 関数名` を実行すると結果が出るのに nvim からは空になる場合は、下の「global を単体で実行すると出るのに nvim からは空になる」を参照
 
 ### global を単体で実行すると出るのに nvim からは空になる
@@ -431,11 +431,11 @@ Windows 向けの `global.exe` には Cygwin ビルドがあり、nvim のよう
 - 出所が `memory` なら、そのシンボルは前に引いた結果をメモリから返している。`global` は `global.exe` を起動した回で、セキュリティソフトがプロセス起動を検査する環境では数百 ms〜数秒かかる。キーで速くクリックで遅いと感じる場合、まずここが違っていないか(キーは同じシンボルへの再ジャンプが多く、クリックは毎回新しいシンボル)を見る
 - 出所も時間も同じなのに体感が違うなら、遅れは nvim にクリックが届く前、つまり端末側にある
 
-### `database build failed` と出る
+### GTAGS を別のディレクトリに作ってしまった
 
-`<leader>jb` は内部で `:!gtags` を実行するので、**cwd がプロジェクトルートになっている必要がある**。別ディレクトリで実行した場合はそこに GTAGS ができてしまうので、`gtags` で出た 3 ファイル (`GTAGS`, `GRTAGS`, `GPATH`) を削除して、ルートで再実行。
+`<leader>jb` は、開いているファイルを覆う GTAGS が既にあれば、その場所で作り直す。まだ無いツリーでは cwd に作るので、**作る前にそのディレクトリを表示して確認を求める**。違う場所なら No で止め、`:cd <project_root>` してから押し直す。誤って作ってしまった場合は、そこに出来た 3 ファイル (`GTAGS`, `GRTAGS`, `GPATH`) を削除する。残しておくと、その下の階層にあるファイルがすべてその GTAGS を見つけてしまう。
 
-既に GTAGS があるツリーのファイルを開いていれば、cwd はそのルートに自動で移る(ウィンドウローカルの `lcd`)。cwd を意識する必要があるのは**まだ DB が無いツリーの初回生成**だけで、そのときは `cd <project_root>` してから `nvim .` で開く。
+既に GTAGS があるツリーのファイルを開いていれば、cwd はそのルートに自動で移る(ウィンドウローカルの `lcd`)。cwd を意識する必要があるのは**まだ DB が無いツリーの初回生成**だけ。
 
 ---
 
@@ -450,7 +450,7 @@ cd <project_root>
 nvim .
 ```
 
-nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPATH` の 3 ファイルが生成される(数秒〜数分)。これで全機能が使えるようになる。
+nvim 内で `<leader>jb` を押すと、作る場所を確認したうえで `gtags` がバックグラウンドで走り、`GTAGS`, `GRTAGS`, `GPATH` の 3 ファイルが生成される(openssl で 1〜2 秒。ツリーが大きいほど長い)。その間も操作は止まらず、進行と所要時間はステータスラインに出る。これで全機能が使えるようになる。
 
 ### キーマップ早見
 
@@ -459,7 +459,8 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 | `<C-]>` / `Ctrl+クリック` | カーソル下の定義へジャンプ |
 | `<C-t>` | ジャンプ元に戻る |
 | `<leader>jp` | カーソル下の定義をジャンプせずに小窓で読む(ピーク)。窓内はスクロール可。`q` / `Esc` で閉じる、`Enter` でそこへジャンプ。窓内で `<C-]>` / `Ctrl+クリック` を押すと、その語の定義を次の小窓で開き、`<C-t>` で前の小窓に戻る(小窓のまま辿れる) |
-| `<leader>jb` | gtags DB を再生成(コード変更後) |
+| `<leader>jb` | gtags DB を作り直す(バックグラウンドで実行。初回は作る場所を確認する) |
+| `<leader>ju` | gtags DB を差分更新(変更したファイルだけ読み直す。コードを編集した後はこちら) |
 | `<leader>js` | このシンボルの全出現箇所 |
 | `<leader>jg` | グローバル定義へ |
 | `<leader>jc` | この関数の呼び出し元(callers)。enum の値やマクロは gtags が定義として記録しないので 0 件になる。使われている箇所は `<leader>js` で探す |
@@ -475,7 +476,7 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 
 - **なぜ vim-gutentags でなく cscope_maps?** Neovim ≥ 0.9 が cscope サポートを削除したため、gutentags の `gtags_cscope` モジュールがロード時にエラー終了する。cscope_maps.nvim は cscope プロトコルを Lua で再実装しているのでこの制約を回避できる。
 - **なぜ `<leader>j` プレフィックス?** LazyVim の `<leader>c*` は code 系(format, action, rename 等)と衝突するため別名前空間に分けた。`j` = jump。
-- **なぜ `<leader>jb` だけ `:!gtags` を直接実行する?** cscope_maps の `:Cs db build` はカスタム script に `-d <db>::<path>` 引数を自動付与する設計だが、`gtags` バイナリはその引数を受け付けないため。
+- **なぜ `<leader>jb` は `gtags` を直接起動する?** cscope_maps の `:Cs db build` はカスタム script に `-d <db>::<path>` 引数を自動付与する設計だが、`gtags` バイナリはその引数を受け付けないため。
 - **なぜ `<C-LeftMouse>` も再マップ?** Vim 標準の `<C-LeftMouse>` は内部で `:tag <cword>` を直接実行し、`<C-]>` の再マップを経由しない。クリック位置にカーソルを移してから、`<C-]>` と同じ定義ジャンプに流している。
 - **なぜ cscope_maps を通さない?** cscope_maps は 1 回の検索ごとに `gtags-cscope.exe` を起動し、それがさらに `global.exe` を起動して、両方の終了を待つ間エディタが固まる。`<C-]>` と `<leader>j*` は `global` を直接・非同期で呼ぶ。openssl ツリーでの実測は 1 回あたり約 90 ms → 約 20 ms。定義ジャンプは一度引いたシンボルを GTAGS が更新されるまでメモリから返す。cscope の各検索は `global` の同等のオプション(定義 `-d`・参照 `-r`・その他のシンボル `-s`・テキスト `-g`・ファイル `-P`)に置き換えてあり、openssl で `SSL_new` の呼び出し元 39 件は 1 件単位で一致した。
 - **常駐させない理由**: `gtags-cscope` を常駐させても、内部で 1 問い合わせごとに `global.exe` を起動するため 1 回 32 ms 前後が下限だった。全定義を起動時に読み込む案は openssl なら 0.3 秒で済むが、Linux カーネルでは 75 秒・1.3 GB かかるので採らなかった。

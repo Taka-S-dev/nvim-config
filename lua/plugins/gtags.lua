@@ -5,7 +5,7 @@
 -- reimplements the cscope command set in Lua and talks to `gtags-cscope`
 -- directly.
 --
--- Why a custom `:!gtags` build binding? cscope_maps's `:Cs db build` always
+-- Why a build binding of its own? cscope_maps's `:Cs db build` always
 -- appends `-d <file>::<path>` to the build command for cscope semantics, but
 -- the `gtags` binary doesn't accept `-d` — leaving it as the configured
 -- builder yields "database build failed".
@@ -691,6 +691,65 @@ local function jump_at_mouse()
   jump_to_definition(vim.fn.expand("<cword>"), "click")
 end
 
+-- Building and refreshing the indexes, from inside the editor and without
+-- stopping it. `:!gtags` holds the editor until it returns, which is a second
+-- on openssl and minutes on a kernel tree; here the statusline says what is
+-- running and how long it took, the same way it does for a lookup.
+--
+-- The definitions kept in memory need no clearing: they are dropped when the
+-- GTAGS file changes.
+local indexing = {} ---@type table<string, boolean>
+
+local function run_indexer(root, cmd, label)
+  if indexing[root] then
+    vim.notify(("%s: already running in %s"):format(label, root), vim.log.levels.INFO)
+    return
+  end
+  indexing[root] = true
+  local finished = begin_lookup(label)
+  vim.system(cmd, { cwd = root, text = true }, function(result)
+    vim.schedule(function()
+      indexing[root] = nil
+      if result.code == 0 then
+        finished("done")
+      else
+        finished("failed")
+        local why = vim.trim(result.stderr or "")
+        vim.notify(("%s failed (exit %d)\n%s"):format(label, result.code, why), vim.log.levels.ERROR)
+      end
+    end)
+  end)
+end
+
+-- A database that exists is rebuilt where it is. A first build has nothing to
+-- go by but the cwd, and a GTAGS left in the wrong directory is found again by
+-- every file below it, so the directory is shown before anything is written.
+local function build_gtags()
+  local root = gtags_root()
+  if not root then
+    root = vim.fn.getcwd()
+    -- Asked only when there is something to decide: a second press while the
+    -- first build runs goes straight to the notice that it is running.
+    if not indexing[root] then
+      local prompt = ("No GTAGS covers this file. Build one in\n%s ?"):format(root)
+      if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
+        return
+      end
+    end
+  end
+  run_indexer(root, { "gtags" }, "Building GTAGS")
+end
+
+-- Only the files changed since the last run are read again.
+local function update_gtags()
+  local root = gtags_root()
+  if not root then
+    vim.notify("No GTAGS for this file. Build one with <leader>jb.", vim.log.levels.WARN)
+    return
+  end
+  run_indexer(root, { "global", "-u" }, "Updating GTAGS")
+end
+
 local keys = {
   {
     "<C-]>",
@@ -723,7 +782,8 @@ local keys = {
     desc = "Peek definition",
     mode = "x",
   },
-  { "<leader>jb", "<cmd>!gtags<cr>", desc = "Build gtags DB (cwd)" },
+  { "<leader>jb", build_gtags, desc = "Build gtags DB" },
+  { "<leader>ju", update_gtags, desc = "Update gtags DB (changed files)" },
   {
     "<leader>jg",
     function()
