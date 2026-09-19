@@ -673,19 +673,29 @@ end
 --
 -- The definitions kept in memory need no clearing: they are dropped when the
 -- GTAGS file changes.
+-- Keyed by what is being built and where: a gtags build and a ctags build of
+-- the same tree may run side by side, two of the same kind may not.
 local indexing = {} ---@type table<string, boolean>
 
-local function run_indexer(root, cmd, label)
-  if indexing[root] then
+local function is_indexing(label, root)
+  return indexing[label .. "\n" .. root] == true
+end
+
+---@param on_success? fun() runs before the result is reported
+local function run_indexer(root, cmd, label, on_success)
+  if is_indexing(label, root) then
     vim.notify(("%s: already running in %s"):format(label, root), vim.log.levels.INFO)
     return
   end
-  indexing[root] = true
+  indexing[label .. "\n" .. root] = true
   local finished = begin_lookup(label)
   vim.system(cmd, { cwd = root, text = true }, function(result)
     vim.schedule(function()
-      indexing[root] = nil
+      indexing[label .. "\n" .. root] = nil
       if result.code == 0 then
+        if on_success then
+          on_success()
+        end
         local took = finished("done")
         -- A build long enough to look away from also says so when it ends.
         if took >= 3000 then
@@ -709,7 +719,7 @@ local function build_gtags()
     root = vim.fn.getcwd()
     -- Asked only when there is something to decide: a second press while the
     -- first build runs goes straight to the notice that it is running.
-    if not indexing[root] then
+    if not is_indexing("Building GTAGS", root) then
       local prompt = ("No GTAGS covers this file. Build one in\n%s ?"):format(root)
       if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
         return
@@ -727,6 +737,48 @@ local function update_gtags()
     return
   end
   run_indexer(root, { "global", "-u" }, "Updating GTAGS")
+end
+
+-- The ctags index, built where the gtags database would be.
+--
+-- A file that gutentags takes for part of a project (lua/plugins/gutentags.lua)
+-- goes through gutentags, so the file it writes is the one it keeps up to date
+-- on save. Anywhere else -- the dashboard, a tree that was only unpacked, a
+-- directory above several checkouts -- gutentags has no command to give, and
+-- that is its limit, not ctags': ctags indexes whatever directory it is handed.
+-- So there it is run directly, into the directory that holds GTAGS or, failing
+-- that, the cwd, which is shown first. Such a file is not refreshed on save;
+-- the key rebuilds it.
+local function build_ctags()
+  if vim.fn.exists(":GutentagsUpdate") == 2 then
+    -- Runs in the background; lua/plugins/gutentags.lua reports its start and
+    -- end to the statusline.
+    vim.cmd("GutentagsUpdate!")
+    return
+  end
+
+  local root = gtags_root()
+  if not root then
+    root = vim.fn.getcwd()
+    if not is_indexing("Building ctags", root) then
+      local prompt = ("Build a ctags index of everything under\n%s ?"):format(root)
+      if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
+        return
+      end
+    end
+  end
+
+  -- Written under another name and moved into place, so a reader never sees a
+  -- half-written index. The excludes are the ones gutentags is given.
+  local cmd = { vim.g.gutentags_ctags_executable or "ctags", "-R", "--tag-relative=yes", "-f", "tags.temp" }
+  for _, pattern in ipairs(vim.g.gutentags_ctags_exclude or {}) do
+    cmd[#cmd + 1] = "--exclude=" .. pattern
+  end
+  cmd[#cmd + 1] = "--exclude=tags.temp"
+  cmd[#cmd + 1] = "."
+  run_indexer(root, cmd, "Building ctags", function()
+    vim.uv.fs_rename(vim.fs.joinpath(root, "tags.temp"), vim.fs.joinpath(root, "tags"))
+  end)
 end
 
 local keys = {
@@ -763,6 +815,7 @@ local keys = {
   },
   { "<leader>jb", build_gtags, desc = "Build gtags DB" },
   { "<leader>ju", update_gtags, desc = "Update gtags DB (changed files)" },
+  { "<leader>jB", build_ctags, desc = "Build ctags" },
   {
     "<leader>jg",
     function()
