@@ -107,14 +107,60 @@ end
 -- Run one or more `global` invocations in the project root and hand the merged
 -- results to `done`, on the main loop, only if the user is still where they
 -- asked from.
-local function run_global(root, invocations, done)
+--
+-- Every lookup says what it is doing in the statusline: the name while global
+-- has not answered, then how long the answer took and where it came from. The
+-- second part stays for a moment and clears itself. Starting global.exe can
+-- take seconds where process starts are inspected, and without this nothing
+-- on screen tells a lookup that is running from a key press that was lost.
+--
+-- It is the statusline rather than a notification because the message is only
+-- true for a moment: a popup crosses the code being read and stays in the
+-- notification history. lua/plugins/lualine-gtags.lua draws vim.g.gtags_lookup.
+local lookup_generation = 0
+
+local function set_lookup(text)
+  vim.g.gtags_lookup = text
+  local ok, lualine = pcall(require, "lualine")
+  if ok then
+    lualine.refresh({ place = { "statusline" } })
+  else
+    vim.cmd.redrawstatus()
+  end
+end
+
+---Show `label` as being looked up. The returned function reports the answer.
+local function begin_lookup(label)
+  lookup_generation = lookup_generation + 1
+  local generation, started = lookup_generation, vim.uv.hrtime()
+  set_lookup(label .. "…")
+  return function(source)
+    -- A lookup started since then owns the statusline now.
+    if generation ~= lookup_generation then
+      return
+    end
+    set_lookup(("%s  %.0f ms (%s)"):format(label, (vim.uv.hrtime() - started) / 1e6, source))
+    vim.defer_fn(function()
+      if generation == lookup_generation then
+        set_lookup(nil)
+      end
+    end, 2000)
+  end
+end
+
+local function run_global(root, invocations, done, label)
   local win, buf = vim.api.nvim_get_current_win(), vim.api.nvim_get_current_buf()
   local items, pending = {}, #invocations
+  local answered = begin_lookup(label)
   for _, args in ipairs(invocations) do
     require("config.gtags_global").run(root, args, function(output)
       vim.list_extend(items, parse(output))
       pending = pending - 1
-      if pending == 0 and vim.api.nvim_get_current_win() == win and vim.api.nvim_get_current_buf() == buf then
+      if pending > 0 then
+        return
+      end
+      answered("global")
+      if vim.api.nvim_get_current_win() == win and vim.api.nvim_get_current_buf() == buf then
         done(items)
       end
     end)
@@ -134,11 +180,13 @@ local function lookup_definition(symbol, done, no_database)
     done(items, source)
   end
   if symbols[symbol] then
+    -- No global to wait for, but the statusline still says the key was heard.
+    begin_lookup(symbol)("memory")
     return finish(symbols[symbol], "memory")
   end
   run_global(root, { { "-axd", symbol } }, function(items)
     finish(items, "global")
-  end)
+  end, symbol)
 end
 
 -- The last jump, for :GtagsJumpDebug: what started it, where the answer came
@@ -486,7 +534,7 @@ local function query(kind, symbol)
     else
       show(("%s %s"):format(spec.title, symbol), symbol, items)
     end
-  end)
+  end, ("%s %s"):format(spec.title, symbol))
 end
 
 local function selected_text()
