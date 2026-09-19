@@ -69,12 +69,6 @@ local function parse(output)
   return items
 end
 
-local function jump_with_ctags(symbol)
-  if not pcall(vim.cmd.tjump, symbol) then
-    vim.notify("No definition found for " .. symbol, vim.log.levels.WARN)
-  end
-end
-
 local function open_picker(title, items)
   vim.fn.setqflist({}, " ", { title = title, items = items })
   if Snacks and Snacks.picker then
@@ -102,6 +96,57 @@ local function show(title, symbol, items, from)
     return
   end
   open_picker(title, items)
+end
+
+-- Where a tag points, as a line number. ctags records the `line:` field when
+-- asked to, a bare number for some kinds, and otherwise the text of the line as
+-- a search pattern, cut short when the line is long. The file is compared as
+-- bytes, the way the tags file holds it, so a Shift-JIS source matches too.
+local function tag_line(tag, filename)
+  local number = tonumber(tag.line) or tonumber(tag.cmd)
+  if number then
+    return number
+  end
+  local text = tag.cmd:gsub("^[/?]%^?", ""):gsub("%$?[/?]$", ""):gsub("\\([/\\?])", "%1")
+  local ok, lines = pcall(vim.fn.readfile, filename)
+  if ok then
+    for i, line in ipairs(lines) do
+      if line:sub(1, #text) == text then
+        return i
+      end
+    end
+  end
+  return 1
+end
+
+-- The ctags fallback. :tjump would do for one match, but with several it
+-- prints Vim's numbered list at the bottom of the screen and waits for a
+-- number, while the same situation from gtags opens the picker. So the tags are
+-- read here and shown the way the gtags results are.
+--
+-- The pattern has to begin with ^: only then does Vim look the name up by
+-- binary search in the sorted tags file. With anything in front of it the whole
+-- file is read, which on the 1.4 GB tags of a kernel tree took 5 seconds where
+-- this takes a millisecond. \C, a tag matched as written whatever 'ignorecase'
+-- says, works just as well at the end.
+local function jump_with_ctags(symbol)
+  local ok, tags = pcall(vim.fn.taglist, "^" .. vim.fn.escape(symbol, [=[\^$.*~[]]=]) .. "$\\C")
+  if not ok or #tags == 0 then
+    vim.notify("No definition found for " .. symbol, vim.log.levels.WARN)
+    return
+  end
+  local items, seen = {}, {}
+  for _, tag in ipairs(tags) do
+    local filename = vim.fn.fnamemodify(tag.filename, ":p")
+    local lnum = tag_line(tag, filename)
+    local id = filename .. ":" .. lnum
+    if not seen[id] then
+      seen[id] = true
+      local text = tag.cmd:gsub("^[/?]%^?", ""):gsub("%$?[/?]$", "")
+      items[#items + 1] = { filename = filename, lnum = lnum, col = 1, text = vim.trim(text) }
+    end
+  end
+  show("Definitions of " .. symbol .. " (ctags)", symbol, items)
 end
 
 -- Run one or more `global` invocations in the project root and hand the merged

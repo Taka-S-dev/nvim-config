@@ -537,7 +537,7 @@ gtags は C/C++/Java など主要言語以外をほぼ取りこぼす。C コー
   ```lua
   vim.g.gutentags_exclude_project_root = { vim.fn.expand("~/src/all-projects") }
   ```
-- 定義ジャンプ(`<C-]>` / `Ctrl+クリック`)は gtags が空振りすると **自動で ctags にフォールバック** するので、gtags で引ける箇所は gtags、引けない箇所は ctags、と透過的に切り替わる
+- 定義ジャンプ(`<C-]>` / `Ctrl+クリック`)は gtags が空振りすると **自動で ctags にフォールバック** するので、gtags で引ける箇所は gtags、引けない箇所は ctags、と透過的に切り替わる。ctags 側で候補が複数あるときも、Vim 標準の番号選択ではなく、gtags のときと同じピッカーが開く
 - タグ名は大文字小文字を区別して照合する(`tagcase=match`)。LazyVim の `ignorecase` のままだと `SSL_new` と `ssl_new` を同じタグとみなし、ジャンプのたびに候補選択で止まる
 - エディタのローカル履歴(`.history/`)やバックアップ、他ツールの索引ファイルは ctags の索引から除外している。古いコピーが索引に入ると、フォールバック時にそちらへ着地するため
 

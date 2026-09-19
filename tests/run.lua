@@ -322,6 +322,57 @@ local function run_checks()
     expect(found, "the definition is not in the index")
   end)
 
+  -- With no GTAGS the jump falls back to ctags. Several matches used to bring up
+  -- Vim's numbered prompt; they belong in the same list the gtags results use.
+  check("ctags fallback: one match is jumped to, several are listed", function()
+    need(vim.g.gutentags_ctags_executable or "ctags")
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "/* first */", "int dup_fn(void)", "{", "    return 1;", "}" })
+    write(dir .. "/b.c", { "int dup_fn(void)", "{", "    return 2;", "}" })
+    write(dir .. "/d.c", { "", "", "int only_fn(void)", "{", "    return 3;", "}" })
+    write(dir .. "/c.c", { "int use(void)", "{", "    return dup_fn() + only_fn();", "}" })
+    vim.api.nvim_set_current_dir(dir)
+    vim.cmd("enew")
+    key("<leader>jB")()
+    expect(
+      vim.wait(30000, function()
+        return vim.uv.fs_stat(dir .. "/tags") ~= nil
+      end, 50),
+      "tags was not built"
+    )
+    vim.wait(500)
+    local real_qflist = Snacks.picker.qflist
+    Snacks.picker.qflist = function() end
+
+    vim.cmd.edit(dir .. "/c.c")
+    vim.fn.cursor(3, 12)
+    local word_many = vim.fn.expand("<cword>")
+    vim.fn.setqflist({})
+    key("<C-]>")()
+    vim.wait(3000, function()
+      return #vim.fn.getqflist() > 0
+    end, 20)
+    local listed = vim.tbl_map(function(entry)
+      return vim.fn.fnamemodify(vim.fn.bufname(entry.bufnr), ":t") .. ":" .. entry.lnum
+    end, vim.fn.getqflist())
+    table.sort(listed)
+
+    vim.cmd.edit(dir .. "/c.c")
+    vim.fn.cursor(3, 23)
+    local word_one = vim.fn.expand("<cword>")
+    key("<C-]>")()
+    vim.wait(3000, function()
+      return vim.fn.expand("%:t") == "d.c"
+    end, 20)
+    local landed = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+
+    Snacks.picker.qflist = real_qflist
+    reset_editor()
+    expect(word_many == "dup_fn" and word_one == "only_fn", "the cursor was on " .. word_many .. " and " .. word_one)
+    expect(table.concat(listed, " ") == "a.c:2 b.c:1", "listed: " .. table.concat(listed, " "))
+    expect(landed == "d.c:3", "landed on " .. landed)
+  end)
+
   check("status: what runs in the background is shown, then cleared", function()
     local activity = require("config.activity")
     -- The check before leaves its result on show for two seconds, and a result
