@@ -68,5 +68,34 @@ return {
       vim.g.gutentags_plat_dir = wrapper_dir
       vim.cmd("runtime! autoload/gutentags/ctags.vim")
     end
+
+    -- With its output gone a ctags run shows nothing at all, so its start and
+    -- end go to the statusline (lua/config/activity.lua). Updating is fired
+    -- even when no job was started, and Updated once per job, so both check
+    -- what is actually in progress: a spinner that nothing ends would spin on.
+    local finished
+    local group = vim.api.nvim_create_augroup("gutentags_activity", { clear = true })
+    vim.api.nvim_create_autocmd("User", {
+      group = group,
+      pattern = "GutentagsUpdating",
+      callback = function()
+        if not finished and #vim.fn["gutentags#inprogress"]() > 0 then
+          finished = require("config.activity").begin("ctags: indexing")
+        end
+      end,
+    })
+    vim.api.nvim_create_autocmd("User", {
+      group = group,
+      pattern = "GutentagsUpdated",
+      callback = function()
+        if finished and #vim.fn["gutentags#inprogress"]() == 0 then
+          local took = finished("done")
+          finished = nil
+          if took >= 3000 then
+            vim.notify(("ctags: index done in %.0f s"):format(took / 1000))
+          end
+        end
+      end,
+    })
   end,
 }

@@ -108,44 +108,19 @@ end
 -- results to `done`, on the main loop, only if the user is still where they
 -- asked from.
 --
--- Every lookup says what it is doing in the statusline: the name while global
--- has not answered, then how long the answer took and where it came from. The
--- second part stays for a moment and clears itself. Starting global.exe can
--- take seconds where process starts are inspected, and without this nothing
--- on screen tells a lookup that is running from a key press that was lost.
+-- Every lookup says what it is doing in the statusline: a spinner and the name
+-- while global has not answered, then how long the answer took and where it
+-- came from. Starting global.exe can take seconds where process starts are
+-- inspected, and without this nothing on screen tells a lookup that is running
+-- from a key press that was lost.
 --
 -- It is the statusline rather than a notification because the message is only
 -- true for a moment: a popup crosses the code being read and stays in the
--- notification history. lua/plugins/lualine-gtags.lua draws vim.g.gtags_lookup.
-local lookup_generation = 0
-
-local function set_lookup(text)
-  vim.g.gtags_lookup = text
-  local ok, lualine = pcall(require, "lualine")
-  if ok then
-    lualine.refresh({ place = { "statusline" } })
-  else
-    vim.cmd.redrawstatus()
-  end
-end
+-- notification history. lua/config/activity.lua keeps what is running.
 
 ---Show `label` as being looked up. The returned function reports the answer.
 local function begin_lookup(label)
-  lookup_generation = lookup_generation + 1
-  local generation, started = lookup_generation, vim.uv.hrtime()
-  set_lookup(label .. "…")
-  return function(source)
-    -- A lookup started since then owns the statusline now.
-    if generation ~= lookup_generation then
-      return
-    end
-    set_lookup(("%s  %.0f ms (%s)"):format(label, (vim.uv.hrtime() - started) / 1e6, source))
-    vim.defer_fn(function()
-      if generation == lookup_generation then
-        set_lookup(nil)
-      end
-    end, 2000)
-  end
+  return require("config.activity").begin("gtags: " .. label)
 end
 
 local function run_global(root, invocations, done, label)
@@ -711,7 +686,11 @@ local function run_indexer(root, cmd, label)
     vim.schedule(function()
       indexing[root] = nil
       if result.code == 0 then
-        finished("done")
+        local took = finished("done")
+        -- A build long enough to look away from also says so when it ends.
+        if took >= 3000 then
+          vim.notify(("%s: done in %.0f s"):format(label, took / 1000))
+        end
       else
         finished("failed")
         local why = vim.trim(result.stderr or "")
