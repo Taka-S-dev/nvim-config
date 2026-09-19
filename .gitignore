@@ -15,6 +15,8 @@
 !lua/**
 !docs/
 !docs/**
+!tests/
+!tests/**
 
 # 許可の後ろで機密・ローカル設定を再拒否（断片一致は使わず名前で指定）
 lua/config/local.lua

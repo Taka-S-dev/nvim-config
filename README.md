@@ -320,6 +320,22 @@ vim.g.local_extras = {
 
 ---
 
+## プラグイン更新後の確認 (bin/test.cmd)
+
+`:Lazy update` の後に、PowerShell か cmd で:
+
+```powershell
+& "$env:LOCALAPPDATA\nvim\bin\test.cmd"
+```
+
+ヘッドレスの nvim がこの設定を読み込み、過去に実際に壊れた箇所を 15 秒ほどで確かめる: 手を付けていないファイルの全行に変更マークが付く、`:grep` が返ってこない、索引ファイルやバックアップが検索結果に混ざる、定義ジャンプの着地先、ピークの小窓に実ファイルが入り込む、`tags` の出来る場所、ctags の複数候補の表示、ステータスラインの表示が消えない、プロセスを延々と起動する。失敗した項目の数が終了コードになる。
+
+- 材料は毎回一時フォルダに作って消すので、手元のソースツリーには触れない
+- `gtags` / `ctags` / `rg` / `git` が入っていないマシンでは、その項目は失敗ではなくスキップになる
+- 画面でしか分からないこと(ピークの小窓の位置、クリックの体感速度)は対象外
+
+---
+
 ## VS Code の nvim 拡張 (vscode-neovim)
 
 `asvetliakov.vscode-neovim` は本物の nvim をバックグラウンドで動かすため、この設定がそのまま読み込まれる。UI は VS Code 側が描くので、UI 系プラグインまで起動すると無駄なうえにキーが衝突する。`lazyvim.json` の `vscode` extra でそれを絞っている。
@@ -557,6 +573,7 @@ $env:LOCALAPPDATA\nvim\
 ├── bin\
 │   ├── zig-cc.cmd          # zig cc ラッパー (Windows 用)
 │   ├── open-in-nvim.cmd    # 外部ツールから nvim にファイルを送る wrapper
+│   ├── test.cmd            # プラグイン更新後の確認 (tests\run.lua を実行)
 │   ├── gutentags\update_tags.cmd # gutentags 付属バッチの出力を NUL に向ける wrapper
 │   └── profile-snippet.ps1 # `nv` エイリアス定義 ($PROFILE に貼り付け)
 ├── lua\
