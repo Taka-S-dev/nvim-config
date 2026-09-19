@@ -245,6 +245,8 @@ my_func -- -i              # 大小区別なし
 
 **glob は検索の基準ディレクトリからの相対パス**で判定される。`<leader>/` は Root Dir 版なので、`.git` の無いツリーでは基準が意図とずれることがある。`ssl/**/*.h` が 0 件になったら、基準が既に `ssl/` の中にある可能性が高い。`:pwd` で確認するか、cwd 基準の `<leader>sG` を使う。
 
+**索引ファイルとバックアップは検索対象から外してある**: `tags`・`GTAGS`・`GRTAGS`・`GPATH`・`cscope.out`・`ctags.out` と、`*.BAK`・`*.bak`・`*~` は、どの検索でも除外される。ctags の `tags` はテキストなので、外さないとシンボルごとに索引の行(数百桁)が結果に混ざり、バックアップは元ファイルの一致をそのまま重複させる。除外の一覧はリポジトリ直下の `ripgreprc` にあり、nvim が `RIPGREP_CONFIG_PATH` でそれを指すので、`:grep`・ピッカー・`<leader>sr` のすべてに効く。足したいものは `ripgreprc` に 1 行足す。マシンに既に `RIPGREP_CONFIG_PATH` が設定されていればそちらが優先される。
+
 **よくあるパターン: 関数定義だけを探す**
 
 ```
@@ -563,5 +565,6 @@ $env:LOCALAPPDATA\nvim\
 │       └── treesitter.lua  # 追加パーサ
 ├── init.lua
 ├── lazy-lock.json          # プラグイン版数ロック (commit する)
+├── ripgreprc               # nvim から呼ぶ rg の共通引数 (索引ファイルとバックアップの除外)
 └── README.md               # このファイル
 ```

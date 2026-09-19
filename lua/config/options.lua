@@ -66,6 +66,14 @@ vim.opt.mousescroll = "ver:10,hor:6"
 vim.opt.list = true
 vim.opt.listchars:append({ tab = "  " })
 
+-- Every rg started from here reads the ripgreprc next to init.lua: :grep, the
+-- grep picker and grug-far each build their own command line, and an exclusion
+-- kept in one of them is missing from the other two. An rg configuration the
+-- machine already has is left in charge.
+if not vim.env.RIPGREP_CONFIG_PATH then
+  vim.env.RIPGREP_CONFIG_PATH = vim.fn.stdpath("config") .. "/ripgreprc"
+end
+
 -- `:grep pattern` with no path never returns on Windows: given no path and an
 -- input that is not a terminal, rg searches its standard input, and the pipe
 -- Neovim hands it stays open. Pointing the input at NUL makes rg search the

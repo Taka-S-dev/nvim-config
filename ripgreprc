@@ -1,0 +1,17 @@
+# Arguments ripgrep reads on every run started from Neovim; see
+# RIPGREP_CONFIG_PATH in lua/config/options.lua. One argument per line.
+
+# Index files are never what a search is after. ctags writes `tags` as plain
+# text, so every symbol matches there a second time, on a line hundreds of
+# columns wide; the gtags and cscope databases match as well.
+--glob=!tags
+--glob=!GTAGS
+--glob=!GRTAGS
+--glob=!GPATH
+--glob=!cscope.out
+--glob=!ctags.out
+
+# Backup copies repeat every match of the file they were taken from.
+--glob=!*.BAK
+--glob=!*.bak
+--glob=!*~
