@@ -217,10 +217,10 @@ local function jump_to_definition(symbol, trigger)
   end)
 end
 
--- Read a definition without leaving the current position: a window opens under
--- the cursor with the code around the definition, and the file being read stays
--- on screen around it. q or Esc closes it, Enter jumps there after all. Nothing
--- is pushed on the tag stack until something actually moves.
+-- Read a definition without leaving the current position: a window opens clear
+-- of the line being read, with the code around the definition, and the file
+-- being read stays on screen around it. q or Esc closes it, Enter jumps there
+-- after all. Nothing is pushed on the tag stack until something actually moves.
 local peek_window
 local peek_debug = "(no window opened yet)"
 local peek_marks = vim.api.nvim_create_namespace("gtags_peek")
@@ -275,9 +275,9 @@ local function open_peek(symbol, items, opts)
   vim.bo[buf].modifiable = false
 
   -- Put the window in the empty space to the right of the code, so the lines
-  -- being read stay visible. When that space is too narrow it sits under the
-  -- cursor instead, or above it when the cursor is near the bottom: either way
-  -- the line the cursor is on stays uncovered.
+  -- being read stay visible. When the definition does not fit there it lies
+  -- over the code instead, below the cursor line or above it, whichever has the
+  -- room: either way the line the cursor is on stays uncovered.
   local view = vim.fn.winsaveview()
   local win_width, win_height = vim.api.nvim_win_get_width(origin), vim.api.nvim_win_get_height(origin)
   local visible = vim.api.nvim_buf_get_lines(0, view.topline - 1, view.topline - 1 + win_height, false)
