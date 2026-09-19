@@ -65,3 +65,12 @@ vim.opt.mousescroll = "ver:10,hor:6"
 -- nothing.
 vim.opt.list = true
 vim.opt.listchars:append({ tab = "  " })
+
+-- `:grep pattern` with no path never returns on Windows: given no path and an
+-- input that is not a terminal, rg searches its standard input, and the pipe
+-- Neovim hands it stays open. Pointing the input at NUL makes rg search the
+-- current directory, as it does when typed in a terminal. `<NUL` is cmd.exe
+-- syntax, so it is left alone under any other shell.
+if vim.fn.has("win32") == 1 and vim.o.shell:lower():find("cmd") then
+  vim.opt.grepprg = "rg --vimgrep $* <NUL"
+end
