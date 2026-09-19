@@ -1,6 +1,6 @@
 # nvim 設定 (Windows / LazyVim)
 
-LazyVim ベースの個人 Neovim 設定。複数の Windows マシンで共通利用するため、以下を仕込んである:
+LazyVim ベースの個人 Neovim 設定。複数の Windows マシンで共通利用するため、以下に対応している:
 
 - treesitter パーサのビルド問題を `zig cc` ラッパーで回避
 - レガシー C コードを gtags (GNU Global) でナビ(clangd を当てづらいコードベース向け)
@@ -18,7 +18,7 @@ winget install zig.zig
 winget install Git.Git
 winget install BurntSushi.ripgrep.MSVC    # ripgrep (grep とファイル検索) -- scoop install ripgrep でも可
 winget install GNU.GLOBAL                 # gtags (レガシー C ナビ用) -- scoop install global でも可
-winget install universal-ctags.ctags      # ctags (gtags のフォールバック) -- 必ず Universal 版を!
+winget install universal-ctags.ctags      # ctags (gtags のフォールバック) -- Universal 版を入れること
 ```
 
 すでに入っているものはスキップしてよい。
@@ -34,7 +34,7 @@ winget install universal-ctags.ctags      # ctags (gtags のフォールバッ�
 
 ### 2. Nerd Font を入れる + Windows Terminal に設定
 
-LazyVim はファイルアイコン等で Nerd Font の glyph を使う。フォントが対応してないと `◆` の連打(豆腐)になる。
+LazyVim はファイルアイコン等で Nerd Font の glyph を使う。フォントが対応していないと、アイコンが `◆` などの代替文字で表示される。
 
 ```powershell
 scoop bucket add nerd-fonts
@@ -57,7 +57,7 @@ git clone https://github.com/Taka-S-dev/nvim-config.git $env:LOCALAPPDATA\nvim
 
 `bin/open-in-nvim.cmd`(外部ツールから nvim にファイルを送る wrapper)は、`\\.\pipe\nvim` で listen してる nvim インスタンスを前提にしている。これを `nv` で起動するため、PowerShell プロファイルから [`bin/profile-snippet.ps1`](bin/profile-snippet.ps1) を dot-source する。
 
-**1 回コピペで終わるブートストラップ**(PowerShell で実行):
+**1 回実行すれば済む初期設定**(PowerShell で実行):
 
 ```powershell
 $line = '. "$env:LOCALAPPDATA\nvim\bin\profile-snippet.ps1"'
@@ -200,7 +200,7 @@ picker を開いた状態で:
 | `<C-j>` / `<C-k>` | 候補を下 / 上 移動 |
 | `<Enter>` | 開く |
 | `<C-x>` / `<C-v>` / `<C-t>` | 水平分割 / 垂直分割 / タブ で開く |
-| `<C-q>` | **全候補を quickfix に流し込む** → `:copen` で一覧、`:cn`/`:cp` で巡回 |
+| `<C-q>` | **全候補を quickfix に送る** → `:copen` で一覧、`:cn`/`:cp` で巡回 |
 | `<Tab>` | 候補を multi-select(複数まとめて quickfix へ) |
 | `<Esc>` | 閉じる |
 
@@ -342,7 +342,7 @@ extra は `vim.g.vscode` が立っていないと空を返すので、ターミ�
 
 ## 外部ツールから nvim にファイルを送る (open-in-nvim.cmd)
 
-`bin/open-in-nvim.cmd` は「ファイルパスと行番号を渡すと、起動中の nvim にタブとして開く」wrapper。自作ツールやサードパーティの "open in editor" 系機能から登録して、編集対象を nvim 側に飛ばすのに使う。
+`bin/open-in-nvim.cmd` は「ファイルパスと行番号を渡すと、起動中の nvim にタブとして開く」wrapper。自作ツールやサードパーティの "open in editor" 系機能から登録して、編集対象を nvim 側で開くのに使う。
 
 ### 前提
 
@@ -372,7 +372,7 @@ extra は `vim.g.vscode` が立っていないと空を返すので、ターミ�
 
 ### 動作確認
 
-PowerShell から直接叩いてみるのが早い:
+PowerShell から直接実行して確かめる:
 
 ```powershell
 nv                                                    # listener を立てておく(別ウィンドウ)
@@ -433,7 +433,7 @@ Windows 向けの `global.exe` には Cygwin ビルドがあり、nvim のよう
 
 ### `database build failed` と出る
 
-`<leader>jb` は内部で `:!gtags` を叩くので、**cwd がプロジェクトルートになっている必要がある**。別ディレクトリで叩いた場合はそこに GTAGS ができてしまうので、`gtags` で出た 3 ファイル (`GTAGS`, `GRTAGS`, `GPATH`) を削除して、ルートで再実行。
+`<leader>jb` は内部で `:!gtags` を実行するので、**cwd がプロジェクトルートになっている必要がある**。別ディレクトリで実行した場合はそこに GTAGS ができてしまうので、`gtags` で出た 3 ファイル (`GTAGS`, `GRTAGS`, `GPATH`) を削除して、ルートで再実行。
 
 既に GTAGS があるツリーのファイルを開いていれば、cwd はそのルートに自動で移る(ウィンドウローカルの `lcd`)。cwd を意識する必要があるのは**まだ DB が無いツリーの初回生成**だけで、そのときは `cd <project_root>` してから `nvim .` で開く。
 
@@ -475,7 +475,7 @@ nvim 内で `<leader>jb` を押すと `gtags` が走り `GTAGS`, `GRTAGS`, `GPAT
 
 - **なぜ vim-gutentags でなく cscope_maps?** Neovim ≥ 0.9 が cscope サポートを削除したため、gutentags の `gtags_cscope` モジュールがロード時にエラー終了する。cscope_maps.nvim は cscope プロトコルを Lua で再実装しているのでこの制約を回避できる。
 - **なぜ `<leader>j` プレフィックス?** LazyVim の `<leader>c*` は code 系(format, action, rename 等)と衝突するため別名前空間に分けた。`j` = jump。
-- **なぜ `<leader>jb` だけ `:!gtags` を直接叩く?** cscope_maps の `:Cs db build` はカスタム script に `-d <db>::<path>` 引数を自動付与する設計だが、`gtags` バイナリはその引数を受け付けないため。
+- **なぜ `<leader>jb` だけ `:!gtags` を直接実行する?** cscope_maps の `:Cs db build` はカスタム script に `-d <db>::<path>` 引数を自動付与する設計だが、`gtags` バイナリはその引数を受け付けないため。
 - **なぜ `<C-LeftMouse>` も再マップ?** Vim 標準の `<C-LeftMouse>` は内部で `:tag <cword>` を直接実行し、`<C-]>` の再マップを経由しない。クリック位置にカーソルを移してから、`<C-]>` と同じ定義ジャンプに流している。
 - **なぜ cscope_maps を通さない?** cscope_maps は 1 回の検索ごとに `gtags-cscope.exe` を起動し、それがさらに `global.exe` を起動して、両方の終了を待つ間エディタが固まる。`<C-]>` と `<leader>j*` は `global` を直接・非同期で呼ぶ。openssl ツリーでの実測は 1 回あたり約 90 ms → 約 20 ms。定義ジャンプは一度引いたシンボルを GTAGS が更新されるまでメモリから返す。cscope の各検索は `global` の同等のオプション(定義 `-d`・参照 `-r`・その他のシンボル `-s`・テキスト `-g`・ファイル `-P`)に置き換えてあり、openssl で `SSL_new` の呼び出し元 39 件は 1 件単位で一致した。
 - **常駐させない理由**: `gtags-cscope` を常駐させても、内部で 1 問い合わせごとに `global.exe` を起動するため 1 回 32 ms 前後が下限だった。全定義を起動時に読み込む案は openssl なら 0.3 秒で済むが、Linux カーネルでは 75 秒・1.3 GB かかるので採らなかった。
@@ -516,11 +516,11 @@ gtags は C/C++/Java など主要言語以外をほぼ取りこぼす。C コー
   ```lua
   vim.g.gutentags_exclude_project_root = { vim.fn.expand("~/src/all-projects") }
   ```
-- 定義ジャンプ(`<C-]>` / `Ctrl+クリック`)は gtags が空振りすると **自動で ctags にフォールバック** するので、gtags が効く所は gtags、ダメな所は ctags、と透過的に切り替わる
+- 定義ジャンプ(`<C-]>` / `Ctrl+クリック`)は gtags が空振りすると **自動で ctags にフォールバック** するので、gtags で引ける箇所は gtags、引けない箇所は ctags、と透過的に切り替わる
 - タグ名は大文字小文字を区別して照合する(`tagcase=match`)。LazyVim の `ignorecase` のままだと `SSL_new` と `ssl_new` を同じタグとみなし、ジャンプのたびに候補選択で止まる
 - エディタのローカル履歴(`.history/`)やバックアップ、他ツールの索引ファイルは ctags の索引から除外している。古いコピーが索引に入ると、フォールバック時にそちらへ着地するため
 
-### ハマりどころ
+### 注意点
 
 - **Strawberry Perl 同梱の Exuberant Ctags 5.8 (2009) は使わない**。`winget install universal-ctags.ctags` で Universal Ctags を入れ、PATH 優先度を上げる
 - Shift-JIS ソースを扱う場合は、Universal Ctags なら `--input-encoding=shift_jis` を `~/.ctags.d/*.ctags` で指定可能
@@ -535,7 +535,7 @@ Windows で treesitter パーサを素の MinGW (Strawberry Perl 同梱の GCC) 
 1. **`ld.exe: Invalid argument`** — nvim-treesitter が `\\?\` プレフィックス付きの拡張長パスを linker に渡すが、古い `ld.exe` がこれを解釈できない
 2. **`unable to parse target query 'x86_64-pc-windows-msvc'`** — tree-sitter CLI が clang 形式 4 要素ターゲットを渡すが、zig は 3 要素形式しか受け付けない
 
-対策として `bin/zig-cc.cmd` というラッパーを噛ませている:
+対策として `bin/zig-cc.cmd` というラッパーを挟んでいる:
 
 - `\\?\` 対応 → zig 同梱の lld が解決
 - ターゲット文字列の書き換え → `x86_64-pc-windows-msvc` を `x86_64-windows-gnu` に置換
