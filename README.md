@@ -297,6 +297,19 @@ git pull
 
 → 普段は **「起動するだけ」** で済むケースがほとんど。`:Lazy sync` を打つのは「自分から最新化したい時」だけ。
 
+### マシンごとに有効にする extra
+
+`:LazyExtras` で有効にした extra は `lazyvim.json` に書かれ、pull した全マシンで有効になる。ツールチェインがそのマシンにしか入っていない言語の extra のように、マシンごとに決めたいものは `lua/config/local.lua`(git 管理外)に書く:
+
+```lua
+vim.g.local_extras = {
+  "lazyvim.plugins.extras.lang.rust",
+  "lazyvim.plugins.extras.lang.go",
+}
+```
+
+書いたマシンでだけ読み込まれる。名前は `:LazyExtras` の一覧にあるものと同じ。
+
 ---
 
 ## VS Code の nvim 拡張 (vscode-neovim)

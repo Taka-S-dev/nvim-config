@@ -14,13 +14,23 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- Extras that only some machines should load -- a language whose toolchain is
+-- installed on one of them only, say -- are listed in lua/config/local.lua
+-- (git-ignored) as vim.g.local_extras rather than in the shared lazyvim.json.
+-- LazyVim wants extras after its own plugins and before the ones in
+-- lua/plugins.
+local spec = {
+  -- add LazyVim and import its plugins
+  { "LazyVim/LazyVim", import = "lazyvim.plugins" },
+}
+for _, extra in ipairs(vim.g.local_extras or {}) do
+  spec[#spec + 1] = { import = extra }
+end
+-- import/override with your plugins
+spec[#spec + 1] = { import = "plugins" }
+
 require("lazy").setup({
-  spec = {
-    -- add LazyVim and import its plugins
-    { "LazyVim/LazyVim", import = "lazyvim.plugins" },
-    -- import/override with your plugins
-    { import = "plugins" },
-  },
+  spec = spec,
   defaults = {
     -- By default, only LazyVim plugins will be lazy-loaded. Your custom plugins will load during startup.
     -- If you know what you're doing, you can set this to `true` to have all your custom plugins lazy-loaded by default.
