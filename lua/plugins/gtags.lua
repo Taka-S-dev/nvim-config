@@ -234,7 +234,17 @@ local function open_peek(symbol, items)
   -- A window in the empty space to the right of the longest visible line cannot
   -- hide any code, so it keeps away from neither the cursor line nor the edges
   -- of the window. Only a window laid over the code has to dodge.
-  local clear_of_code = beside >= 50
+  --
+  -- It goes there only when the lines it opens on fit: a trailing comment on
+  -- one visible line can leave a strip too narrow for a C definition, which
+  -- then wraps into something that cannot be read. The width the definition
+  -- needs counts its line-number column.
+  local needed = 0
+  for i = 1, wanted_height do
+    needed = math.max(needed, vim.fn.strdisplaywidth(lines[i]))
+  end
+  needed = math.min(needed + 6, 100)
+  local clear_of_code = beside >= math.max(needed, 60)
 
   local col, width
   if clear_of_code then
@@ -334,7 +344,7 @@ local function open_peek(symbol, items)
 
   local top, bottom = frame()
   peek_debug = (
-    "win=%dx%d cursor_row=%d | room above=%d below=%d beside=%d code=%d gutter=%d"
+    "win=%dx%d cursor_row=%d | room above=%d below=%d beside=%d need=%d code=%d gutter=%d"
     .. " | side=%s col=%d width=%d | row=%d height=%d frame=[%d..%d] cursor_screen=%d covers=%s"
   ):format(
     win_width,
@@ -343,6 +353,7 @@ local function open_peek(symbol, items)
     room("above"),
     room("below"),
     beside,
+    needed,
     code_width,
     gutter,
     clear_of_code and "beside" or sides[1],
