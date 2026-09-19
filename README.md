@@ -523,6 +523,7 @@ gtags は C/C++/Java など主要言語以外をほぼ取りこぼす。C コー
 
 ### 注意点
 
+- vim-gutentags 付属のバッチは、ログファイルを渡されないと進行状況をコンソール(`CON`)に直接書く。nvim のパイプを通らないので、そのままだと索引のたび、保存のたびに画面の上に文字が乗る。`bin/gutentags/update_tags.cmd` が、出力先を `NUL` にして元のバッチを呼び直している
 - **Strawberry Perl 同梱の Exuberant Ctags 5.8 (2009) は使わない**。`winget install universal-ctags.ctags` で Universal Ctags を入れ、PATH 優先度を上げる
 - Shift-JIS ソースを扱う場合は、Universal Ctags なら `--input-encoding=shift_jis` を `~/.ctags.d/*.ctags` で指定可能
 - gtags でも動かない・ctags でも動かない言語の場合は、ファイル拡張子のマッピング(`--langmap`)を ctags 設定に追加する必要がある
@@ -552,6 +553,7 @@ $env:LOCALAPPDATA\nvim\
 ├── bin\
 │   ├── zig-cc.cmd          # zig cc ラッパー (Windows 用)
 │   ├── open-in-nvim.cmd    # 外部ツールから nvim にファイルを送る wrapper
+│   ├── gutentags\update_tags.cmd # gutentags 付属バッチの出力を NUL に向ける wrapper
 │   └── profile-snippet.ps1 # `nv` エイリアス定義 ($PROFILE に貼り付け)
 ├── lua\
 │   ├── config\

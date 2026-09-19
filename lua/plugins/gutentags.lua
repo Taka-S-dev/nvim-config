@@ -54,4 +54,19 @@ return {
       "tags",
     }
   end,
+  config = function()
+    -- gutentags' own update_tags.cmd writes its progress to CON, the console
+    -- itself, unless it is given a log file, so every index run and every save
+    -- in a project with a tags file printed lines over the editor's screen.
+    -- bin/gutentags/update_tags.cmd calls it with the log sent to NUL; see that
+    -- file. The plugin sets the directory unconditionally when it loads, so it
+    -- is replaced here, after the load, and the ctags module is read again in
+    -- case it had already taken the old path.
+    local wrapper_dir = vim.fn.stdpath("config") .. "\\bin\\gutentags\\"
+    if vim.fn.has("win32") == 1 and vim.fn.filereadable(wrapper_dir .. "update_tags.cmd") == 1 then
+      vim.env.GUTENTAGS_PLAT_DIR = vim.g.gutentags_plat_dir
+      vim.g.gutentags_plat_dir = wrapper_dir
+      vim.cmd("runtime! autoload/gutentags/ctags.vim")
+    end
+  end,
 }
