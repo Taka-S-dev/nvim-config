@@ -72,5 +72,8 @@ Snacks.toggle({
   end,
 }):map("<leader>uW")
 
+-- Pinned lines with notes, <leader>jm and <leader>jM (lua/config/pins.lua).
+require("config.pins")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("config.cd_picker")
