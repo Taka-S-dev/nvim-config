@@ -71,3 +71,6 @@ Snacks.toggle({
     end
   end,
 }):map("<leader>uW")
+
+-- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
+require("config.cd_picker")
