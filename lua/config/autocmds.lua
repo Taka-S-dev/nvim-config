@@ -7,6 +7,17 @@
 -- Or remove existing autocmds by their group name (which is prefixed with `lazyvim_` for the defaults)
 -- e.g. vim.api.nvim_del_augroup_by_name("lazyvim_wrap_spell")
 
+-- Started on a folder, as `nvim some\dir` or through the Explorer "Send to"
+-- menu, Neovim shows that folder in the file tree but keeps the directory it
+-- was launched from as the working directory. Find File and Find Text then
+-- search somewhere else than the tree shows, often the whole home directory.
+-- The folder becomes the working directory, so the tree and the searches agree.
+-- LazyVim loads this file before the arguments are opened whenever there are
+-- any, so this runs in time without waiting for an event.
+if vim.fn.argc() == 1 and vim.fn.isdirectory(vim.fn.argv(0)) == 1 then
+  vim.cmd.cd(vim.fn.fnameescape(vim.fn.fnamemodify(vim.fn.argv(0), ":p")))
+end
+
 -- :grep prints what rg wrote, hundreds of `file:line:col:text` lines, and that
 -- text lands in a message window where Enter opens nothing: the list that can
 -- be jumped from is the quickfix list, which stays closed. So :grep runs
