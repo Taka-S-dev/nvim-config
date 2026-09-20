@@ -33,3 +33,12 @@ vim.api.nvim_create_autocmd("QuickFixCmdPost", {
   pattern = "grep",
   command = "cwindow",
 })
+
+-- gf follows a Markdown link from anywhere inside it (lua/config/markdown_links.lua).
+vim.api.nvim_create_autocmd("FileType", {
+  group = vim.api.nvim_create_augroup("markdown_links", { clear = true }),
+  pattern = "markdown",
+  callback = function(event)
+    require("config.markdown_links").setup(event.buf)
+  end,
+})

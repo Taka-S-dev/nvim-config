@@ -414,6 +414,64 @@ local function run_checks()
     expect(toggle, "<leader>um is not mapped")
   end)
 
+  -- On Windows the built-in gf takes the brackets of `[text](target)` for part
+  -- of the file name, and the drawn link hides the target, so gf on a link
+  -- found nothing.
+  check("markdown: gf follows a link from its text, to a file and to a heading", function()
+    -- lua/config/autocmds.lua is read on VeryLazy, which a headless start never
+    -- reaches.
+    if vim.fn.exists("#markdown_links") == 0 then
+      require("config.autocmds")
+    end
+    local dir = temp_dir()
+    write(dir .. "/docs/setup.md", { "# Setup", "", "## 必要なもの (Windows)", "text" })
+    write(dir .. "/README.md", {
+      "# Title",
+      "",
+      "一覧を返す([docs/setup.md](docs/setup.md))",
+      "[ここ](docs/setup.md#必要なもの-windows) と [下](#レガシー-c-ナビ-gtags--cscope_mapsnvim)",
+      "",
+      "## レガシー C ナビ (gtags + cscope_maps.nvim)",
+    })
+    local function follow(line, needle)
+      vim.cmd.edit(dir .. "/README.md")
+      vim.fn.cursor(line, vim.fn.getline(line):find(needle, 1, true) + 1)
+      key("gf")()
+      return vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+    end
+    local from_text = follow(3, "[docs/setup.md]")
+    local to_heading_elsewhere = follow(4, "[ここ]")
+    local to_heading_here = follow(4, "[下]")
+    reset_editor()
+    expect(from_text == "setup.md:1", "from the link text: " .. from_text)
+    expect(to_heading_elsewhere == "setup.md:3", "file and heading: " .. to_heading_elsewhere)
+    expect(to_heading_here == "README.md:6", "heading in the same file: " .. to_heading_here)
+  end)
+
+  -- A heading that is renamed leaves the links to it pointing nowhere, and
+  -- nothing says so until a reader follows one.
+  check("README: every link to a heading or a file leads somewhere", function()
+    local config = vim.fn.stdpath("config")
+    vim.cmd.edit(config .. "/README.md")
+    local broken = {}
+    for number, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+      -- An example of the syntax inside a code span is not a link.
+      for target in line:gsub("`[^`]*`", ""):gmatch("%]%(([^)%s]+)%)") do
+        if not target:match("^%a[%w+.-]*:") then
+          vim.cmd.edit(config .. "/README.md")
+          vim.fn.cursor(number, line:find("](" .. target, 1, true))
+          local before = vim.fn.expand("%:p") .. ":" .. vim.fn.line(".")
+          key("gf")()
+          if vim.fn.expand("%:p") .. ":" .. vim.fn.line(".") == before then
+            broken[#broken + 1] = number .. ": " .. target
+          end
+        end
+      end
+    end
+    reset_editor()
+    expect(#broken == 0, "leads nowhere: " .. table.concat(broken, ", "))
+  end)
+
   -- A whole run starts a few dozen processes. Thousands mean something feeds
   -- itself: it was gitsigns once, starting git over a thousand times in a few
   -- seconds and leaving a Neovim that would not exit.
