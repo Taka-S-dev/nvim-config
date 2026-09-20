@@ -397,6 +397,23 @@ local function run_checks()
     expect(cleared, "the statusline was not cleared")
   end)
 
+  -- The rendering hangs on the markdown parsers and on the plugin's own marks;
+  -- when either goes missing the file simply shows as plain text, with no error.
+  check("markdown: headings and tables are drawn in place", function()
+    local dir = temp_dir()
+    write(dir .. "/note.md", { "# Title", "", "| key | does |", "|---|---|", "| a | b |", "", "text" })
+    vim.cmd.edit(dir .. "/note.md")
+    local namespace
+    local drawn = vim.wait(5000, function()
+      namespace = namespace or vim.api.nvim_get_namespaces()["render-markdown.nvim"]
+      return namespace ~= nil and #vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, {}) > 0
+    end, 100)
+    local toggle = vim.fn.maparg("<leader>um", "n") ~= ""
+    reset_editor()
+    expect(drawn, "nothing was drawn over the markdown source")
+    expect(toggle, "<leader>um is not mapped")
+  end)
+
   -- A whole run starts a few dozen processes. Thousands mean something feeds
   -- itself: it was gitsigns once, starting git over a thousand times in a few
   -- seconds and leaving a Neovim that would not exit.
