@@ -19,6 +19,7 @@ winget install Git.Git
 winget install BurntSushi.ripgrep.MSVC    # ripgrep (grep とファイル検索) -- scoop install ripgrep でも可
 winget install GNU.GLOBAL                 # gtags (レガシー C ナビ用) -- scoop install global でも可
 winget install universal-ctags.ctags      # ctags (gtags のフォールバック) -- Universal 版を入れること
+winget install TortoiseSVN.TortoiseSVN    # 任意: SVN の作業コピーで変更行に印を出す場合。インストーラで command line client tools を有効にする
 ```
 
 すでに入っているものはスキップしてよい。
@@ -357,7 +358,7 @@ vim.g.local_extras = {
 & "$env:LOCALAPPDATA\nvim\bin\test.cmd"
 ```
 
-ヘッドレスの nvim がこの設定を読み込み、過去に実際に壊れた箇所を 30 秒ほどで確かめる: 手を付けていないファイルの全行に変更マークが付く、`:grep` が返ってこない、索引ファイルやバックアップが検索結果に混ざる、定義ジャンプの着地先、ピークの小窓に実ファイルが入り込む、`tags` の出来る場所、ctags の複数候補の表示、ステータスラインの表示が消えない、Markdown が整形されずに素のまま表示される、Markdown のリンクを `gf` でたどれない、この README のリンク切れ、ピン留めした行に戻れない、ピンの階層や順番が崩れる、プロセスを延々と起動する。失敗した項目の数が終了コードになる(`tests/run.lua` 自体が読み込めないときは 99)。
+ヘッドレスの nvim がこの設定を読み込み、過去に実際に壊れた箇所を 30 秒ほどで確かめる: 手を付けていないファイルの全行に変更マークが付く、`:grep` が返ってこない、索引ファイルやバックアップが検索結果に混ざる、定義ジャンプの着地先、ピークの小窓に実ファイルが入り込む、`tags` の出来る場所、ctags の複数候補の表示、ステータスラインの表示が消えない、Markdown が整形されずに素のまま表示される、Markdown のリンクを `gf` でたどれない、この README のリンク切れ、ピン留めした行に戻れない、ピンの階層や順番が崩れる、SVN の作業コピーで変更行に印が出ない、プロセスを延々と起動する。失敗した項目の数が終了コードになる(`tests/run.lua` 自体が読み込めないときは 99)。
 
 - 材料は毎回一時フォルダに作って消すので、手元のソースツリーには触れない
 - `gtags` / `ctags` / `rg` / `git` が入っていないマシンでは、その項目は失敗ではなくスキップになる
@@ -603,6 +604,24 @@ gtags は C/C++/Java など主要言語以外をほぼ取りこぼす。C コー
 
 ---
 
+## SVN の作業コピーで変更箇所を見る (vim-signify)
+
+git の checkout では gitsigns が、最後のコミットからの追加・変更・削除を行番号の横に印で出す。SVN の作業コピーでは、同じことを vim-signify が行う。基準は最後に `svn update` した版 (作業コピーの BASE) で、比較はローカルの `.svn` に対して行い、サーバには問い合わせない。
+
+| キー | 動作 |
+|---|---|
+| `]h` / `[h` | 次 / 前の変更箇所へ |
+| `<leader>ghp` | カーソル位置の変更の差分を小窓で見る |
+| `<leader>ghr` | カーソル位置の変更を取り消す (BASE の内容に戻す) |
+
+gitsigns と同じキーにしてある。git の checkout では gitsigns がバッファごとに同じキーを割り当てるので、そちらが優先される。
+
+- vim-signify は SVN だけを見るように絞ってある (`lua/plugins/svn.lua`)。git の checkout で gitsigns と印が重なることはない
+- `svn` コマンドが PATH に要る。TortoiseSVN だけでは `svn.exe` が入らないことがあるので、インストーラで command line client tools を有効にする。無い環境では何も起きない
+- 印はファイルを開いたときと保存したときに更新される。エディタの外で `svn update` した後は、ファイルを開き直す
+- `bin	est.cmd` は、`svn` と `svnadmin` がある環境でだけ、作業コピーに印が出ることと、git の checkout に SVN の印が出ないことを確かめる。無い環境ではスキップになる
+
+---
 ## treesitter ビルドが zig cc 経由な理由
 
 Windows で treesitter パーサを素の MinGW (Strawberry Perl 同梱の GCC) でビルドすると 2 種類の問題が出る:
@@ -644,6 +663,7 @@ $env:LOCALAPPDATA\nvim\
 │       ├── aerial.lua      # シンボルアウトライン
 │       ├── gtags.lua       # gtags ナビ(定義ジャンプ・<leader>j*)
 │       ├── gutentags.lua   # ctags で tags を維持 (gtags fallback)
+│       ├── svn.lua         # SVN の作業コピーで変更行に印を出す (vim-signify、svn のみ)
 │       ├── markdown.lua    # Markdown を画面上で整形表示 (render-markdown.nvim)
 │       └── treesitter.lua  # 追加パーサ
 ├── init.lua

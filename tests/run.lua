@@ -190,12 +190,48 @@ local function run_checks()
     gitsigns.refresh()
     vim.wait(1000)
     local after_edit = marked()
+    local foreign = 0
+    for _, sign in ipairs(vim.fn.sign_getplaced(vim.api.nvim_get_current_buf(), { group = "*" })[1].signs) do
+      foreign = foreign + (sign.name:find("^Signify") and 1 or 0)
+    end
     -- Let go of the repository before it is removed from under the watcher.
     gitsigns.detach_all()
     reset_editor()
     expect(fileformat == "unix", "the buffer stayed " .. fileformat .. ", so this check proves nothing")
     expect(untouched == 0, ("%d of 30 untouched lines are marked as changed"):format(untouched))
     expect(after_edit >= 1, "a real edit is no longer marked")
+    expect(foreign == 0, ("%d svn marks in a git checkout"):format(foreign))
+  end)
+
+  -- vim-signify marks the changes of a Subversion working copy, and it is kept
+  -- to svn so that a git checkout keeps gitsigns' marks alone. The marks come
+  -- from a BufRead autocmd, which a plugin loaded lazily registered too late.
+  check("svn: a changed working copy shows change marks, a git checkout none of them", function()
+    need("svn", "svnadmin")
+    local dir = temp_dir()
+    run({ "svnadmin", "create", dir .. "/repo" })
+    local url = "file:///" .. dir:gsub("^/", "") .. "/repo"
+    run({ "svn", "-q", "checkout", url, dir .. "/wc" })
+    write(dir .. "/wc/a.c", { "int a;", "int b;", "int c;", "int d;", "int e;" })
+    run({ "svn", "-q", "add", "a.c" }, dir .. "/wc")
+    run({ "svn", "-q", "commit", "-m", "base" }, dir .. "/wc")
+    write(dir .. "/wc/a.c", { "int a;", "int B;", "int c;", "int d;", "int e;", "int f;" })
+    -- In a child, so that the changed file is the first file the session
+    -- reads: that is where a plugin loaded on the first read came too late.
+    local out = dir .. "/signs.txt"
+    local script = ([[lua vim.wait(8000, function() return #vim.fn.sign_getplaced(1, { group = "*" })[1].signs > 0 end, 100) local rows = {} for _, s in ipairs(vim.fn.sign_getplaced(1, { group = "*" })[1].signs) do rows[#rows + 1] = s.lnum .. ":" .. s.name end vim.fn.writefile({ table.concat(rows, " ") }, %q)]]):format(
+      out
+    )
+    local child = vim
+      .system({ vim.v.progpath, "--headless", "-n", dir .. "/wc/a.c", "-c", script, "-c", "qa!" }, { cwd = dir, text = true })
+      :wait(40000)
+    expect(
+      child.code == 0 and vim.uv.fs_stat(out) ~= nil,
+      "the child did not finish (exit " .. tostring(child.code) .. ")"
+    )
+    local svn_marks = table.concat(vim.fn.readfile(out), "")
+    expect(svn_marks == "2:SignifyChange 6:SignifyAdd", "marks on the first file read: " .. svn_marks)
+    expect(vim.fn.maparg("]h", "n") ~= "", "]h is not mapped")
   end)
 
   -- Run in a child with a time limit: the failure being guarded against is a
