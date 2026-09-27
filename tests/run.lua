@@ -894,6 +894,42 @@ local function run_checks()
     expect(seen.still_open, "the panel closed on a jump")
   end)
 
+  -- An if without braces whose body is another if: the inner one is a field
+  -- of the outer in treesitter's view, and snacks passed it over for the
+  -- outer, so the scope line lit up the wrong block.
+  check("scope: a nested if under a brace-less if gets its own scope line", function()
+    local dir = temp_dir()
+    write(dir .. "/a.c", {
+      "int f(int a, int b)",
+      "{",
+      "    if (a)",
+      "        if (b) {",
+      "            return 1;",
+      "        }",
+      "    return 0;",
+      "}",
+    })
+    vim.cmd.edit(dir .. "/a.c")
+    vim.treesitter.get_parser(0):parse(true)
+    local got = {}
+    for _, line in ipairs({ 4, 5 }) do
+      Snacks.scope.get(function(scope)
+        got[#got + 1] = ("%d:%s-%s@%s"):format(
+          line,
+          scope and scope.from or "?",
+          scope and scope.to or "?",
+          scope and scope.indent or "?"
+        )
+      end, { buf = 0, pos = { line, 8 } })
+      vim.wait(1000, function()
+        return #got == #got
+      end, 50)
+    end
+    vim.wait(500)
+    reset_editor()
+    expect(table.concat(got, " ") == "4:4-6@8 5:4-6@8", "scopes: " .. table.concat(got, " "))
+  end)
+
   -- A whole run starts a few dozen processes. Thousands mean something feeds
   -- itself: it was gitsigns once, starting git over a thousand times in a few
   -- seconds and leaving a Neovim that would not exit.
