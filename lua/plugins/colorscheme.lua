@@ -16,6 +16,11 @@ return {
       -- tables. They are decoration rather than a control, so they stay under
       -- the 3:1 the separator needs, but far enough up to be readable.
       hl.SnacksIndent = { fg = c.dark3 }
+      -- The scope line pinned with <leader>jl (lua/config/scope_pin.lua), in
+      -- orange so that beside the blue line that follows the cursor there is
+      -- no doubt which one was pinned; orange is otherwise used for numbers
+      -- only, so the line does not blend into the code.
+      hl.ScopePin = { fg = c.orange }
     end,
   },
 }

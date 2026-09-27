@@ -72,6 +72,9 @@ Snacks.toggle({
   end,
 }):map("<leader>uW")
 
+-- The scope line, pinned in place with <leader>jl (lua/config/scope_pin.lua).
+require("config.scope_pin")
+
 -- Pinned lines with notes, <leader>jm and <leader>jM (lua/config/pins.lua).
 require("config.pins")
 
