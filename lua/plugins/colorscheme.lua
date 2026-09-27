@@ -21,6 +21,19 @@ return {
       -- no doubt which one was pinned; orange is otherwise used for numbers
       -- only, so the line does not blend into the code.
       hl.ScopePin = { fg = c.orange }
+      -- A changed line in a diff ships as a tint of the background so faint
+      -- (#252a3f on #222436) that the cursor line outshines it, and the text
+      -- changed within it is only a little stronger. Any blue reads as the
+      -- cursor line, itself a blue grey, so both are amber instead, apart from
+      -- the green of an added line and the red of a deleted one. They are set
+      -- rather than blended from the palette's yellow: on this blue background
+      -- a blend comes out grey. The line stands 1.33:1 off the background and
+      -- apart from the cursor line by hue. On the changed text, plain code
+      -- reads at 4.66:1, names of functions and types at 3.0:1 or so, and a
+      -- comment at 1.4:1: the comment colour is kept faint everywhere, and a
+      -- background light enough to mark the change is too light for it.
+      hl.DiffChange = { bg = "#3d3a22" }
+      hl.DiffText = { bg = "#635a2a" }
     end,
   },
 }
