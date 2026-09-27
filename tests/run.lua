@@ -585,6 +585,43 @@ local function run_checks()
     expect(asked == 2 and second == "main.c:3", ("global asked %d times, the second jump on %s"):format(asked, second))
   end)
 
+  -- A session opened over ssh will not pass through scoop's `current`
+  -- junctions, the shims' included, so the tools this config runs are found in
+  -- the folder of their version, down a path with no junction in it. Only where
+  -- scoop put a shim for them.
+  check("scoop: the tools run from their own folder, not through a shim or junction", function()
+    local shims = vim.fs.joinpath(vim.env.SCOOP or vim.fs.joinpath(vim.env.USERPROFILE or "", "scoop"), "shims")
+    local shimmed = {}
+    for _, tool in ipairs({ "global", "gtags", "gtags-cscope", "ctags", "readtags", "rg" }) do
+      if vim.uv.fs_stat(vim.fs.joinpath(shims, tool .. ".shim")) then
+        shimmed[#shimmed + 1] = tool
+      end
+    end
+    if #shimmed == 0 then
+      skip("no scoop shims for these tools")
+    end
+    local function crosses_link(path)
+      local parts = vim.split(path, "/", { plain = true })
+      local at = parts[1]
+      for index = 2, #parts do
+        at = at .. "/" .. parts[index]
+        local stat = vim.uv.fs_lstat(at)
+        if stat and stat.type == "link" then
+          return true
+        end
+      end
+      return false
+    end
+    local through = {}
+    for _, tool in ipairs(shimmed) do
+      local found = vim.fs.normalize(vim.fn.exepath(tool))
+      if found == "" or found:lower():find(vim.fs.normalize(shims):lower(), 1, true) or crosses_link(found) then
+        through[#through + 1] = tool .. " = " .. found
+      end
+    end
+    expect(#through == 0, "still through a shim or a junction: " .. table.concat(through, ", "))
+  end)
+
   check("peek: opens without moving, follows a jump inside it, closes with Esc", function()
     need("gtags", "global")
     local dir = c_project()

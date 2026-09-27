@@ -89,3 +89,7 @@ end
 -- places them by line, and the two disagree about where anything is. Nothing
 -- is folded when the lines kept around each change reach past either end.
 vim.opt.diffopt:append("context:1000000")
+
+-- scoop's tools started from the folder of their version, past the junction a
+-- session opened over ssh cannot follow (lua/config/scoop_shims.lua).
+require("config.scoop_shims")

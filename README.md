@@ -504,6 +504,12 @@ Windows 向けの `global.exe` には Cygwin ビルドがあり、nvim のよう
 - 出所が `memory` なら、そのシンボルは前に引いた結果をメモリから返している。`global` は `global.exe` を起動した回で、セキュリティソフトがプロセス起動を検査する環境では数百 ms〜数秒かかる。キーで速くクリックで遅いと感じる場合、まずここが違っていないか(キーは同じシンボルへの再ジャンプが多く、クリックは毎回新しいシンボル)を見る
 - 出所も時間も同じなのに体感が違うなら、遅れは nvim にクリックが届く前、つまり端末側にある
 
+### ssh で入ると gtags が何も見つけない(ctags に切り替わる)
+
+scoop はツールを `scoop\apps\<ツール>\current` から起動する。`current` は、入っているバージョンのフォルダ(`apps\global\6.6.14` など)へのジャンクションで、PATH に置かれる中継役の shim(`scoop\shims\global.exe` など)もここを通る。Windows の OpenSSH で入ったセッションでは、`current` を通るパスが開けない(「信頼されていないマウント ポイントが含まれているため、パスを走査できません」、エラー 448)。同じパスが、デスクトップで直接開いたシェルでは開ける。shim は `Shim: Could not create process` で失敗し、nvim から `global` を呼んでも空が返って、定義は ctags で探すことになっていた。
+
+そのため nvim は起動時に、使うツール(`global`, `gtags`, `gtags-cscope`, `ctags`, `readtags`, `rg`)について、shim が指すパスの `current` を行き先のバージョンのフォルダに読み替え、そのフォルダを nvim の中の PATH の先頭に足している(`lua/config/scoop_shims.lua`)。ジャンクションは行き先を読むだけで通らない。ssh のセッションでも、これで gtags が答えることを確かめた。`scoop update` でバージョンが変わっても、起動のたびに読み直す。nvim を起動したシェルの PATH は変えないので、ssh のシェルで直接 `global` を打つと、今も同じエラーになる。そのときはバージョンのフォルダ(`%USERPROFILE%\scoop\apps\global\6.6.14\bin\global.exe` など)を直接呼ぶ。
+
 ### GTAGS を別のディレクトリに作ってしまった
 
 `<leader>jb` は、開いているファイルを覆う GTAGS が既にあれば、その場所で作り直す。まだ無いツリーでは cwd に作るので、**作る前にそのディレクトリを表示して確認を求める**。違う場所なら No で止め、`:cd <project_root>` してから押し直す。誤って作ってしまった場合は、そこに出来た 3 ファイル (`GTAGS`, `GRTAGS`, `GPATH`) を削除する。残しておくと、その下の階層にあるファイルがすべてその GTAGS を見つけてしまう。
@@ -685,6 +691,7 @@ $env:LOCALAPPDATA\nvim\
 ├── lua\
 │   ├── config\
 │   │   ├── options.lua     # CC 設定はここ
+│   │   ├── scoop_shims.lua # scoop のツールを shim とジャンクションを通さずに呼ぶ (ssh のセッション向け)
 │   │   ├── gtags_global.lua # global の起動と、出力が届かない global.exe の回避
 │   │   ├── local.lua       # マシン固有の設定 (git 管理外、あれば読む)
 │   │   ├── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)
