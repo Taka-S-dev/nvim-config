@@ -659,11 +659,28 @@ local function run_checks()
     end, 20)
     local landed = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
 
+    -- The peek finds what the jump finds: with no answer from gtags, as over
+    -- an ssh session where global came back empty, it read the tags too.
+    vim.cmd.edit(dir .. "/c.c")
+    vim.fn.cursor(3, 23)
+    key("<leader>jp")()
+    local peeked
+    vim.wait(3000, function()
+      for _, win in ipairs(floats()) do
+        local line = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false)
+        if vim.tbl_contains(line, "int only_fn(void)") then
+          peeked = true
+        end
+      end
+      return peeked
+    end, 20)
+
     Snacks.picker.qflist = real_qflist
     reset_editor()
     expect(word_many == "dup_fn" and word_one == "only_fn", "the cursor was on " .. word_many .. " and " .. word_one)
     expect(table.concat(listed, " ") == "a.c:2 b.c:1", "listed: " .. table.concat(listed, " "))
     expect(landed == "d.c:3", "landed on " .. landed)
+    expect(peeked, "the peek did not find what the jump found")
   end)
 
   check("status: what runs in the background is shown, then cleared", function()

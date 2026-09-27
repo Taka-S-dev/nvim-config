@@ -129,13 +129,12 @@ end
 -- file is read, which on the 1.4 GB tags of a kernel tree took 5 seconds where
 -- this takes a millisecond. \C, a tag matched as written whatever 'ignorecase'
 -- says, works just as well at the end.
-local function jump_with_ctags(symbol)
+local function ctags_definitions(symbol)
   local ok, tags = pcall(vim.fn.taglist, "^" .. vim.fn.escape(symbol, [=[\^$.*~[]]=]) .. "$\\C")
-  if not ok or #tags == 0 then
-    vim.notify("No definition found for " .. symbol, vim.log.levels.WARN)
-    return
-  end
   local items, seen = {}, {}
+  if not ok then
+    return items
+  end
   for _, tag in ipairs(tags) do
     local filename = vim.fn.fnamemodify(tag.filename, ":p")
     local lnum = tag_line(tag, filename)
@@ -145,6 +144,15 @@ local function jump_with_ctags(symbol)
       local text = tag.cmd:gsub("^[/?]%^?", ""):gsub("%$?[/?]$", "")
       items[#items + 1] = { filename = filename, lnum = lnum, col = 1, text = vim.trim(text) }
     end
+  end
+  return items
+end
+
+local function jump_with_ctags(symbol)
+  local items = ctags_definitions(symbol)
+  if #items == 0 then
+    vim.notify("No definition found for " .. symbol, vim.log.levels.WARN)
+    return
   end
   show("Definitions of " .. symbol .. " (ctags)", symbol, items)
 end
@@ -597,14 +605,20 @@ function peek_definition(symbol, opts)
   if not symbol or symbol == "" then
     return missing("No word under the cursor")
   end
-  lookup_definition(symbol, function(items)
+  -- gtags first and ctags where it has nothing, as a jump looks a name up, so
+  -- that a peek finds whatever <C-]> would go to.
+  local function show_or_ctags(items)
+    if #items == 0 then
+      items = ctags_definitions(symbol)
+    end
     if #items == 0 then
       missing("No definition found for " .. symbol)
     else
       open_peek(symbol, items, { chained = opts.chained })
     end
-  end, function()
-    missing("No GTAGS for this file")
+  end
+  lookup_definition(symbol, show_or_ctags, function()
+    show_or_ctags({})
   end)
 end
 
