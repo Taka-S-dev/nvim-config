@@ -548,8 +548,41 @@ local function run_checks()
       "the jump did not happen"
     )
     local landed = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+    -- The statusline says how many it found, not only that global answered.
+    local reported = tostring(vim.g.background_activity)
+
+    -- A name global once came back empty for is asked again the next time,
+    -- not remembered as having no definition until Neovim is restarted.
+    local global = require("config.gtags_global")
+    local real_run, asked = global.run, 0
+    global.run = function(root, args, done)
+      asked = asked + 1
+      if asked == 1 then
+        return done("")
+      end
+      return real_run(root, args, done)
+    end
+    local notify = vim.notify
+    vim.notify = function() end
+    local second
+    local ok, err = pcall(function()
+      for attempt = 1, 2 do
+        vim.cmd.edit(dir .. "/main.c")
+        vim.fn.cursor(3, 5)
+        key("<C-]>")()
+        vim.wait(5000, function()
+          return asked >= attempt
+        end, 20)
+        vim.wait(200)
+      end
+      second = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+    end)
+    global.run, vim.notify = real_run, notify
     reset_editor()
+    expect(ok, tostring(err))
     expect(landed == "lib.c:1", "landed on " .. landed)
+    expect(reported:find("(global, 1 found)", 1, true), "the statusline said: " .. reported)
+    expect(asked == 2 and second == "main.c:3", ("global asked %d times, the second jump on %s"):format(asked, second))
   end)
 
   check("peek: opens without moving, follows a jump inside it, closes with Esc", function()

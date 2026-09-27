@@ -38,7 +38,10 @@
 
 -- Definition results are kept per project until its GTAGS changes, so a
 -- repeated jump starts no process at all. Other queries are not cached: they
--- are browsed, not repeated.
+-- are browsed, not repeated. A name global found nothing for is not kept
+-- either: an empty answer can be one that failed to arrive, from a GTAGS being
+-- rebuilt or a global.exe whose output did not reach Neovim that once, and kept
+-- it would hide the definition until Neovim was restarted.
 local definitions = {} ---@type table<string, { mtime: integer, symbols: table<string, table[]> }>
 
 local function definitions_of(root)
@@ -67,6 +70,13 @@ local function parse(output)
     end
   end
   return items
+end
+
+-- How many a lookup found, for the statusline: "gtags: name  40 ms (global,
+-- 2 found)". Without the count a lookup that found nothing, and so went on to
+-- the tags, read the same as one that found the definition.
+local function found(items)
+  return #items == 0 and "nothing found" or ("%d found"):format(#items)
 end
 
 local function open_picker(title, items)
@@ -132,10 +142,7 @@ end
 local function ctags_definitions(symbol)
   local ok, tags = pcall(vim.fn.taglist, "^" .. vim.fn.escape(symbol, [=[\^$.*~[]]=]) .. "$\\C")
   local items, seen = {}, {}
-  if not ok then
-    return items
-  end
-  for _, tag in ipairs(tags) do
+  for _, tag in ipairs(ok and tags or {}) do
     local filename = vim.fn.fnamemodify(tag.filename, ":p")
     local lnum = tag_line(tag, filename)
     local id = filename .. ":" .. lnum
@@ -145,6 +152,7 @@ local function ctags_definitions(symbol)
       items[#items + 1] = { filename = filename, lnum = lnum, col = 1, text = vim.trim(text) }
     end
   end
+  require("config.activity").begin("ctags: " .. symbol)(found(items))
   return items
 end
 
@@ -187,7 +195,7 @@ local function run_global(root, invocations, done, label)
       if pending > 0 then
         return
       end
-      answered("global")
+      answered("global, " .. found(items))
       if vim.api.nvim_get_current_win() == win and vim.api.nvim_get_current_buf() == buf then
         done(items)
       end
@@ -204,12 +212,15 @@ local function lookup_definition(symbol, done, no_database)
   end
   local symbols = definitions_of(root)
   local function finish(items, source)
-    symbols[symbol] = items
+    -- Found nothing is not kept; see the top of this file.
+    if #items > 0 then
+      symbols[symbol] = items
+    end
     done(items, source)
   end
   if symbols[symbol] then
     -- No global to wait for, but the statusline still says the key was heard.
-    begin_lookup(symbol)("memory")
+    begin_lookup(symbol)("memory, " .. found(symbols[symbol]))
     return finish(symbols[symbol], "memory")
   end
   run_global(root, { { "-axd", symbol } }, function(items)
