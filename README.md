@@ -619,24 +619,30 @@ gtags は C/C++/Java など主要言語以外をほぼ取りこぼす。C コー
 
 ---
 
-## SVN の作業コピーで変更箇所を見る (vim-signify)
+## SVN (Subversion)
 
-git の checkout では gitsigns が、最後のコミットからの追加・変更・削除を行番号の横に印で出す。SVN の作業コピーでは、同じことを vim-signify が行う。基準は最後に `svn update` した版 (作業コピーの BASE) で、比較はローカルの `.svn` に対して行い、サーバには問い合わせない。
+`<leader>g` が git、`<leader>v` が SVN。SVN の操作は読み取りだけで、コミット・更新・ファイルの取り消しはこの設定からは実行しない。唯一書き換えるのはハンクの取り消しで、バッファに対して行い、確認を挟む(保存するまでファイルは変わらず、`u` でも戻せる)。
 
 | キー | 動作 |
 |---|---|
-| `]h` / `[h` | 次 / 前の変更箇所へ |
-| `<leader>ghp` | カーソル位置の変更の差分を小窓で見る |
-| `<leader>ghr` | カーソル位置の変更を取り消す (BASE の内容に戻す) |
+| 行番号の横の印 | 最後に `svn update` した版 (BASE) からの追加・変更・削除 (vim-signify)。見た目は git のファイルの印と同じで、追加は緑、変更は青の縦棒、削除は赤い三角(2 行以上消したときは行数)。比較はローカルの `.svn` に対して行い、サーバには問い合わせない |
+| `]h` / `[h` | 次 / 前の変更箇所へ。git の checkout では gitsigns の同じキーが効く |
+| `<leader>vs` | cwd 以下の `svn status` を quickfix に出す。ファイルツリーの中で押すと、選んでいるフォルダ(ファイルならそのフォルダ)以下が対象になる。状態(modified など)を左の列に色付きで出し、変更のあるものを上、バージョン管理外のものを下に並べる。Enter でそのファイルを開く |
+| `<leader>vS` | フォルダのパスを入力して、その下の `svn status` を出す。ファイルツリーでフォルダを選んで押すと、そのフォルダが入力済みの状態で聞かれる |
+| `<leader>vd` | 今のファイルを BASE と左右に並べて比較する。左の窓の上に `BASE`、右に `working copy` と見出しが出る |
+| `<leader>vh` | 今のファイル、またはファイルツリーで選んだファイル・フォルダの `svn log` を、専用のタブに出す(TortoiseSVN のログ画面と同じ流れ)。右のリストでリビジョンを Enter・`l`・ダブルクリックで開くと、コミットメッセージの続きと、そのリビジョンで変わったファイルがリポジトリ全体から出る(`h` で閉じる)。ファイルを Enter かダブルクリックすると、その変更が左に左右に並び、最初の変更箇所に移る。左右の窓の上には、どのリビジョンかの見出しが出る(左: 一つ前のリビジョンとパス、右: そのリビジョン、作者、日付、コミットメッセージの 1 行目)。次のファイルを選ぶと入れ替わる。見ている場所の外のファイルは、リポジトリのパスのまま薄く出る。`q` でリストを閉じると、タブごと閉じる |
+| `<leader>vp` | カーソル位置の変更を小窓で見る |
+| `<leader>vr` | カーソル位置の変更を BASE に戻す(確認あり) |
 
-gitsigns と同じキーにしてある。git の checkout では gitsigns がバッファごとに同じキーを割り当てるので、そちらが優先される。
-
-- vim-signify は SVN だけを見るように絞ってある (`lua/plugins/svn.lua`)。git の checkout で gitsigns と印が重なることはない
-- `svn` コマンドが PATH に要る。TortoiseSVN だけでは `svn.exe` が入らないことがあるので、インストーラで command line client tools を有効にする。無い環境では何も起きない
+- リビジョンは URL とペグリビジョン (`url@rev`) で取り出すので、その後に削除・改名されたファイルも表示できる。そのリビジョンで追加・削除されたファイルは、存在しない側を空にして並べる
+- `svn status` の一覧では、バージョン管理外のドットファイル・ドットフォルダ(`.vs` や `.cache` など、ツールの状態)を出さない。バージョン管理下のものは出る
+- `svn` コマンドが PATH に要る。TortoiseSVN だけでは `svn.exe` が入らないことがあるので、インストーラで command line client tools を有効にする。無い環境では vim-signify を読み込まず、`<leader>v` のキーも作らない(SVN を使わない PC では、何も入っていないのと同じ)。この判定は起動時に行うので、`svn` を入れた後は nvim を起動し直す
+- 変更の印には `diff` プログラムが要る。Git Bash には PATH に入っているが、PowerShell や cmd には無い。その場合は Git for Windows に同梱の `usr\bin\diff.exe` を自動で使う。どちらも見つからないときは、起動時に一度だけ知らせる
 - 印はファイルを開いたときと保存したときに更新される。エディタの外で `svn update` した後は、ファイルを開き直す
-- `bin	est.cmd` は、`svn` と `svnadmin` がある環境でだけ、作業コピーに印が出ることと、git の checkout に SVN の印が出ないことを確かめる。無い環境ではスキップになる
+- `bin\test.cmd` は、`svn` と `svnadmin` がある環境でだけ、印・status・ログのタブ(リビジョンで変わったファイルの一覧、見ている場所の外のファイル、変更・追加・削除の左右比較、閉じるとタブも閉じること)・ハンクの取り消しを確かめる。無い環境ではスキップになる。`svn` が PATH に無いときに vim-signify も `<leader>v` も現れないことは、どちらの環境でも確かめる
 
 ---
+
 ## treesitter ビルドが zig cc 経由な理由
 
 Windows で treesitter パーサを素の MinGW (Strawberry Perl 同梱の GCC) でビルドすると 2 種類の問題が出る:
@@ -671,6 +677,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   ├── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)
 │   │   ├── keymaps.lua
 │   │   ├── markdown_links.lua # Markdown のリンクを gf でたどる
+│   │   ├── svn.lua         # SVN の status / log / リビジョン差分 (<leader>v)
 │   │   ├── pins.lua        # 行をメモつきでピン留めし、階層に整理して後で戻る (<leader>jm / jM / jo)
 │   │   ├── autocmds.lua
 │   │   └── lazy.lua
@@ -678,7 +685,7 @@ $env:LOCALAPPDATA\nvim\
 │       ├── aerial.lua      # シンボルアウトライン
 │       ├── gtags.lua       # gtags ナビ(定義ジャンプ・<leader>j*)
 │       ├── gutentags.lua   # ctags で tags を維持 (gtags fallback)
-│       ├── svn.lua         # SVN の作業コピーで変更行に印を出す (vim-signify、svn のみ)
+│       ├── svn.lua         # SVN: 変更行の印 (vim-signify、svn のみ) と <leader>v のキー
 │       ├── markdown.lua    # Markdown を画面上で整形表示 (render-markdown.nvim)
 │       └── treesitter.lua  # 追加パーサ
 ├── init.lua
