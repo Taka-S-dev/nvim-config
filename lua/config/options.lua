@@ -82,3 +82,10 @@ end
 if vim.fn.has("win32") == 1 and vim.o.shell:lower():find("cmd") then
   vim.opt.grepprg = "rg --vimgrep $* <NUL"
 end
+
+-- A diff shows the whole of both files, as WinMerge does, rather than folding
+-- away what did not change. Folded, changes hundreds of lines apart sit side by
+-- side on screen while the strip beside the diff (lua/config/diff_map.lua)
+-- places them by line, and the two disagree about where anything is. Nothing
+-- is folded when the lines kept around each change reach past either end.
+vim.opt.diffopt:append("context:1000000")

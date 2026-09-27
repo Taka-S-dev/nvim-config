@@ -81,5 +81,11 @@ require("config.scope_pin")
 -- Pinned lines with notes, <leader>jm and <leader>jM (lua/config/pins.lua).
 require("config.pins")
 
+-- Where a diff differs, in a strip down the right edge (lua/config/diff_map.lua).
+require("config.diff_map")
+
+-- The two sides of a diff scrolled together by the wheel too (lua/config/diff_scroll.lua).
+require("config.diff_scroll")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("config.cd_picker")
