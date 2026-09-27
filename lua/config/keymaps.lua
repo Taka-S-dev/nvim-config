@@ -72,6 +72,9 @@ Snacks.toggle({
   end,
 }):map("<leader>uW")
 
+-- Several words lit at once, <leader>hh and friends (lua/config/words.lua).
+require("config.words")
+
 -- The scope line, pinned in place with <leader>jl (lua/config/scope_pin.lua).
 require("config.scope_pin")
 

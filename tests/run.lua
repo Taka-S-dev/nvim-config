@@ -963,6 +963,102 @@ local function run_checks()
     expect(after == 0, "pressing the key again did not take the line away")
   end)
 
+  check("words: several words stay lit across files and windows, and are stepped through", function()
+    local words = require("config.words")
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "int len = 0;", "int buflen = len + 1;", "return len;" })
+    write(dir .. "/b.c", { "size_t len;", "len = 2;" })
+    local function lit(win)
+      local names = {}
+      for _, match in ipairs(vim.fn.getmatches(win)) do
+        names[#names + 1] = match.group .. "=" .. match.pattern
+      end
+      table.sort(names)
+      return table.concat(names, " ")
+    end
+    vim.cmd.edit(dir .. "/a.c")
+    vim.fn.cursor(1, 5)
+    key("<leader>hh")()
+    vim.fn.cursor(1, 1)
+    key("<leader>hh")()
+    local two = lit(0)
+    vim.cmd.edit(dir .. "/b.c")
+    local other_file = lit(0)
+    vim.cmd("vsplit")
+    local new_window = lit(0)
+    vim.cmd("close")
+    vim.fn.cursor(1, 1)
+    key("<leader>hn")()
+    local first = vim.fn.line(".") .. ":" .. vim.fn.col(".")
+    key("<leader>hn")()
+    local second = vim.fn.line(".") .. ":" .. vim.fn.col(".")
+    -- The panel lists every place in the open files as a tree with counts,
+    -- jumps from a line, follows a file opened later, and follows the words
+    -- as they are put out.
+    key("<leader>ho")()
+    local panel = Snacks.picker.get({ source = "words" })[1]
+    expect(panel ~= nil, "the words panel did not open")
+    local function rows()
+      vim.wait(300)
+      vim.wait(3000, function()
+        return not panel:is_active()
+      end, 50)
+      local out = {}
+      for _, item in ipairs(panel:items()) do
+        if item.kind == "line" then
+          out[#out + 1] = item.word.label .. "@" .. vim.fs.basename(item.file) .. ":" .. item.pos[1]
+        else
+          out[#out + 1] = item.kind
+            .. ":"
+            .. (item.kind == "word" and item.word.label or vim.fs.basename(item.file))
+            .. "="
+            .. item.count
+        end
+      end
+      return out
+    end
+    local listed = table.concat(rows(), " ")
+    vim.cmd("wincmd p")
+    write(dir .. "/c.c", { "int len;" })
+    vim.cmd.edit(dir .. "/c.c")
+    local after_open = #rows()
+    vim.api.nvim_set_current_win(panel.list.win.win)
+    local last
+    for index, item in ipairs(panel:items()) do
+      if item.kind == "line" then
+        last = index
+      end
+    end
+    panel.list:view(last)
+    panel:action("confirm")
+    vim.wait(300)
+    local jumped = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+    vim.api.nvim_set_current_win(panel.list.win.win)
+    panel.list:view(1)
+    panel:action("word_out")
+    local rows_after = #rows()
+    panel:close()
+    vim.cmd("wincmd p")
+    local one = lit(vim.api.nvim_get_current_win())
+    words.clear()
+    local none = lit(0)
+    reset_editor()
+    expect(two == [[Word1=\V\<len\> Word2=\V\<int\>]], "two words lit: " .. two)
+    expect(other_file == two, "in another file: " .. other_file)
+    expect(new_window == two, "in a new window: " .. new_window)
+    expect(first == "1:8" and second == "2:1", ("stepping landed on %s then %s"):format(first, second))
+    expect(
+      listed
+        == "word:len=5 file:a.c=3 len@a.c:1 len@a.c:2 len@a.c:3 file:b.c=2 len@b.c:1 len@b.c:2 word:int=2 file:a.c=2 int@a.c:1 int@a.c:2",
+      "the panel listed: " .. listed
+    )
+    expect(after_open == 16, ("after opening a third file the panel has %d rows, not 16"):format(after_open))
+    expect(jumped == "c.c:1", "Enter on the last line went to " .. jumped)
+    expect(rows_after == 6, ("after dd on len the panel has %d rows, not 6"):format(rows_after))
+    expect(one == [[Word2=\V\<int\>]], "after putting len out: " .. one)
+    expect(none == "", "after clearing: " .. none)
+  end)
+
   -- A whole run starts a few dozen processes. Thousands mean something feeds
   -- itself: it was gitsigns once, starting git over a thousand times in a few
   -- seconds and leaving a Neovim that would not exit.
