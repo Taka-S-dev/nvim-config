@@ -7,8 +7,9 @@
 -- part that differs is marked as in the diff.
 --
 -- It opens by itself in a tab with two windows in diff mode and goes when the
--- diff does; q in it, or <leader>uP, closes it, and <leader>uP brings it
--- back. Lines are paired through the rows of the aligned diff
+-- diff does; <leader>uP closes it and brings it back, and q in it ends the
+-- whole comparison, as it does anywhere in one (lua/config/diff_quit.lua).
+-- Lines are paired through the rows of the aligned diff
 -- (lua/config/diff_scroll.lua): a line only one side has faces a blank line
 -- on the other, so the halves stay row for row.
 local M = {}
@@ -297,10 +298,6 @@ local function open(tab)
     }) do
       vim.wo[win][option] = value
     end
-    vim.keymap.set("n", "q", function()
-      vim.t.diff_pane_closed = true
-      close(tab)
-    end, { buffer = buf, nowait = true, desc = "Close the diff pane" })
     parts[index] = { win = win, buf = buf }
   end
   local pane = { parts = parts }

@@ -1517,6 +1517,112 @@ local function run_checks()
     expect(seen.cursor == 56 and seen.in_view, ("the cursor is on %s, in view: %s"):format(seen.cursor, seen.in_view))
   end)
 
+  -- q ends a comparison from any of its windows, however it was opened: a file
+  -- against a side that is no file (a scratch copy, git's revision or index)
+  -- loses that side and leaves diff mode, the svn log's tab closes; outside a
+  -- comparison q still records a macro.
+  check("diff quit: q ends a comparison, and records a macro elsewhere", function()
+    local quit = require("config.diff_quit")
+    local function typed(keys)
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "xt", false)
+    end
+    local seen = {}
+    local ok, err = pcall(function()
+      local file = temp_dir() .. "/a.c"
+      write(file, { "int a;", "int b;" })
+      vim.cmd.edit(file)
+      vim.cmd("diffthis")
+      vim.cmd("leftabove vnew")
+      vim.bo.buftype = "nofile"
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "int a;", "int B;" })
+      vim.cmd("diffthis")
+      vim.cmd("wincmd l")
+      seen.here = quit.here()
+      typed("q")
+      vim.wait(500, function()
+        return #vim.api.nvim_tabpage_list_wins(0) == 1
+      end, 20)
+      seen.file = #vim.api.nvim_tabpage_list_wins(0) .. " " .. tostring(vim.wo.diff) .. " " .. vim.fn.expand("%:t")
+
+      -- git's sides, as gitsigns opens them: a revision is nowrite and the
+      -- index acwrite. Both close, except an index with edits not written
+      -- back, which stays out of diff mode.
+      seen.git = {}
+      for _, side in ipairs({ "nowrite", "acwrite", "acwrite edited" }) do
+        vim.cmd("diffthis")
+        vim.cmd("leftabove vnew")
+        vim.api.nvim_buf_set_lines(0, 0, -1, false, { "int a;", "int B;" })
+        vim.bo.buftype = side:match("^%a+")
+        vim.bo.modified = side:find("edited") ~= nil
+        vim.cmd("diffthis")
+        vim.cmd("wincmd l")
+        typed("q")
+        vim.wait(500, function()
+          return not vim.wo.diff
+        end, 20)
+        local wins = vim.api.nvim_tabpage_list_wins(0)
+        seen.git[#seen.git + 1] = #wins .. " " .. tostring(vim.wo[wins[1]].diff)
+        vim.cmd("only!")
+      end
+      seen.git = table.concat(seen.git, ", ")
+
+      local tabs = #vim.api.nvim_list_tabpages()
+      vim.cmd("tabnew")
+      vim.t.svn_log = true
+      vim.bo.buftype = "nofile"
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "x" })
+      vim.cmd("diffthis")
+      vim.cmd("rightbelow vnew")
+      vim.bo.buftype = "nofile"
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "X" })
+      vim.cmd("diffthis")
+      typed("q")
+      vim.wait(500, function()
+        return #vim.api.nvim_list_tabpages() == tabs
+      end, 20)
+      seen.tab_left = #vim.api.nvim_list_tabpages() - tabs
+
+      -- Two files of their own, as nvim -d opens them: both stay, out of
+      -- diff mode.
+      local other = temp_dir() .. "/b.c"
+      write(other, { "int a;", "int c;" })
+      vim.cmd.edit(file)
+      vim.cmd("diffthis")
+      vim.cmd("rightbelow vsplit " .. vim.fn.fnameescape(other))
+      vim.cmd("diffthis")
+      typed("q")
+      vim.wait(500, function()
+        return not vim.wo.diff
+      end, 20)
+      local modes = {}
+      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        modes[#modes + 1] = tostring(vim.wo[win].diff)
+      end
+      seen.files = #modes .. " " .. table.concat(modes, ",")
+      vim.cmd("only")
+
+      vim.cmd("enew")
+      vim.fn.setreg("a", "")
+      typed("qa")
+      seen.recording = vim.fn.reg_recording()
+      typed("ihello<Esc>")
+      typed("q")
+      seen.macro = vim.fn.getreg("a")
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.here, "a window in diff mode is not taken for part of a comparison")
+    expect(seen.file == "1 false a.c", "after q beside a file: windows, diff, buffer = " .. tostring(seen.file))
+    expect(
+      seen.git == "1 false, 1 false, 2 false",
+      "after q beside git's revision, index, edited index: windows, diff = " .. tostring(seen.git)
+    )
+    expect(seen.tab_left == 0, "the svn log's tab is still open after q")
+    expect(seen.files == "2 false,false", "two files after q: windows, diff = " .. tostring(seen.files))
+    expect(seen.recording == "a", "qa outside a comparison did not start recording")
+    expect(seen.macro == "ihello\27", "q no longer records a macro outside a comparison: " .. vim.inspect(seen.macro))
+  end)
+
   -- One side of a diff scrolled without a command, as the wheel does over the
   -- side the cursor is not in, brings the other side along, lined up through
   -- the lines only one side has. The event that sets it off does not come in

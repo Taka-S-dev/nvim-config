@@ -91,5 +91,8 @@ require("config.diff_scroll")
 -- (lua/config/diff_pane.lua).
 require("config.diff_pane")
 
+-- q anywhere in a comparison ends it (lua/config/diff_quit.lua).
+require("config.diff_quit")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("config.cd_picker")
