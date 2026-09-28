@@ -34,6 +34,30 @@ return {
       -- background light enough to mark the change is too light for it.
       hl.DiffChange = { bg = "#3d3a22" }
       hl.DiffText = { bg = "#635a2a" }
+      -- C in one colour per kind of name. As shipped, a function, a type, a
+      -- builtin type, NULL and #include are four blues, a type and NULL the
+      -- same one and a function 9.7 from a type (CIEDE2000), so a call and a
+      -- type look alike; and a macro reads as an enum value or, called, as a
+      -- function. Types go yellow and NULL orange with the other constants,
+      -- and macros, where they are defined and where they are used
+      -- (lua/config/c_macros.lua), go rose, with enum values left orange.
+      -- Types, macros and enum values now stand at least 17.5 from any other
+      -- colour in C code but that of numbers, which enum values share as
+      -- shipped, and rose reads at 3.15:1 on changed text in a diff, about
+      -- as a function name does (3.02:1). A
+      -- parameter is yellow where it is declared, which would make
+      -- `entry_t *e` one colour, and plain everywhere it is used, so it is
+      -- plain where declared too.
+      local macro = "#ff8d9b"
+      hl["@type.c"] = { fg = c.yellow }
+      hl["@type.builtin.c"] = { fg = c.yellow }
+      hl["@type.definition.c"] = { fg = c.yellow }
+      hl["@constant.builtin.c"] = { fg = c.orange }
+      hl["@constant.macro.c"] = { fg = macro }
+      hl["@function.macro.c"] = { fg = macro }
+      hl["@variable.parameter.c"] = { fg = c.fg }
+      hl.CMacro = { fg = macro }
+      hl.CEnum = { fg = c.orange }
     end,
   },
 }

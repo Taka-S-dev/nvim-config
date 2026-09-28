@@ -219,6 +219,14 @@ function M.run(root, args, done)
   end)
 end
 
+-- Whether a route has returned output yet. Until then an empty answer sends
+-- run() on to the other routes and can drop the one remembered, so a query
+-- that may rightly find nothing is best asked after one that cannot, such as
+-- `global -p`.
+function M.confirmed()
+  return verified
+end
+
 function M.status()
   load_transport()
   return ("gtags: route=%s, confirmed=%s, global=%s"):format(M.transport, tostring(verified), global_exe())
