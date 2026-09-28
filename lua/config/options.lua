@@ -96,6 +96,11 @@ vim.opt.diffopt:append("context:1000000")
 vim.opt.diffopt:remove("inline:char")
 vim.opt.diffopt:append("inline:word")
 
+-- A .h file opens as C, not C++. Neovim guesses C++, the C++ parser is not
+-- installed, so a header got no treesitter colours at all, and the headers of
+-- a C project are C.
+vim.g.c_syntax_for_h = true
+
 -- scoop's tools started from the folder of their version, past the junction a
 -- session opened over ssh cannot follow (lua/config/scoop_shims.lua).
 require("config.scoop_shims")
