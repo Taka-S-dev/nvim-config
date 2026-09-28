@@ -426,6 +426,18 @@ local function run_checks()
       local log = log_of(wc .. "/src/a.c")
       seen.log_tabs = #vim.api.nvim_list_tabpages() - tabs
       seen.first = open_revision(log, 1)
+      -- As the rows read: the file name first, its folder after it.
+      local rows = {}
+      for _, item in ipairs(log.list.items) do
+        if item.kind == "file" and item.entry.rev == 1 then
+          local parts = {}
+          for _, part in ipairs(log.opts.format(item)) do
+            parts[#parts + 1] = part[1]
+          end
+          rows[#rows + 1] = vim.trim(table.concat(parts, "", 2))
+        end
+      end
+      seen.first_rows = table.concat(rows, " | ")
       open_revision(log, 2)
       seen.revision, seen.headings = show(log, 2, "a.c")
       log:close()
@@ -474,6 +486,7 @@ local function run_checks()
       ("the log tab: %s opened, %s left after closing"):format(seen.log_tabs, seen.tabs_left)
     )
     expect(seen.first == "A:a.c A:b.c A:/top.txt(outside)", "r1 of a.c's log lists: " .. tostring(seen.first))
+    expect(seen.first_rows == "A a.c | A b.c | A top.txt  /", "r1's rows read: " .. tostring(seen.first_rows))
     expect(
       seen.revision == "int a1;,int a2;,int a3; | int a1;,int A2;,int a3;",
       "r2 side by side: " .. tostring(seen.revision)

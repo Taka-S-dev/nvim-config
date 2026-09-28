@@ -366,11 +366,19 @@ local function log_row_text(state, item)
   if item.kind == "message" then
     return { guide, { item.line, "Comment" } }
   end
-  return {
+  -- The file name first and its folder after it, dimmed: in a list this
+  -- narrow a long path ran the name off the edge, and the name is what is
+  -- looked for.
+  local folder = vim.fs.dirname(item.name)
+  local row = {
     guide,
     { item.action .. " ", ACTIONS[item.action] or "Comment" },
-    { item.name, not item.inside and "Comment" or nil },
+    { vim.fs.basename(item.name), not item.inside and "Comment" or nil },
   }
+  if folder ~= "." and folder ~= "" then
+    row[#row + 1] = { "  " .. folder, "Comment" }
+  end
+  return row
 end
 
 -- A file as a revision left it, side by side with the revision before, in the
