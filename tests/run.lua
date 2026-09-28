@@ -1347,6 +1347,176 @@ local function run_checks()
     expect(seen.after, "the strips outlived the diff")
   end)
 
+  -- The pane below a diff holds the block of changed lines the cursor is in,
+  -- the left side in its top half and the right side in its bottom half,
+  -- wrapped so that a change at the end of a long line is in sight, with the
+  -- part of each line that differs from the one facing it marked. A line only
+  -- one side has faces a blank line, so the halves stay row for row and scroll
+  -- together; the cursor's line alone is shown where nothing changed; the pane
+  -- keeps its place while the block stays the same, and goes with the diff.
+  check("diff pane: the block under the cursor from both sides, the difference marked", function()
+    local pane = require("config.diff_pane")
+    local long = "static int parse_record(struct stream *s, size_t limit, int flags, const char *name, void *userdata)"
+    -- Two changes in one line: each is marked, and what lies between is not.
+    local changed = (long:gsub("int flags", "int mode"):gsub("void %*userdata", "const void *context"))
+    local left_lines = { "line 1", long, "tall = 55;", "line 4", "gone 1", "gone 2", "line 5", "line 6" }
+    local right_lines = { "line 1", changed, "tall = 5;", "line 4", "line 5", "right only", "line 6" }
+    local seen = {}
+    local function read(line)
+      vim.api.nvim_win_set_cursor(0, { line, 0 })
+      pane.refresh()
+      local shown = pane.shown()
+      return shown and (shown[1] .. " || " .. shown[2])
+    end
+    local ok, err = pcall(function()
+      vim.cmd("enew")
+      vim.bo.buftype = "nofile"
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, left_lines)
+      vim.cmd("diffthis")
+      vim.cmd("rightbelow vnew")
+      vim.bo.buftype = "nofile"
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, right_lines)
+      vim.cmd("diffthis")
+      seen.block = read(3)
+      local halves = pane.shown().windows
+      seen.wrap = vim.wo[halves[1]].wrap and vim.wo[halves[2]].wrap
+      -- The words that differ drawn over the changed line's colour. A line
+      -- highlight is laid over everything on its line whatever its priority,
+      -- so the line's colour is a range through its end, below the words.
+      -- (Drawn through an attached UI, the words showed only this way.)
+      local top = vim.api.nvim_win_get_buf(halves[1])
+      local word, line, line_hl
+      for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(top, -1, 0, -1, { details = true })) do
+        if mark[4].hl_group == "DiffText" then
+          word = mark[4].priority
+        elseif mark[4].hl_group == "DiffChange" and mark[4].hl_eol then
+          line = mark[4].priority
+        end
+        line_hl = line_hl or mark[4].line_hl_group ~= nil
+      end
+      seen.over = word and line and word > line and not line_hl
+      -- The top half scrolled, as the wheel does: the bottom half follows, and
+      -- a refresh on the same block leaves both where they are.
+      vim.api.nvim_win_call(halves[1], function()
+        vim.fn.winrestview({ topline = 2, lnum = 2 })
+      end)
+      pane.follow(halves[1])
+      pane.refresh()
+      seen.kept = vim.fn.line("w0", halves[1]) .. "/" .. vim.fn.line("w0", halves[2])
+      -- The half under the mouse leads, and the other is only moved: a scroll
+      -- reported by the bottom half while the wheel turns the top one moves
+      -- the bottom half to the top one, not the top half back. Following
+      -- whichever half reported a scroll sent the halves up and down after
+      -- the wheel had stopped.
+      vim.api.nvim_win_call(halves[1], function()
+        vim.fn.winrestview({ topline = 1, lnum = 1 })
+      end)
+      local mousepos = vim.fn.getmousepos
+      vim.fn.getmousepos = function()
+        return { winid = halves[1], winrow = 1, wincol = 1 }
+      end
+      pcall(pane.scrolled, { halves[2] })
+      vim.fn.getmousepos = mousepos
+      seen.answer = vim.fn.line("w0", halves[1]) .. "/" .. vim.fn.line("w0", halves[2])
+      -- Whole lines, and no lines kept clear around the cursor, in halves a few
+      -- rows high: either pushed the view against the wheel.
+      seen.scrolling = tostring(vim.wo[halves[1]].smoothscroll) .. "/" .. vim.wo[halves[1]].scrolloff
+      -- The halves keep their height whatever block they hold. The pane made
+      -- taller by hand, as by dragging the border above it, grows both halves
+      -- alike, and is as tall when it opens next.
+      local heights = function()
+        local shown = pane.shown()
+        return vim.api.nvim_win_get_height(shown.windows[1]) .. "/" .. vim.api.nvim_win_get_height(shown.windows[2])
+      end
+      local before = heights()
+      seen.before = before
+      seen.one_side = read(6)
+      seen.steady = heights() == before
+      local halves_now = pane.shown().windows
+      vim.api.nvim_win_set_height(halves_now[1], vim.api.nvim_win_get_height(halves_now[1]) + 4)
+      pane.resized({ halves_now[1] })
+      seen.grown = heights()
+      vim.cmd("diffoff!")
+      pane.refresh()
+      vim.cmd("windo diffthis")
+      vim.cmd("wincmd l")
+      read(6)
+      seen.chosen = heights()
+      -- On the line below lines only the left has, where ]c stops on the right.
+      seen.deleted = read(5)
+      seen.unchanged = read(1)
+      vim.cmd("diffoff!")
+      seen.after = read(1)
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.wrap, "the pane does not wrap")
+    expect(vim.o.diffopt:find("inline:word", 1, true), "the diff marks changes by character: " .. vim.o.diffopt)
+    expect(seen.over, "the words that differ are hidden under the changed line's colour")
+    expect(
+      seen.block
+        == long .. " [flags,userdata] / tall = 55; [55] || " .. changed .. " [mode,const,context] / tall = 5; [5]",
+      "the block reads: " .. tostring(seen.block)
+    )
+    expect(seen.kept == "2/2", "top lines of the halves after scrolling the top one: " .. tostring(seen.kept))
+    expect(seen.answer == "1/1", "after the bottom half reported a scroll, the halves are at " .. tostring(seen.answer))
+    expect(seen.scrolling == "false/0", "the halves scroll with smoothscroll/scrolloff " .. tostring(seen.scrolling))
+    expect(seen.one_side == "(none) || right only", "a line on one side reads: " .. tostring(seen.one_side))
+    expect(seen.steady, "the pane changed its height with the block")
+    local top, bottom = (seen.grown or ""):match("^(%d+)/(%d+)$")
+    expect(
+      top and top == bottom and seen.grown ~= seen.before,
+      "the pane made taller by hand reads " .. tostring(seen.grown)
+    )
+    expect(
+      seen.chosen == seen.grown,
+      "a pane opened again is " .. tostring(seen.chosen) .. " high, not " .. tostring(seen.grown)
+    )
+    expect(
+      seen.deleted == "gone 1 / gone 2 || (none) / (none)",
+      "lines only on the left read: " .. tostring(seen.deleted)
+    )
+    expect(seen.unchanged == "line 1 || line 1", "an unchanged line reads: " .. tostring(seen.unchanged))
+    expect(seen.after == nil, "the pane outlived the diff")
+  end)
+
+  -- The pane takes its rows from the diff. A change the cursor was on near
+  -- the foot of the view stays in sight, and entering the window leaves the
+  -- cursor on it rather than pulling it up to what is still shown.
+  check("diff pane: opening it keeps the change under the cursor in view", function()
+    local pane = require("config.diff_pane")
+    local left_lines = {}
+    for line = 1, 120 do
+      left_lines[line] = "line " .. line
+    end
+    local right_lines = vim.deepcopy(left_lines)
+    for line = 56, 60 do
+      right_lines[line] = "changed " .. line
+    end
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd("enew")
+      vim.bo.buftype = "nofile"
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, left_lines)
+      vim.cmd("diffthis")
+      vim.cmd("rightbelow vnew")
+      vim.bo.buftype = "nofile"
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, right_lines)
+      vim.cmd("diffthis")
+      local right = vim.api.nvim_get_current_win()
+      vim.cmd("normal! gg]c")
+      vim.cmd("botright 3new")
+      pane.refresh()
+      vim.cmd("redraw")
+      vim.api.nvim_set_current_win(right)
+      seen.cursor = vim.fn.line(".")
+      seen.in_view = vim.fn.line(".") >= vim.fn.line("w0") and vim.fn.line(".") <= vim.fn.line("w$")
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.cursor == 56 and seen.in_view, ("the cursor is on %s, in view: %s"):format(seen.cursor, seen.in_view))
+  end)
+
   -- One side of a diff scrolled without a command, as the wheel does over the
   -- side the cursor is not in, brings the other side along, lined up through
   -- the lines only one side has. The event that sets it off does not come in

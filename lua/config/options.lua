@@ -90,6 +90,12 @@ end
 -- is folded when the lines kept around each change reach past either end.
 vim.opt.diffopt:append("context:1000000")
 
+-- Within a changed line, each word that changed is marked, as WinMerge marks
+-- them, rather than every character: `char` pairs up stray letters that two
+-- different words happen to share, and the marks read as noise.
+vim.opt.diffopt:remove("inline:char")
+vim.opt.diffopt:append("inline:word")
+
 -- scoop's tools started from the folder of their version, past the junction a
 -- session opened over ssh cannot follow (lua/config/scoop_shims.lua).
 require("config.scoop_shims")

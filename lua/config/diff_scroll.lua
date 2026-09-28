@@ -59,6 +59,9 @@ local function line_on(rows, row)
   return low, rows[low] - row
 end
 
+-- For lua/config/diff_pane.lua, which finds the line facing the cursor's.
+M.rows_of, M.line_on = rows_of, line_on
+
 -- The other windows of the diff in the tab, lined up with `win`.
 function M.follow(win)
   if syncing or not vim.api.nvim_win_is_valid(win) or not vim.wo[win].diff then

@@ -87,5 +87,9 @@ require("config.diff_map")
 -- The two sides of a diff scrolled together by the wheel too (lua/config/diff_scroll.lua).
 require("config.diff_scroll")
 
+-- The line under the cursor, both sides of it, in a pane below a diff, <leader>uP
+-- (lua/config/diff_pane.lua).
+require("config.diff_pane")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("config.cd_picker")
