@@ -437,6 +437,21 @@ local function show_change(state, item)
   end)
 end
 
+-- The log's tab closed, the list, the sides and the pane with it. Its sides
+-- are scratch copies of revisions with nothing to save, but :tabclose, even
+-- with !, refused one it took for changed (E445), so the windows are closed
+-- one by one and the last takes the tab. The only tab is left open.
+function M.close_log(tab)
+  if not vim.api.nvim_tabpage_is_valid(tab) or #vim.api.nvim_list_tabpages() < 2 then
+    return
+  end
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+    if vim.api.nvim_tabpage_is_valid(tab) and vim.api.nvim_win_is_valid(win) then
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+  end
+end
+
 -- The log of the current file, or of the file or folder selected in the file
 -- tree, in a tab of its own: the revisions in a list on the right, the change
 -- to a file on the left. Enter, l or a double click on a revision lists the
@@ -528,9 +543,7 @@ function M.history(path)
         jump = { close = false },
         layout = { preset = "sidebar", preview = false, layout = { position = "right", width = 50 } },
         on_close = function()
-          if vim.api.nvim_tabpage_is_valid(state.tab) and #vim.api.nvim_list_tabpages() > 1 then
-            vim.cmd.tabclose(vim.api.nvim_tabpage_get_number(state.tab))
-          end
+          M.close_log(state.tab)
         end,
         confirm = function(picker, item)
           if item and item.kind == "file" then
