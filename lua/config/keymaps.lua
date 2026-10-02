@@ -109,5 +109,8 @@ require("config.call_tree")
 -- The jumps the cursor is inside now, <leader>jy (lua/config/jump_stack.lua).
 require("config.jump_stack")
 
+-- Where a C name is written to, <leader>jw (lua/config/writes.lua).
+require("config.writes")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("config.cd_picker")
