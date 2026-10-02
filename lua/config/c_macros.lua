@@ -154,36 +154,27 @@ local function from_gtags(buf)
     end
   end
   running[buf] = true
-  local global = require("config.gtags_global")
-  local function query()
-    global.run(root, { "-x", "-d", "-e", "^(" .. table.concat(names, "|") .. ")$" }, function(output)
-      running[buf] = nil
-      local known = tagged[buf]
-      if not known or not vim.api.nvim_buf_is_valid(buf) then
-        return
+  -- Through ask, as a query for names may rightly find none, and in patterns
+  -- short enough for global.
+  require("config.gtags_global").ask_names(root, { "-x", "-d" }, names, function(output)
+    running[buf] = nil
+    local known = tagged[buf]
+    if not known or not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
+    local found = false
+    for line in (output or ""):gmatch("[^\r\n]+") do
+      local name = line:match("^(%S+)")
+      if name and known.names[name] == false and line:find("#%s*define%s+" .. name .. "%f[^%w_]") then
+        known.names[name] = "macro"
+        found = true
       end
-      local found = false
-      for line in (output or ""):gmatch("[^\r\n]+") do
-        local name = line:match("^(%S+)")
-        if name and known.names[name] == false and line:find("#%s*define%s+" .. name .. "%f[^%w_]") then
-          known.names[name] = "macro"
-          found = true
-        end
-      end
-      if found then
-        redraw(buf)
-      end
-      from_gtags(buf)
-    end)
-  end
-  -- A query for names may rightly find none, and an empty answer before the
-  -- way to start global is known would drop the one remembered; -p, which
-  -- prints the root wherever there is a GTAGS, finds the way first.
-  if global.confirmed() then
-    query()
-  else
-    global.run(root, { "-p" }, query)
-  end
+    end
+    if found then
+      redraw(buf)
+    end
+    from_gtags(buf)
+  end)
 end
 
 -- The names waiting for the tags file, asked outside the redraw that met them.

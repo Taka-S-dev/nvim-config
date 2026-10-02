@@ -220,11 +220,55 @@ function M.run(root, args, done)
 end
 
 -- Whether a route has returned output yet. Until then an empty answer sends
--- run() on to the other routes and can drop the one remembered, so a query
--- that may rightly find nothing is best asked after one that cannot, such as
--- `global -p`.
+-- run() on to the other routes and can drop the one remembered.
 function M.confirmed()
   return verified
+end
+
+-- run() for a query that may rightly find nothing, such as the callers of a
+-- function no one calls. Until a route is confirmed, `global -p` goes first:
+-- it prints the root wherever there is a GTAGS, so the route is found by an
+-- answer that cannot be empty, and an empty answer after it is a real miss.
+function M.ask(root, args, done)
+  if M.confirmed() then
+    return M.run(root, args, done)
+  end
+  M.run(root, { "-p" }, function()
+    M.run(root, args, done)
+  end)
+end
+
+-- global copies its pattern into a buffer of 512 bytes, and given a longer
+-- one prints "buffer overflow" and finds nothing: 43 names in one `^(a|b|...)$`
+-- came back empty. Names asked about together go in as many patterns as keep
+-- each under that, one query after another, and the answers come back joined.
+local PATTERN_MAX = 500
+
+function M.ask_names(root, args, names, done)
+  local groups, group, size = {}, {}, 4
+  for _, name in ipairs(names) do
+    if #group > 0 and size + #name + 1 > PATTERN_MAX then
+      groups[#groups + 1], group, size = group, {}, 4
+    end
+    group[#group + 1] = name
+    size = size + #name + 1
+  end
+  if #group > 0 then
+    groups[#groups + 1] = group
+  end
+  local answers = {}
+  local function next_group(index)
+    if index > #groups then
+      return done(table.concat(answers, "\n"))
+    end
+    local full = vim.list_extend({}, args)
+    vim.list_extend(full, { "-e", "^(" .. table.concat(groups[index], "|") .. ")$" })
+    M.ask(root, full, function(output)
+      answers[#answers + 1] = output or ""
+      next_group(index + 1)
+    end)
+  end
+  next_group(1)
 end
 
 function M.status()

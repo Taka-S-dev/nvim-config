@@ -1850,9 +1850,17 @@ local function run_checks()
       "#define Twice_It(x) ((x) * 2)",
       "enum colour { RED_ONE, GREEN_ONE };",
     })
+    -- More names on one line than global takes in one pattern of 512 bytes.
+    local long, uses = {}, {}
+    for i = 1, 30 do
+      long[#long + 1] = ("#define A_RATHER_LONG_MACRO_NAME_%02d %d"):format(i, i)
+      uses[#uses + 1] = ("A_RATHER_LONG_MACRO_NAME_%02d"):format(i)
+    end
+    write(dir .. "/c.h", long)
     write(dir .. "/a.c", {
       '#include "b.h"',
       "int f(void) { return Twice_It(H_MAX) + RED_ONE + Not_Here; }",
+      "int g(void) { return " .. table.concat(uses, " + ") .. "; }",
     })
     run({ "gtags" }, dir)
     local calls = {}
@@ -1881,11 +1889,20 @@ local function run_checks()
       end, 50)
       vim.wait(300)
       calls.got = seen()
+      local function long_ones()
+        local rows = names.marks(0, 2, 2) or {}
+        return rows[2] and #rows[2] or 0
+      end
+      vim.wait(10000, function()
+        return long_ones() == 30
+      end, 50)
+      calls.long = long_ones()
     end)
     global.run, global.confirmed = real_run, real_confirmed
     reset_editor()
     expect(ok, tostring(err))
     expect(calls.got == "Twice_It=Macro H_MAX=Macro", "marked: " .. tostring(calls.got))
+    expect(calls.long == 30, ("of 30 macros with long names on one line, %d marked"):format(calls.long or 0))
     expect(calls[1] == "-p" and calls[2] == "-x", "global run with: " .. table.concat(calls, ", "))
   end)
 
