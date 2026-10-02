@@ -97,5 +97,8 @@ require("config.diff_quit")
 -- Call trees from GTAGS, <leader>jh and <leader>jH (lua/config/call_tree.lua).
 require("config.call_tree")
 
+-- The jumps the cursor is inside now, <leader>jy (lua/config/jump_stack.lua).
+require("config.jump_stack")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("config.cd_picker")

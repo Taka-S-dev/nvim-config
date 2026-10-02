@@ -176,4 +176,10 @@ function M.enclosing(file_outline, line)
   end
 end
 
+-- The name of the function line `line` of a C file is in, or nil.
+function M.function_at(file, line)
+  local body = M.enclosing(M.read(vim.fs.normalize(file)), line)
+  return body and body.kind == "function" and body.name or nil
+end
+
 return M

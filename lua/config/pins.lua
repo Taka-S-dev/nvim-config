@@ -77,12 +77,9 @@ local function new_id(pins)
   return tostring(number)
 end
 
--- What treesitter hands back as a name when a declaration is wrapped in macros
--- and calling conventions, as in ms/applink.c: not a function name.
-local not_a_name = {}
-for word in ("void int char short long float double signed unsigned static const struct union enum"):gmatch("%S+") do
-  not_a_name[word] = true
-end
+-- Words a function name found before lua/config/enclosing.lua could be, when a
+-- declaration was wrapped in macros; a stored pin with one has no name.
+local not_a_name = require("config.enclosing").not_a_name
 
 -- The list as stored: a flat array whose order is the order among siblings,
 -- each pin naming its parent. Files written before pins had ids are read as a
@@ -190,35 +187,7 @@ end
 
 -- The name of the function the cursor is in, where treesitter can tell.
 local function enclosing_function()
-  local ok, node = pcall(vim.treesitter.get_node)
-  while ok and node do
-    if node:type():find("function") then
-      local found
-      local function search(n, depth)
-        if found or depth > 6 then
-          return
-        end
-        if n:type() == "identifier" or n:type() == "field_identifier" then
-          found = vim.treesitter.get_node_text(n, 0)
-          return
-        end
-        for child in n:iter_children() do
-          if child:type() ~= "compound_statement" and child:type() ~= "block" and child:type() ~= "parameter_list" then
-            search(child, depth + 1)
-          end
-        end
-      end
-      local declarator = node:field("declarator")[1] or node:field("name")[1]
-      if declarator then
-        search(declarator, 0)
-      end
-      if found and not not_a_name[found] then
-        return found
-      end
-    end
-    node = node:parent()
-  end
-  return ""
+  return require("config.enclosing").at(0, vim.api.nvim_win_get_cursor(0)[1])
 end
 
 -- Where the pinned line is now: the recorded line if it still holds the
@@ -378,6 +347,41 @@ local function redraw_everything(root, focus_id)
   if panel.root == root then
     panel_refresh(focus_id)
   end
+end
+
+-- Pins for a chain of places, each under the one before, as the jump stack
+-- (lua/config/jump_stack.lua) keeps the jumps it holds. Each place is
+-- { file, line, text, symbol, memo }, the file absolute. A pin is kept with
+-- its project, so places outside the project of the first are left out. How
+-- many were pinned, and the project.
+function M.add_chain(places)
+  if #places == 0 then
+    return 0
+  end
+  local root = project_root(places[1].file)
+  local pins = load(root)
+  remember(root)
+  local parent, added = nil, 0
+  for _, place in ipairs(places) do
+    local path = vim.fs.normalize(place.file)
+    if path:lower():sub(1, #root + 1) == root:lower() .. "/" then
+      local pin = {
+        id = new_id(pins),
+        parent = parent,
+        file = path:sub(#root + 2),
+        line = place.line,
+        text = place.text or "",
+        symbol = place.symbol or "",
+        memo = place.memo or "",
+        created = os.date("%Y-%m-%d %H:%M"),
+      }
+      pins[#pins + 1] = pin
+      parent, added = pin.id, added + 1
+    end
+  end
+  save(root, pins)
+  redraw_everything(root, parent)
+  return added, root
 end
 
 function M.add()
