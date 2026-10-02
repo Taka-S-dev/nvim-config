@@ -2311,6 +2311,56 @@ local function run_checks()
     expect(seen.cleared == 0, "rows left after emptying the stack: " .. tostring(seen.cleared))
   end)
 
+  -- The text selected is lit where else it stands, as it stands: case
+  -- counts, and the brackets of `[17]` are no pattern. A selection of one
+  -- character, of blanks or over two lines lights nothing, and leaving the
+  -- selection puts the rest out. A headless run moves no cursor through the
+  -- screen, so what CursorMoved would call is called here.
+  check("selection matches: the text selected is lit where else it stands", function()
+    local matches = require("config.selection_matches")
+    local dir = temp_dir()
+    write(dir .. "/a.c", {
+      "foo(bar) + foo(bar)",
+      "  int foo = 1;",
+      "[17] and [17] and [1]",
+      "FOO foo",
+      "値を返す 値を",
+    })
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      local function select(row, col, keys)
+        press("<Esc>")
+        vim.api.nvim_win_set_cursor(0, { row, col })
+        press("v" .. keys)
+        matches.update()
+        return table.concat(matches.marks(), " ")
+      end
+      seen.word = select(1, 0, "ll")
+      seen.brackets = select(3, 0, "3l")
+      seen.japanese = select(5, 0, "l")
+      seen.one = select(1, 0, "")
+      seen.blanks = select(2, 0, "l")
+      -- From the second foo(bar) down a line: the first line's part of it
+      -- stands at the start of the line too, and is not lit.
+      seen.lines = select(1, 11, "j")
+      select(1, 0, "ll")
+      press("<Esc>")
+      seen.left = table.concat(matches.marks(), " ")
+    end)
+    press("<Esc>")
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.word == "1:12 2:7 4:5", "foo: " .. tostring(seen.word))
+    expect(seen.brackets == "3:10", "[17]: " .. tostring(seen.brackets))
+    expect(seen.japanese == "5:14", "値を: " .. tostring(seen.japanese))
+    expect(
+      seen.one == "" and seen.blanks == "" and seen.lines == "",
+      ("one character, blanks, two lines: %q %q %q"):format(seen.one, seen.blanks, seen.lines)
+    )
+    expect(seen.left == "", "left after the selection: " .. tostring(seen.left))
+  end)
+
   check("words: several words stay lit across files and windows, and are stepped through", function()
     local words = require("config.words")
     local dir = temp_dir()
