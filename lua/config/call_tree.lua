@@ -62,13 +62,7 @@ local function can_open(node)
     and not (node.children and #node.children == 0)
 end
 
-local function tree_look()
-  local tree = {}
-  pcall(function()
-    tree = Snacks.picker.config.get().icons.tree
-  end)
-  return { vertical = tree.vertical or "│ ", middle = tree.middle or "├╴", last = tree.last or "└╴" }
-end
+local tree_look = require("config.sidebar").tree_look
 
 -- The rows on show, the tree walked through its open branches.
 local function rows()
@@ -146,8 +140,7 @@ local function is_open()
 end
 
 -- The rows read again with the cursor kept on `focus`, or on the row it was
--- on; the same dance as the pins panel (lua/config/pins.lua), whose list goes
--- back to its first row when it is filled again.
+-- on (lua/config/sidebar.lua).
 local function refresh(focus)
   if not is_open() then
     return
@@ -155,31 +148,17 @@ local function refresh(focus)
   local picker = panel.picker
   local current = picker:current()
   focus = focus or (current and current.node)
+  local target
   if picker.input.filter:is_empty() then
     for index, row in ipairs(rows()) do
       if row.node == focus then
-        picker.list:set_target(index, picker.list.top, { force = true })
+        target = index
       end
     end
   end
-  picker:find()
-  local tries = 0
-  local function settle()
-    if picker.closed then
-      return
-    end
-    tries = tries + 1
-    if picker:is_active() and tries < 100 then
-      return vim.defer_fn(settle, 20)
-    end
-    for index, item in ipairs(picker:items()) do
-      if item.node == focus then
-        picker.list:view(index)
-        return
-      end
-    end
-  end
-  vim.defer_fn(settle, 20)
+  require("config.sidebar").refresh(picker, target, function(item)
+    return item.node == focus
+  end)
 end
 
 -- A branch opened, its rows looked up the first time. `quiet` leaves the

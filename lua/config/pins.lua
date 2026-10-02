@@ -292,17 +292,7 @@ end
 -- md-bookmark_multiple).
 local markers = { leaf = "󰃃 ", open = "󰸖 ", closed = "󰸕 " }
 
-local function tree_look()
-  local tree = {}
-  pcall(function()
-    tree = Snacks.picker.config.get().icons.tree
-  end)
-  return {
-    vertical = tree.vertical or "│ ",
-    middle = tree.middle or "├╴",
-    last = tree.last or "└╴",
-  }
-end
+local tree_look = require("config.sidebar").tree_look
 
 local function panel_is_open()
   return panel.picker ~= nil and not panel.picker.closed
@@ -352,11 +342,9 @@ local function row_text(row, look, searching)
 end
 
 -- Reads the pins again and leaves the cursor on the pin with the given id, or
--- where it was. The list is emptied and filled again by the finder a moment
--- later, which takes the cursor back to the first row, and the callback find()
--- offers runs before the rows are there. So the list is told beforehand where
--- the cursor goes, and the row is looked for once more when the picker has
--- gone quiet, for the cases the first cannot cover.
+-- where it was (lua/config/sidebar.lua). Where the pin will be once the list
+-- is filled again is known beforehand, from the same outline the finder reads,
+-- except while a filter is typed.
 local function panel_refresh(focus_id)
   if not panel_is_open() then
     return
@@ -364,39 +352,21 @@ local function panel_refresh(focus_id)
   local picker = panel.picker
   local current = picker:current()
   focus_id = focus_id or (current and current.pin.id)
-  -- Where the pin will be once the list is filled again is known beforehand,
-  -- from the same outline the finder reads. Given to the list as its target,
-  -- the cursor is put there in the same redraw that brings the rows back, so
-  -- it is never seen on the first row in between.
+  local target
   if not is_searching(picker) then
     local number = 0
     for _, row in ipairs(outline(load(panel.root))) do
       if not row.hidden then
         number = number + 1
         if row.pin.id == focus_id then
-          picker.list:set_target(number, picker.list.top, { force = true })
+          target = number
         end
       end
     end
   end
-  picker:find()
-  local tries = 0
-  local function settle()
-    if picker.closed then
-      return
-    end
-    tries = tries + 1
-    if picker:is_active() and tries < 100 then
-      return vim.defer_fn(settle, 20)
-    end
-    for index, item in ipairs(picker:items()) do
-      if item.pin.id == focus_id then
-        picker.list:view(index)
-        return
-      end
-    end
-  end
-  vim.defer_fn(settle, 20)
+  require("config.sidebar").refresh(picker, target, function(item)
+    return item.pin.id == focus_id
+  end)
 end
 
 local function redraw_everything(root, focus_id)
