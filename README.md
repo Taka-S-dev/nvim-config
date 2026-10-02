@@ -547,7 +547,7 @@ nvim 内で `<leader>jb` を押すと、作る場所を確認したうえで `gt
 | `<leader>jB` | ctags の `tags` を作り直す。作る場所の考え方は `<leader>jb` と同じ(下の「ctags フォールバック」を参照) |
 | `<leader>js` | このシンボルの全出現箇所 |
 | `<leader>jg` | グローバル定義へ |
-| `<leader>jc` | この関数の呼び出し元(callers)。enum の値やマクロは gtags が定義として記録しないので 0 件になる。使われている箇所は `<leader>js` で探す |
+| `<leader>jc` | この関数の呼び出し元(callers)。マクロや enum の値なら、それを使っている所が出る。ただし、gtags が定義として記録できなかった名前は 0 件になる(103 回使われている enum の値が 1 件も出なかったことがある)。そのときは `<leader>js` で探す |
 | `<leader>jt` | テキスト文字列検索 |
 | `<leader>jf` | ファイル名検索 |
 | `<leader>ji` | カーソル下のファイルを `#include` しているファイル(※下記) |
