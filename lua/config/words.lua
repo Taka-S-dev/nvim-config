@@ -4,7 +4,9 @@
 -- where / and * light one word at a time.
 --
 --   <leader>hh  light the word under the cursor, or the selection, in the next
---               free colour; on a word that is lit already, put it out
+--               free colour; on a place that is lit, put out the word lit
+--               there, the one drawn on top; on a selection lit already,
+--               put it out
 --   <leader>hn  next place any lit word appears     <leader>hp  previous
 --   <leader>hc  put every word out
 --   <leader>ho  a sidebar listing every place a lit word appears in the open
@@ -66,12 +68,42 @@ local function selection()
   return table.concat(text, "\n")
 end
 
+-- The lit word drawn where the cursor is, by its place in `words`: of two
+-- that overlap there, as `_pass` lit inside a lit `app_get_pass`, the one lit
+-- later, which is the one drawn on top.
+local function lit_at_cursor()
+  local line, col = vim.api.nvim_get_current_line(), vim.fn.col(".") - 1
+  for index = #words, 1, -1 do
+    local from = 0
+    while true do
+      local found = vim.fn.matchstrpos(line, words[index].pattern, from)
+      local first, last = found[2], found[3]
+      if first < 0 or first > col then
+        break
+      end
+      if col < last then
+        return index
+      end
+      from = math.max(last, first + 1)
+    end
+  end
+end
+
 function M.toggle()
   local text, whole
   if vim.fn.mode():match("^[vV\22]") then
     text, whole = selection(), false
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
   else
+    -- On a place that is lit, the key is for the word lit there, which can
+    -- be a selection inside the word under the cursor rather than that word.
+    local index = lit_at_cursor()
+    if index then
+      table.remove(words, index)
+      apply_everywhere()
+      panel_refresh()
+      return
+    end
     text, whole = vim.fn.expand("<cword>"), true
   end
   if text == "" or text:find("\n") then
