@@ -6,6 +6,10 @@
 -- Windows clipboard so it can be pasted into other apps with Ctrl+V, and
 -- text copied with Ctrl+C elsewhere can be put via `p` here.
 vim.opt.clipboard = "unnamedplus"
+-- Over ssh, to the clipboard of the machine at hand (lua/config/clipboard.lua).
+if require("config.clipboard").over_ssh() then
+  vim.g.clipboard = require("config.clipboard").provider()
+end
 
 -- Use `zig cc` for nvim-treesitter parser compilation on Windows.
 -- MinGW ld.exe chokes on `\\?\` extended-length paths and tree-sitter CLI
