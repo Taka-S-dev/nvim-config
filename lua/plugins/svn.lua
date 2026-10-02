@@ -97,6 +97,13 @@ return {
       end,
       desc = "Log and revision diffs",
     },
+    {
+      "<leader>vb",
+      function()
+        require("config.svn_blame").toggle()
+      end,
+      desc = "Who wrote each line (blame), shown or put away",
+    },
     { "<leader>vp", "<cmd>SignifyHunkDiff<cr>", desc = "Show this change" },
     {
       "<leader>vr",

@@ -276,6 +276,155 @@ local function run_checks()
   -- the quickfix list, a revision side by side, the files a revision changed
   -- under a folder, including one it deleted, and a hunk put back only when
   -- the question is answered yes.
+  -- Blame, shown only when asked: the rows line up with a file edited since
+  -- the update, a second look asks the repository nothing, the two windows
+  -- stay level, Enter gives the revision's message, and putting it away gives
+  -- the file its wrap back. A headless run fires no WinScrolled, so what it
+  -- would call is called here.
+  check("svn: blame beside the file, lined up with local edits, asked for once", function()
+    need("svn", "svnadmin")
+    local blame = require("config.svn_blame")
+    local dir = temp_dir()
+    run({ "svnadmin", "create", dir .. "/repo" })
+    local url = "file:///" .. dir:gsub("^/", "") .. "/repo"
+    local wc = dir .. "/wc"
+    run({ "svn", "-q", "checkout", url, wc })
+    local lines = {}
+    for i = 1, 80 do
+      lines[i] = ("int a%d;"):format(i)
+    end
+    write(wc .. "/a.c", lines)
+    run({ "svn", "-q", "add", "a.c" }, wc)
+    run({ "svn", "-q", "commit", "--username", "alice", "-m", "add a" }, wc)
+    lines[2] = "int B2;"
+    write(wc .. "/a.c", lines)
+    run({ "svn", "-q", "commit", "--username", "bob", "-m", "change a2" }, wc)
+    write(wc .. "/b.c", { "int b1;", "int b2;" })
+    run({ "svn", "-q", "add", "b.c" }, wc)
+    run({ "svn", "-q", "commit", "--username", "carol", "-m", "add b" }, wc)
+    run({ "svn", "-q", "update" }, wc)
+    -- Since the update: a line added at the top, and the third line edited.
+    table.insert(lines, 1, "int top;")
+    lines[4] = "int A3;"
+    write(wc .. "/a.c", lines)
+    local seen = {}
+    local notify = vim.notify
+    local ok, err = pcall(function()
+      vim.cmd.edit(wc .. "/a.c")
+      local win = vim.api.nvim_get_current_win()
+      vim.wo.wrap = true
+      local function shown()
+        vim.wait(10000, function()
+          return #blame.lines(win) > 0
+        end, 20)
+        return vim.tbl_map(function(row)
+          return row:match("^r%d+%s+%S+") or row
+        end, vim.list_slice(blame.lines(win), 1, 5))
+      end
+      blame.toggle(win)
+      seen.rows = table.concat(shown(), " | ")
+      local blame_win = blame.window(win)
+      -- The rows of the revision the cursor is on are marked, beside the file
+      -- and in its line numbers: bob's one line, then alice's 78.
+      local function marked_on(line)
+        vim.api.nvim_win_set_cursor(win, { line, 0 })
+        vim.api.nvim_exec_autocmds("CursorMoved", { buffer = vim.api.nvim_win_get_buf(win) })
+        return blame.marked(win)
+      end
+      seen.bob = marked_on(3)
+      -- A cursor dragged by a scroll is no line chosen: the marking stays.
+      vim.api.nvim_feedkeys(vim.keycode("<C-e>"), "x", false)
+      seen.scrolled = marked_on(2)
+      vim.api.nvim_feedkeys("j", "x", false)
+      local alice = marked_on(2)
+      seen.alice = select(2, alice:gsub("%d+", "")) .. " " .. alice:sub(1, 7)
+      seen.edited = marked_on(1)
+      -- No smooth scrolling in either while the blame is open: stepped, the
+      -- one following trails the one scrolled.
+      local animates = Snacks.config.get("scroll", {}).filter
+      seen.animates = tostring(animates(vim.api.nvim_win_get_buf(win)))
+        .. "/"
+        .. tostring(animates(vim.api.nvim_win_get_buf(blame_win)))
+      vim.fn.winrestview({ topline = 40, lnum = 40 })
+      blame.follow(win)
+      seen.followed = vim.api.nvim_win_call(blame_win, function()
+        return vim.fn.line("w0")
+      end)
+      vim.api.nvim_win_call(blame_win, function()
+        vim.fn.winrestview({ topline = 10 })
+      end)
+      blame.follow(blame_win)
+      seen.led = vim.fn.line("w0")
+      vim.notify = function(message)
+        seen.message = message
+      end
+      vim.api.nvim_set_current_win(blame_win)
+      vim.api.nvim_win_set_cursor(blame_win, { 1, 0 })
+      -- Stepped to in the blame, a row puts the file's cursor on its line.
+      press("2j")
+      vim.api.nvim_exec_autocmds("CursorMoved", { buffer = vim.api.nvim_win_get_buf(blame_win) })
+      seen.cursor = vim.api.nvim_win_get_cursor(win)[1]
+      press("<CR>")
+      vim.wait(10000, function()
+        return seen.message ~= nil
+      end, 20)
+      vim.api.nvim_set_current_win(win)
+      blame.toggle(win)
+      seen.closed = blame.window(win) == nil and vim.wo.wrap
+      local before = spawned.svn or 0
+      blame.toggle(win)
+      seen.again = table.concat(shown(), " | ")
+      vim.wait(1000)
+      seen.processes = (spawned.svn or 0) - before
+      -- Another file in the window: the blame goes to it, says so where
+      -- there is none, and comes back to the first without asking again.
+      local function rows_now(want)
+        vim.wait(10000, function()
+          return blame.lines(win)[1] == want
+        end, 20)
+        return table.concat(blame.lines(win), " | "):gsub("%s+%d%d%d%d%-%d%d%-%d%d", "")
+      end
+      vim.cmd.edit(wc .. "/b.c")
+      vim.wait(10000, function()
+        return (blame.lines(win)[1] or ""):match("^r%d")
+      end, 20)
+      seen.other = table.concat(blame.lines(win), " | "):gsub("%s+%d%d%d%d%-%d%d%-%d%d", "")
+      vim.cmd("enew")
+      seen.none = rows_now("(no file)")
+      vim.cmd.edit(wc .. "/a.c")
+      vim.wait(10000, function()
+        return #blame.lines(win) > 2
+      end, 20)
+      seen.back = table.concat(vim.list_slice(blame.lines(win), 1, 3), " | "):gsub("%s+%d%d%d%d%-%d%d%-%d%d", "")
+      blame.toggle(win)
+      seen.animates_after = tostring(animates(vim.api.nvim_win_get_buf(win)))
+    end)
+    vim.notify = notify
+    reset_editor()
+    expect(ok, tostring(err))
+    local want = "(local) | r1     alice | r2     bob | (local) | r1     alice"
+    expect(seen.rows == want, "rows: " .. tostring(seen.rows))
+    expect(seen.animates == "false/false", "smooth scrolling beside the blame, file/blame: " .. tostring(seen.animates))
+    expect(
+      seen.animates_after == "true",
+      "smooth scrolling once the blame is put away: " .. tostring(seen.animates_after)
+    )
+    expect(seen.bob == "3 / 3", "marked with the cursor on bob's line: " .. tostring(seen.bob))
+    expect(seen.alice == "156 2,5,6,7", "marked with the cursor on alice's: " .. tostring(seen.alice))
+    expect(seen.scrolled == "3 / 3", "marked after a scroll moved the cursor: " .. tostring(seen.scrolled))
+    expect(seen.edited == " / ", "marked with the cursor on a line edited since: " .. tostring(seen.edited))
+    expect(seen.followed == 40, "the blame went to " .. tostring(seen.followed) .. ", not 40")
+    expect(seen.led == 10, "the file went to " .. tostring(seen.led) .. ", not 10")
+    expect(seen.cursor == 3, "a row stepped to in the blame put the file at line " .. tostring(seen.cursor))
+    expect(tostring(seen.message):find("change a2", 1, true), "Enter on bob's row: " .. tostring(seen.message))
+    expect(seen.closed == true, "put away, the window is not as it was")
+    expect(seen.again == want, "shown again: " .. tostring(seen.again))
+    expect(seen.processes == 1, ("shown again, svn ran %d times, not once for the base"):format(seen.processes))
+    expect(seen.other == "r3     carol | r3     carol", "beside b.c: " .. tostring(seen.other))
+    expect(seen.none == "(no file)", "beside a buffer with no file: " .. tostring(seen.none))
+    expect(seen.back == "(local) | r1     alice | r2     bob", "back beside a.c: " .. tostring(seen.back))
+  end)
+
   check("svn: status, revision diffs and the hunk undo", function()
     need("svn", "svnadmin")
     local svn = require("config.svn")

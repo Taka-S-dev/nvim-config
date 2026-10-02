@@ -38,6 +38,9 @@ local function run(args, done)
   end)
 end
 
+-- For lua/config/svn_blame.lua, which runs svn the same way.
+M.run = run
+
 local function lines_of(text)
   local lines = vim.split((text or ""):gsub("\r\n", "\n"), "\n", { plain = true })
   if lines[#lines] == "" then
