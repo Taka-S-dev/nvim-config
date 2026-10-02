@@ -843,6 +843,44 @@ local function run_checks()
 
   -- A heading that is renamed leaves the links to it pointing nowhere, and
   -- nothing says so until a reader follows one.
+  -- The help is where the keys are told (doc/cfg.txt, :h cfg). A key added
+  -- without a word there, or a |link| to a tag that was renamed, fails here,
+  -- so the help does not fall behind the config.
+  check("help: :h cfg opens, every key the config adds is in it, every link leads somewhere", function()
+    local config = vim.fn.stdpath("config")
+    local help = table.concat(vim.fn.readfile(config .. "/doc/cfg.txt"), "\n")
+    local defined, twice, broken, missing = {}, {}, {}, {}
+    for tag in help:gmatch("%*(cfg[%w-]*)%*") do
+      if defined[tag] then
+        twice[#twice + 1] = tag
+      end
+      defined[tag] = true
+    end
+    for tag in help:gmatch("|(cfg[%w-]*)|") do
+      if not defined[tag] then
+        broken[#broken + 1] = tag
+      end
+    end
+    local seen = {}
+    for _, file in ipairs(vim.fn.globpath(config .. "/lua", "**/*.lua", false, true)) do
+      for _, line in ipairs(vim.fn.readfile(file)) do
+        for key in line:gmatch('"(<leader>[^"]+)"') do
+          if not seen[key] and not help:find(key, 1, true) then
+            missing[#missing + 1] = key .. " (" .. vim.fs.basename(file) .. ")"
+          end
+          seen[key] = true
+        end
+      end
+    end
+    vim.cmd("help cfg")
+    local opened = vim.fn.expand("%:t")
+    vim.cmd("close")
+    expect(opened == "cfg.txt", ":h cfg opened " .. opened)
+    expect(#twice == 0, "tags defined twice: " .. table.concat(twice, ", "))
+    expect(#broken == 0, "links to no tag: " .. table.concat(broken, ", "))
+    expect(#missing == 0, "keys the help does not mention: " .. table.concat(missing, ", "))
+  end)
+
   check("README: every link to a heading or a file leads somewhere", function()
     local config = vim.fn.stdpath("config")
     vim.cmd.edit(config .. "/README.md")

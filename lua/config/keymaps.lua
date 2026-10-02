@@ -72,6 +72,15 @@ Snacks.toggle({
   end,
 }):map("<leader>uW")
 
+-- Names for the groups of keys this config adds, for the list which-key shows
+-- after <leader>; what each key does is in :h cfg.
+pcall(function()
+  require("which-key").add({
+    { "<leader>j", group = "jump: gtags, pins, call tree, jump stack" },
+    { "<leader>h", group = "highlight words" },
+  })
+end)
+
 -- Several words lit at once, <leader>hh and friends (lua/config/words.lua).
 require("config.words")
 

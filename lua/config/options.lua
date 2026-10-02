@@ -101,6 +101,16 @@ vim.opt.diffopt:append("inline:word")
 -- a C project are C.
 vim.g.c_syntax_for_h = true
 
+-- This config's help, :h cfg (doc/cfg.txt). Its index, doc/tags, is made here
+-- when it is missing or older than the help, as a plugin manager makes it for
+-- a plugin's help; being made, it is not kept in git.
+do
+  local doc = vim.fn.stdpath("config") .. "/doc"
+  if vim.fn.getftime(doc .. "/tags") < vim.fn.getftime(doc .. "/cfg.txt") then
+    pcall(vim.cmd.helptags, vim.fn.fnameescape(doc))
+  end
+end
+
 -- scoop's tools started from the folder of their version, past the junction a
 -- session opened over ssh cannot follow (lua/config/scoop_shims.lua).
 require("config.scoop_shims")
