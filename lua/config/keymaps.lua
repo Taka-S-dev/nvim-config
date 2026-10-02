@@ -94,5 +94,8 @@ require("config.diff_pane")
 -- q anywhere in a comparison ends it (lua/config/diff_quit.lua).
 require("config.diff_quit")
 
+-- Call trees from GTAGS, <leader>jh and <leader>jH (lua/config/call_tree.lua).
+require("config.call_tree")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("config.cd_picker")
