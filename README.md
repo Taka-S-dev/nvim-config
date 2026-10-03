@@ -364,6 +364,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   │   ├── peek.lua    # 定義を、読んでいる行を隠さない小窓に出す (<leader>jp)
 │   │   │   └── index.lua   # GTAGS と tags を裏で作る (<leader>jb / ju / jB)
 │   │   ├── diff\
+│   │   │   ├── init.lua    # 下の 4 つを読み込む
 │   │   │   ├── map.lua     # 比べている窓の右端に、違いの場所を示す帯
 │   │   │   ├── scroll.lua  # 比べている左右の窓を、ホイールでも一緒にスクロールさせる
 │   │   │   ├── pane.lua    # 比べている窓の下に、カーソルのある変更の左右を上下に並べるペイン (<leader>uP)

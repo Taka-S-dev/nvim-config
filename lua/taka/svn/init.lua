@@ -585,4 +585,9 @@ function M.undo_hunk()
   end
 end
 
+-- Who wrote each line of the window's file, beside it, or put away (blame.lua).
+function M.blame()
+  require("taka.svn.blame").toggle()
+end
+
 return M

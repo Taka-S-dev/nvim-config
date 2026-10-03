@@ -100,7 +100,7 @@ return {
     {
       "<leader>vb",
       function()
-        require("taka.svn.blame").toggle()
+        require("taka.svn").blame()
       end,
       desc = "Who wrote each line (blame), shown or put away",
     },

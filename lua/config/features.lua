@@ -30,18 +30,10 @@ key("n", "<leader>jm", "taka.pins", "add", "Pin this line with a note")
 key("n", "<leader>jM", "taka.pins", "list", "Find a pin")
 key("n", "<leader>jo", "taka.pins", "toggle_panel", "Pins panel (arrange)")
 
--- Where a diff differs, in a strip down the right edge (lua/taka/diff/map.lua).
-require("taka.diff.map")
-
--- The two sides of a diff scrolled together by the wheel too (lua/taka/diff/scroll.lua).
-require("taka.diff.scroll")
-
--- The line under the cursor, both sides of it, in a pane below a diff, <leader>uP
--- (lua/taka/diff/pane.lua).
-require("taka.diff.pane").toggle:map("<leader>uP")
-
--- q anywhere in a comparison ends it (lua/taka/diff/quit.lua).
-require("taka.diff.quit")
+-- Comparing two windows: where they differ in a strip on the right, the wheel
+-- scrolling both, q ending it, and a pane below with the change under the
+-- cursor from both sides, <leader>uP (lua/taka/diff/).
+require("taka.diff").pane_toggle:map("<leader>uP")
 
 -- Call trees from GTAGS, <leader>jh and <leader>jH
 -- (lua/taka/call_tree/init.lua).
