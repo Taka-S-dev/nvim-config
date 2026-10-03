@@ -25,6 +25,28 @@ local bash ---@type false|{ exe: string, tmp: string, prefix: string }|nil
 ---@type "direct"|"file"|"bash"|nil
 M.transport = nil
 
+-- The directory of the GTAGS above `path`, a file's name, or nil; `also` names
+-- other things a project's root holds, such as .git, that end the search too.
+-- Only a file named GTAGS, in that case, counts. Where names are compared
+-- without case, as on Windows, vim.fs.root took a folder named gtags for one:
+-- the Lua files under lua/taka/, beside lua/taka/gtags/, were looked up in a
+-- GTAGS that is not there.
+function M.root(path, also)
+  if not path or path == "" then
+    return nil
+  end
+  return vim.fs.root(path, function(name, where)
+    if name == "GTAGS" then
+      -- Searching upward, vim.fs.find hands over the directory the name is
+      -- in, where its documentation says the item's own path.
+      local full = vim.fs.basename(where) == name and where or vim.fs.joinpath(where, name)
+      local stat = vim.uv.fs_stat(full)
+      return stat ~= nil and stat.type == "file"
+    end
+    return also ~= nil and vim.tbl_contains(also, name)
+  end)
+end
+
 local function load_transport()
   if M.transport then
     return

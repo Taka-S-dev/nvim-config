@@ -44,7 +44,7 @@ end
 
 local function gtags_root()
   local name = vim.api.nvim_buf_get_name(0)
-  return name ~= "" and vim.fs.root(name, "GTAGS") or nil
+  return require("taka.lib.gtags_global").root(name)
 end
 
 -- `global -ax*` prints `name  line  absolute-path  source-line`.

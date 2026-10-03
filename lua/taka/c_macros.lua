@@ -107,7 +107,7 @@ local asked = {}
 
 local function gtags_root(buf)
   local name = vim.api.nvim_buf_get_name(buf)
-  return name ~= "" and vim.fs.root(name, "GTAGS") or nil
+  return require("taka.lib.gtags_global").root(name)
 end
 
 local function stamp(buf)

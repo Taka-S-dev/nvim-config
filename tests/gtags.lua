@@ -83,6 +83,24 @@ return function(T)
   -- junctions, the shims' included, so the tools this config runs are found in
   -- the folder of their version, down a path with no junction in it. Only where
   -- scoop put a shim for them.
+  -- Where names are compared without case, as on Windows, a folder named gtags
+  -- was taken for a GTAGS: the files beside it were looked up in an index that
+  -- is not there. Only a file named GTAGS makes a root.
+  check("gtags root: a GTAGS file makes one, a folder named gtags does not", function()
+    local dir = temp_dir()
+    write(dir .. "/src/a.c", { "int a;" })
+    vim.fn.mkdir(dir .. "/src/gtags", "p")
+    local root = require("taka.lib.gtags_global").root
+    local before = root(dir .. "/src/a.c")
+    write(dir .. "/GTAGS", { "" })
+    local after = root(dir .. "/src/a.c")
+    expect(before == nil, "a folder named gtags made a root: " .. tostring(before))
+    expect(
+      after and vim.fs.normalize(after) == vim.fs.normalize(dir),
+      "the GTAGS above was not found: " .. tostring(after)
+    )
+  end)
+
   check("scoop: the tools run from their own folder, not through a shim or junction", function()
     local shims = vim.fs.joinpath(vim.env.SCOOP or vim.fs.joinpath(vim.env.USERPROFILE or "", "scoop"), "shims")
     local shimmed = {}

@@ -203,7 +203,7 @@ end
 -- A session for the buffer, or nil and why not: there is no GTAGS above it.
 function M.attach(buf)
   local file = vim.api.nvim_buf_get_name(buf)
-  local root = file ~= "" and vim.fs.root(file, "GTAGS")
+  local root = require("taka.lib.gtags_global").root(file)
   if not root or vim.fn.executable("global") == 0 then
     return nil, "No GTAGS for this file. Build one with <leader>jb."
   end

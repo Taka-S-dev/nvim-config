@@ -75,7 +75,7 @@ end
 -- control, else the working directory.
 local function root_of(buf)
   local file = vim.api.nvim_buf_get_name(buf)
-  return file ~= "" and vim.fs.root(file, { "GTAGS", ".git", ".svn" }) or vim.fn.getcwd()
+  return require("taka.lib.gtags_global").root(file, { ".git", ".svn" }) or vim.fn.getcwd()
 end
 
 -- The writes to `name` under `root`, handed to `done` as quickfix items. The

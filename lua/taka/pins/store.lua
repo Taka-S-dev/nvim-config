@@ -7,7 +7,7 @@
 -- own directory. A pin stores its path relative to this, so it has to be a
 -- directory the file really is in.
 local function project_root(file)
-  local marked = file ~= "" and vim.fs.root(file, { "GTAGS", ".git" }) or nil
+  local marked = require("taka.lib.gtags_global").root(file, { ".git" })
   if marked then
     return vim.fs.normalize(marked)
   end

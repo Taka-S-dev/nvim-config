@@ -384,7 +384,7 @@ end
 -- complete, dot_on_pointer } or nil.
 function M.candidates(buf, row, col, done)
   local name = vim.api.nvim_buf_get_name(buf)
-  local root = name ~= "" and vim.fs.root(name, "GTAGS") or nil
+  local root = global.root(name)
   if not root or vim.fn.executable("global") == 0 then
     return done(nil)
   end
