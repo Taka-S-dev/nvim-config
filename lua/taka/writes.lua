@@ -126,6 +126,12 @@ end
 
 -- The writes to the word under the cursor, in a list with a preview.
 function M.show()
+  -- The grammar read is C's. Elsewhere a language server's references, gr in
+  -- LazyVim, are the nearest thing.
+  if vim.bo.filetype ~= "c" and vim.bo.filetype ~= "cpp" then
+    vim.notify("The writes list reads C only; gr lists the references", vim.log.levels.WARN)
+    return
+  end
   local name = vim.fn.expand("<cword>")
   if not name:match("^[%a_][%w_]*$") then
     vim.notify("No name under the cursor", vim.log.levels.WARN)

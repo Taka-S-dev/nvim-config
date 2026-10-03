@@ -201,7 +201,7 @@ return function(T)
   -- lua/taka/call_tree/init.lua. One that answers from a graph in memory, after
   -- a turn of the event loop as a language server would, is drawn and opened as
   -- GTAGS is; a source that cannot answer for the buffer passes to the next,
-  -- and when none can, the first one's reason is shown.
+  -- and when none can, the last one's reason is shown.
   check("call tree: a source that keeps to the interface is drawn as GTAGS is", function()
     local tree = require("taka.call_tree")
     -- parse calls itself through expr: only the rows above tell it.

@@ -587,6 +587,28 @@ treesitter で読む。名前の無い struct や union のメンバーも出る
 っているバッファでは、こちらは何も出さず、言語サーバーに任せる。言語サーバーが
 止まれば、またこちらが出す。
 
+                                                                     *cfg-lsp*
+GTAGS の無いファイル(Go や Lua など)で、言語サーバーがつながっているときは、
+gtags のキーが言語サーバーに聞く。Go なら `:LazyExtras` で `lang.go` を有効に
+すると gopls が入り、そのまま次のように使える。
+
+`<C-]>` / `<leader>jg`    定義へ飛ぶ。タグスタックに積むので `<C-t>` で戻れ、
+                          ジャンプスタックにも出る
+`<leader>jp`              定義をピークの小窓に出す
+`<leader>js`              参照の一覧
+`<leader>jc`              呼び出し元の一覧(呼び出し階層を持つサーバーのとき)
+`<leader>jh` / `<leader>jH`
+                          コールツリー(呼び出し階層を持つサーバーのとき。
+                          lua_ls は持たない)
+`<leader>jt` / `<leader>jf`
+                          テキストとファイル名の検索。GTAGS の索引を使わずに、
+                          ファイルを直接探す
+補完                      言語サーバーに任せる。GTAGS の補完(|cfg-complete|)は
+                          C と C++ だけ
+
+代入の一覧(`<leader>jw`)と `<leader>ji` は C の構文と `#include` を読むので、C
+以外では使えない。`<leader>jw` は代わりに参照の一覧(LazyVim の `gr`)を案内する。
+
                                                                     *cfg-pins*
 ピンは、何段も関数を追った後で戻りたくなる場所に、自分の言葉のメモを付けて残す
 ためのもの。マークは 26 個までで理由を書けず、ジャンプリストには通った場所が全
@@ -685,11 +707,11 @@ treesitter で読む。名前の無い struct や union のメンバーも出る
 呼んでいる先は、関数の本体にある呼び出しを構文から拾い、定義の場所を
 `global -d` で引く。
 
-何が何を呼ぶかを調べる部分(今は gtags だけ)は、パネルと分けてある
-(`lua/taka/call_tree/`)。`lua/taka/call_tree/init.lua` の先頭に、調べる部分が満
-たす約束(関数 3 つと、ノードの形)が書いてある。LSP の呼び出し階層
-(`callHierarchy/incomingCalls` など)に対応するときは、その約束を満たすファイル
-を 1 つ足して、`M.sources` の先頭に加える。
+何が何を呼ぶかを調べる部分は、パネルと分けてある(`lua/taka/call_tree/`)。
+`lua/taka/call_tree/init.lua` の先頭に、調べる部分が満たす約束(関数 3 つと、ノー
+ドの形)が書いてある。今あるのは GTAGS(`gtags.lua`)と、言語サーバーの呼び出し階
+層(`lsp.lua`、`callHierarchy/incomingCalls` など)の 2 つで、GTAGS の無いファイ
+ルでは言語サーバーが答える(|cfg-lsp|)。
 
 gtags と同じく名前で探すので、次のものは正しく出ない。
 

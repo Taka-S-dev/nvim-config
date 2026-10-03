@@ -39,7 +39,7 @@
 local M = {}
 
 -- Where the call trees come from, in order of preference.
-M.sources = { "taka.call_tree.gtags" }
+M.sources = { "taka.call_tree.gtags", "taka.call_tree.lsp" }
 
 -- What the panel shows: where it comes from, the function the tree starts
 -- from and which way it goes.
@@ -384,10 +384,11 @@ local function open_tree(session, direction, top)
 end
 
 -- The tree of the function under or around the cursor, from the first source
--- that can answer for the buffer.
+-- that can answer for the buffer. When none can, the last one says why: it is
+-- the one tried after all the others, the language server's after GTAGS'.
 function M.start(direction)
   local buf = vim.api.nvim_get_current_buf()
-  local first_reason
+  local last_reason
   for _, name in ipairs(M.sources) do
     local session, why = require(name).attach(buf)
     if session then
@@ -400,9 +401,9 @@ function M.start(direction)
       end)
       return
     end
-    first_reason = first_reason or why
+    last_reason = why or last_reason
   end
-  vim.notify(first_reason or "No source of call trees for this buffer", vim.log.levels.WARN)
+  vim.notify(last_reason or "No source of call trees for this buffer", vim.log.levels.WARN)
 end
 
 -- For the checks: the rows of the panel as text, guides and marks included.

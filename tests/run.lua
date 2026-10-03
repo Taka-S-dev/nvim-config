@@ -45,6 +45,7 @@ local function run_checks()
     "scope",
     "c_macros",
     "call_tree",
+    "lsp",
     "jump_stack",
     "highlight",
   }) do

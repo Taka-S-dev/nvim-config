@@ -87,9 +87,19 @@ local function show(title, symbol, items, from)
   vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = { { tagname = symbol, from = from } } }, "t")
   if #items == 1 then
     vim.cmd("normal! m'")
-    vim.cmd.edit(vim.fn.fnameescape(items[1].filename))
-    vim.api.nvim_win_set_cursor(0, { items[1].lnum, 0 })
-    vim.cmd("normal! ^")
+    -- A definition in the file already open is reached without :edit, which
+    -- would read the file again and have its language server attach anew.
+    local here = vim.fs.normalize(vim.api.nvim_buf_get_name(0)):lower()
+    if vim.fs.normalize(items[1].filename):lower() ~= here then
+      vim.cmd.edit(vim.fn.fnameescape(items[1].filename))
+    end
+    -- A language server says the column; GTAGS gives the line only.
+    if (items[1].col or 1) > 1 then
+      vim.api.nvim_win_set_cursor(0, { items[1].lnum, items[1].col - 1 })
+    else
+      vim.api.nvim_win_set_cursor(0, { items[1].lnum, 0 })
+      vim.cmd("normal! ^")
+    end
     return
   end
   open_picker(title, items)
@@ -190,11 +200,55 @@ local function run_global(root, invocations, done, label)
   end
 end
 
+-- The definitions a language server gives for the word at the cursor, for a
+-- file no GTAGS covers, as in Go or Lua: the same items a lookup in GTAGS
+-- gives, so the jump, the list of several and the peek treat them alike. false
+-- when no server attached to the buffer answers definitions.
+local function lsp_definitions(symbol, done)
+  local method = "textDocument/definition"
+  local buf = vim.api.nvim_get_current_buf()
+  local clients = vim.lsp.get_clients({ bufnr = buf, method = method })
+  if #clients == 0 then
+    return false
+  end
+  local win = vim.api.nvim_get_current_win()
+  local answered = begin_lookup(symbol)
+  vim.lsp.buf_request_all(buf, method, function(client)
+    return vim.lsp.util.make_position_params(win, client.offset_encoding)
+  end, function(results)
+    local items, seen = {}, {}
+    for id, response in pairs(results) do
+      local client = vim.lsp.get_client_by_id(id)
+      local answer = response.result
+      if answer and client then
+        -- One location, or a list of them.
+        answer = (answer.uri or answer.targetUri) and { answer } or answer
+        for _, item in ipairs(vim.lsp.util.locations_to_items(answer, client.offset_encoding)) do
+          local key = item.filename .. ":" .. item.lnum
+          if not seen[key] then
+            seen[key] = true
+            items[#items + 1] =
+              { filename = item.filename, lnum = item.lnum, col = item.col, text = vim.trim(item.text or "") }
+          end
+        end
+      end
+    end
+    answered("lsp, " .. found(items))
+    if vim.api.nvim_get_current_win() == win and vim.api.nvim_get_current_buf() == buf then
+      done(items, "lsp")
+    end
+  end)
+  return true
+end
+
 ---Look the definitions of `symbol` up and hand them to `done`. `done` is not
----called when there is no database or no global to ask.
+---called when there is no database or no global to ask, nor a language server.
 local function lookup_definition(symbol, done, no_database)
   local root = gtags_root()
   if not root or vim.fn.executable("global") == 0 then
+    if not root and lsp_definitions(symbol, done) then
+      return
+    end
     return no_database()
   end
   local symbols = definitions_of(root)
@@ -281,6 +335,26 @@ local queries = {
   },
 }
 
+-- The same keys where no GTAGS covers the file, as in Go or Lua: occurrences
+-- and callers from the language server attached to the buffer, text and file
+-- names searched in the files themselves, without an index. #include is C's
+-- own.
+local function without_gtags(kind, symbol)
+  local server = function(method)
+    return #vim.lsp.get_clients({ bufnr = 0, method = method }) > 0
+  end
+  if kind == "s" and server("textDocument/references") then
+    return Snacks.picker.lsp_references()
+  elseif kind == "c" and server("callHierarchy/incomingCalls") then
+    return Snacks.picker.lsp_incoming_calls()
+  elseif kind == "t" then
+    return Snacks.picker.grep({ search = symbol, regex = false })
+  elseif kind == "f" then
+    return Snacks.picker.files({ pattern = vim.fs.basename(symbol) })
+  end
+  vim.notify("No GTAGS for this file. Build one with <leader>jb in the project root.", vim.log.levels.WARN)
+end
+
 local function query(kind, symbol)
   local spec = queries[kind]
   if not symbol or symbol == "" then
@@ -288,8 +362,7 @@ local function query(kind, symbol)
   end
   local root = gtags_root()
   if not root then
-    vim.notify("No GTAGS for this file. Build one with <leader>jb in the project root.", vim.log.levels.WARN)
-    return
+    return without_gtags(kind, symbol)
   end
   if vim.fn.executable("global") == 0 then
     vim.notify("global is not on PATH", vim.log.levels.ERROR)
