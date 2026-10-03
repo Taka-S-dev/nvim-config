@@ -358,6 +358,11 @@ $env:LOCALAPPDATA\nvim\
 │   │   │   ├── enclosing.lua    # ある行を囲む関数の名前を、言語を問わず treesitter で取る
 │   │   │   ├── sidebar.lua      # 脇のパネル(ピン、コールツリー、ジャンプスタック)が共有する部品
 │   │   │   └── activity.lua     # 裏で動いている処理をステータスラインに出す
+│   │   ├── gtags\
+│   │   │   ├── init.lua    # 定義ジャンプ・ピーク・検索・索引作り (<leader>j*)。キーは plugins\gtags.lua
+│   │   │   ├── lookup.lua  # global で定義を引き、無ければ ctags。呼び出し元などの検索
+│   │   │   ├── peek.lua    # 定義を、読んでいる行を隠さない小窓に出す (<leader>jp)
+│   │   │   └── index.lua   # GTAGS と tags を裏で作る (<leader>jb / ju / jB)
 │   │   ├── diff\
 │   │   │   ├── map.lua     # 比べている窓の右端に、違いの場所を示す帯
 │   │   │   ├── scroll.lua  # 比べている左右の窓を、ホイールでも一緒にスクロールさせる
@@ -380,7 +385,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   └── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)
 │   └── plugins\            # 追加プラグイン定義
 │       ├── aerial.lua      # シンボルアウトライン
-│       ├── gtags.lua       # gtags ナビ(定義ジャンプ・<leader>j*)
+│       ├── gtags.lua       # gtags ナビのキーとコマンド (中身は taka\gtags\)
 │       ├── gutentags.lua   # ctags で tags を維持 (gtags fallback)
 │       ├── svn.lua         # SVN: 変更行の印 (vim-signify、svn のみ) と <leader>v のキー
 │       ├── snacks-scroll.lua # 差分の窓ではなめらかスクロールを切る

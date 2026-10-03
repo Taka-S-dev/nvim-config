@@ -126,7 +126,7 @@ local function stamp(buf)
 end
 
 -- GTAGS, for the names the tags file did not place, as in a project indexed
--- by gtags alone (lua/plugins/gtags.lua): global prints the line each name is
+-- by gtags alone (lua/taka/gtags/): global prints the line each name is
 -- defined on, and a name defined by a #define is a macro. An enum value is
 -- not told from its line, which may hold the whole enum or the value alone,
 -- and keeps the grammar's colour, the one an enum value in capitals gets

@@ -1,7 +1,7 @@
 -- The jump stack: the jumps to a definition or a reference the cursor is inside
 -- now, one row a level and indented by depth, the way a debugger shows its call
 -- stack as you step in (<leader>jy). It is Vim's tag stack, which <C-]> and
--- <C-t> already keep, and which the jumps of gtags (lua/plugins/gtags.lua), of
+-- <C-t> already keep, and which the jumps of gtags (lua/taka/gtags/), of
 -- ctags and of a language server's definitions and references all go onto; so
 -- it is the same for any language.
 --

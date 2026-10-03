@@ -3,7 +3,7 @@
 -- where gtags can't index everything (Shift-JIS-encoded sources,
 -- non-standard file extensions, exotic dialects of legacy C, etc.).
 --
--- The definition jump in lua/plugins/gtags.lua asks gtags first and falls
+-- The definition jump in lua/taka/gtags/lookup.lua asks gtags first and falls
 -- back to vim's tag system on a miss, so both can coexist transparently:
 -- gtags wins where it works, ctags catches the rest.
 --
