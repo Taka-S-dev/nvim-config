@@ -243,6 +243,155 @@ return function(T)
     expect(landed == "d.c:3", "landed on " .. landed)
     expect(peeked, "the peek did not find what the jump found")
   end)
+  -- Completion in C from GTAGS (lua/taka/gtags/complete.lua): the names of the
+  -- project as a word is typed, and after `->` or `.` the members of the type
+  -- before it, through typedefs, pointers, arrays, a union with no name and a
+  -- global of another file. A type that cannot be told offers nothing.
+  check("completion: project names, and the members after -> and . by type", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    write(dir .. "/types.h", {
+      "struct inner { int depth; char *label; };",
+      "typedef struct outer {",
+      "    struct inner in;",
+      "    struct inner *next;",
+      "    union { int as_int; float as_float; };",
+      "    struct inner items[4];",
+      "} OUTER;",
+      "typedef OUTER ALIAS;",
+      "enum colour { COLOUR_RED, COLOUR_BLUE };",
+      "int outer_new(void);",
+    })
+    write(
+      dir .. "/main.c",
+      { '#include "types.h"', "ALIAS *the_global;", "int outer_new(void) { return COLOUR_RED; }" }
+    )
+    write(dir .. "/use.c", {
+      '#include "types.h"',
+      "int use(OUTER *o, int n)",
+      "{",
+      "    struct inner local;",
+      "    if (n) {",
+      "        ALIAS *aliased = o;",
+      "        n++;",
+      "    }",
+      "    return 0;",
+      "}",
+    })
+    run({ "gtags" }, dir)
+    vim.cmd.edit(dir .. "/use.c")
+    local complete = require("taka.gtags.complete")
+    local function offered(text)
+      vim.api.nvim_buf_set_lines(0, 6, 7, false, { text })
+      local result, finished
+      complete.candidates(0, 6, #text, function(r)
+        result, finished = r, true
+      end)
+      vim.wait(10000, function()
+        return finished
+      end, 10)
+      if not result then
+        return "none"
+      end
+      local names = vim.tbl_map(function(item)
+        return item.label
+      end, result.items)
+      table.sort(names)
+      return (result.dot_on_pointer and "fix " or "") .. table.concat(names, ",")
+    end
+    local seen = {}
+    for _, text in ipairs({
+      "        o->",
+      "        o.",
+      "        o->next->",
+      "        o->items[n + 1].",
+      "        aliased->in.la",
+      "        local.",
+      "        the_global->",
+      "        ((OUTER *)o)->",
+      "        nothing->",
+      "        outer_",
+      "        COLOUR_",
+    }) do
+      seen[vim.trim(text)] = offered(text)
+    end
+    vim.cmd("bwipeout!")
+    reset_editor()
+    local outer = "as_float,as_int,in,items,next"
+    local inner = "depth,label"
+    for text, want in pairs({
+      ["o->"] = outer,
+      ["o."] = "fix " .. outer,
+      ["o->next->"] = inner,
+      ["o->items[n + 1]."] = inner,
+      ["aliased->in.la"] = inner,
+      ["local."] = inner,
+      ["the_global->"] = outer,
+      ["((OUTER *)o)->"] = "none",
+      ["nothing->"] = "none",
+      ["outer_"] = "outer_new",
+      ["COLOUR_"] = "COLOUR_BLUE,COLOUR_RED",
+    }) do
+      expect(seen[text] == want, ("after %q: %s"):format(text, tostring(seen[text])))
+    end
+  end)
+
+  -- A language server that completes knows the types the GTAGS completion
+  -- reads from declarations: with one attached, the GTAGS source steps aside,
+  -- and answers again once it is gone.
+  check("completion: steps aside for a language server that completes", function()
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "int main(void) { return 0; }" })
+    vim.cmd.edit(dir .. "/a.c")
+    local buf = vim.api.nvim_get_current_buf()
+    local source = require("taka.gtags.blink").new()
+    local before = source:enabled()
+    -- A server in this process that says it completes, and does nothing else.
+    local closing = false
+    local id = vim.lsp.start({
+      name = "completes",
+      root_dir = dir,
+      cmd = function(dispatchers)
+        return {
+          request = function(method, _, callback)
+            if method == "initialize" then
+              callback(nil, { capabilities = { completionProvider = {} } })
+            elseif callback then
+              callback(nil, nil)
+            end
+            return true, 1
+          end,
+          notify = function()
+            return true
+          end,
+          is_closing = function()
+            return closing
+          end,
+          terminate = function()
+            closing = true
+            dispatchers.on_exit(0, 15)
+          end,
+        }
+      end,
+    }, { bufnr = buf })
+    local attached = vim.wait(5000, function()
+      return #vim.lsp.get_clients({ bufnr = buf, method = "textDocument/completion" }) > 0
+    end, 20)
+    local during = source:enabled()
+    vim.lsp.stop_client(id, true)
+    vim.wait(5000, function()
+      return source:enabled()
+    end, 20)
+    local after = source:enabled()
+    vim.cmd("bwipeout!")
+    reset_editor()
+    expect(attached, "the server did not attach")
+    expect(
+      before and not during and after,
+      ("enabled before/with/after the server: %s/%s/%s"):format(tostring(before), tostring(during), tostring(after))
+    )
+  end)
+
   check("status: what runs in the background is shown, then cleared", function()
     local activity = require("taka.lib.activity")
     -- The check before leaves its result on show for two seconds, and a result
