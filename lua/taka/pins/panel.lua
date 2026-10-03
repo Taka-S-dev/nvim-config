@@ -51,7 +51,7 @@ local function row_text(row, look, searching)
   local place = ("%s:%d"):format(vim.fs.basename(pin.file), pin.line)
   return {
     { guides, "SnacksPickerTree" },
-    { marker, "DiagnosticInfo" },
+    { marker, "PinSign" },
     -- No highlight group for a note: "Normal" carries the background of the
     -- editing windows, which showed as a box on the sidebar and cut a hole in
     -- the line under the cursor.

@@ -47,6 +47,29 @@ local locate, pins_in, history = store.locate, store.pins_in, store.history
 
 local namespace = vim.api.nvim_create_namespace("config_pins")
 
+-- A pin's sign and note take colours of their own: drawn at the end of a line
+-- in a diagnostic's colour, a note read as a message from the language server,
+-- which LazyVim puts there too. The note is in italics, as words added beside
+-- the code and not part of it. Both follow the colour scheme (Label).
+local function colours()
+  local label = vim.api.nvim_get_hl(0, { name = "Label", link = false })
+  vim.api.nvim_set_hl(0, "PinSign", { link = "Label", default = true })
+  vim.api.nvim_set_hl(0, "PinNote", { fg = label.fg, italic = true, default = true })
+end
+colours()
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("config_pins_colours", { clear = true }),
+  callback = colours,
+})
+
+-- The mark of a pin, the bookmark the panel draws for one
+-- (md-bookmark_outline).
+local marker = "󰃃"
+
+-- Whether the notes show at the ends of the lines (<leader>uN). The sign stays
+-- either way, so a pinned line is still told apart.
+local notes_shown = true
+
 -- For the checks, which remove the files they leave behind.
 M.store_path = store.store_path
 
@@ -82,14 +105,32 @@ function M.refresh(buf)
       moved = true
     end
     vim.api.nvim_buf_set_extmark(buf, namespace, at.line - 1, 0, {
-      sign_text = "●",
-      sign_hl_group = "DiagnosticInfo",
-      virt_text = at.pin.memo ~= "" and { { "  ● " .. at.pin.memo, "DiagnosticInfo" } } or nil,
+      sign_text = marker,
+      sign_hl_group = "PinSign",
+      virt_text = notes_shown and at.pin.memo ~= "" and {
+        { "  " .. marker .. " ", "PinSign" },
+        { at.pin.memo, "PinNote" },
+      } or nil,
       virt_text_pos = "eol",
     })
   end
   if moved then
     save(root, pins)
+  end
+end
+
+function M.notes_shown()
+  return notes_shown
+end
+
+-- The notes shown at the ends of the pinned lines, or put away, in every
+-- buffer.
+function M.show_notes(on)
+  notes_shown = on
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) then
+      M.refresh(buf)
+    end
   end
 end
 

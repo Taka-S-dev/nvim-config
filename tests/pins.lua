@@ -25,8 +25,22 @@ return function(T)
       key("<leader>jm")()
       local namespace = vim.api.nvim_get_namespaces().config_pins
       local marks = vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })
-      local note = marks[1] and marks[1][4].virt_text[1][1] or ""
-      seen.mark = #marks == 1 and marks[1][2] == 19 and note:find("length is checked here", 1, true) ~= nil
+      local function note()
+        local chunks = vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })[1][4].virt_text or {}
+        return table.concat(
+          vim.tbl_map(function(chunk)
+            return chunk[1] .. "|" .. chunk[2]
+          end, chunks),
+          " "
+        )
+      end
+      seen.mark = #marks == 1 and marks[1][2] == 19 and note():find("length is checked here|PinNote", 1, true) ~= nil
+      -- <leader>uN puts the notes away and brings them back; the sign stays.
+      pins.show_notes(false)
+      local sign = vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })[1][4].sign_text
+      seen.hidden = note() .. "/" .. vim.trim(sign or "")
+      pins.show_notes(true)
+      seen.shown_again = note():find("length is checked here", 1, true) ~= nil
       -- A new session reads the file again, and by then the line has moved.
       package.loaded["taka.pins"] = nil
       pins = require("taka.pins")
@@ -48,6 +62,8 @@ return function(T)
     reset_editor()
     expect(ok, tostring(err))
     expect(seen.mark, "the pinned line shows no mark with its note")
+    expect(seen.hidden == "/󰃃", "with the notes put away, note/sign: " .. tostring(seen.hidden))
+    expect(seen.shown_again, "the note did not come back")
     expect(seen.landed == "a.c:23:int value_20 = 20;", "landed on " .. tostring(seen.landed))
     expect(seen.stored == "src/a.c:23:length is checked here", "stored as " .. tostring(seen.stored))
     expect(seen.left == 0, "the pin was not removed")

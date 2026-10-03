@@ -24,11 +24,21 @@ key("n", "<leader>hc", "taka.words", "clear", "Put every word out")
 require("taka.scope_pin")
 key("n", "<leader>jl", "taka.scope_pin", "toggle", "Pin the scope line")
 
--- Pinned lines with notes, <leader>jm and <leader>jM (lua/taka/pins/).
+-- Pinned lines with notes, <leader>jm and <leader>jM, the notes put away with
+-- <leader>uN (lua/taka/pins/).
 require("taka.pins")
 key("n", "<leader>jm", "taka.pins", "add", "Pin this line with a note")
 key("n", "<leader>jM", "taka.pins", "list", "Find a pin")
 key("n", "<leader>jo", "taka.pins", "toggle_panel", "Pins panel (arrange)")
+Snacks.toggle({
+  name = "Pin notes",
+  get = function()
+    return require("taka.pins").notes_shown()
+  end,
+  set = function(on)
+    require("taka.pins").show_notes(on)
+  end,
+}):map("<leader>uN")
 
 -- Comparing two windows: where they differ in a strip on the right, the wheel
 -- scrolling both, q ending it, and a pane below with the change under the
