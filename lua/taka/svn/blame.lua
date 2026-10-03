@@ -220,7 +220,7 @@ function M.close(win)
   end
   if state and vim.api.nvim_win_is_valid(win) then
     vim.wo[win].wrap = state.wrapped
-    vim.w[win].svn_blame = nil
+    vim.w[win].no_smooth_scroll = nil
   end
   if state then
     pcall(vim.api.nvim_del_augroup_by_id, state.group)
@@ -269,7 +269,7 @@ local function show(win, answer)
   -- step behind, and its own scroll pulled the other back: with the wheel
   -- turned over the file, the tops went 54, 52, 49, 43 and stopped two lines
   -- apart.
-  vim.w[win].svn_blame, vim.w[blame_win].svn_blame = true, true
+  vim.w[win].no_smooth_scroll, vim.w[blame_win].no_smooth_scroll = true, true
   draw(state)
   level(state, win)
   vim.api.nvim_create_autocmd("WinScrolled", {
