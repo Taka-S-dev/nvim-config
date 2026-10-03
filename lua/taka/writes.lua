@@ -147,6 +147,4 @@ function M.show()
   end)
 end
 
-vim.keymap.set("n", "<leader>jw", M.show, { desc = "Where this name is written to" })
-
 return M

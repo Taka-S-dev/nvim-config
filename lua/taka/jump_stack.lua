@@ -335,6 +335,4 @@ vim.api.nvim_create_autocmd("WinClosed", {
   end,
 })
 
-vim.keymap.set("n", "<leader>jy", M.toggle, { desc = "Jump stack" })
-
 return M

@@ -50,6 +50,4 @@ function M.toggle()
   end, { buf = buf })
 end
 
-vim.keymap.set("n", "<leader>jl", M.toggle, { desc = "Pin the scope line" })
-
 return M

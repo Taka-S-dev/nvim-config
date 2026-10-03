@@ -119,6 +119,9 @@ end
 local function run_checks()
   vim.api.nvim_set_current_dir(neutral_dir)
   require("lazy").load({ plugins = { "cscope_maps.nvim", "vim-gutentags", "gitsigns.nvim", "snacks.nvim" } })
+  -- The tools and their keys, which a start with a screen sets up on VeryLazy
+  -- (lua/config/features.lua) and a headless one never reaches.
+  require("config.features")
   -- The keys ask before writing an index to a directory; the answer is yes.
   vim.fn.confirm = function()
     return 1

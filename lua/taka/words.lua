@@ -383,14 +383,6 @@ vim.api.nvim_create_autocmd({ "BufWinEnter", "BufDelete", "BufWritePost" }, {
   end,
 })
 
-vim.keymap.set({ "n", "x" }, "<leader>hh", M.toggle, { desc = "Light this word / put it out" })
-vim.keymap.set("n", "<leader>ho", M.toggle_panel, { desc = "Lit words panel" })
-vim.keymap.set("n", "<leader>hn", M.jump, { desc = "Next lit word" })
-vim.keymap.set("n", "<leader>hp", function()
-  M.jump(true)
-end, { desc = "Previous lit word" })
-vim.keymap.set("n", "<leader>hc", M.clear, { desc = "Put every word out" })
-
 vim.api.nvim_create_autocmd({ "WinEnter", "BufWinEnter" }, {
   group = vim.api.nvim_create_augroup("config_words", { clear = true }),
   callback = function()

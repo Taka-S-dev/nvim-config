@@ -520,7 +520,8 @@ function M.shown()
   return shown
 end
 
-Snacks.toggle({
+-- The pane switched on and off, for a key (lua/config/features.lua).
+M.toggle = Snacks.toggle({
   name = "Diff pane",
   get = function()
     return M.enabled and not vim.t.diff_pane_closed
@@ -536,7 +537,7 @@ Snacks.toggle({
       end
     end
   end,
-}):map("<leader>uP")
+})
 
 local group = vim.api.nvim_create_augroup("config_diff_pane", { clear = true })
 vim.api.nvim_create_autocmd({ "CursorMoved", "WinEnter", "DiffUpdated", "BufWinEnter", "TabEnter" }, {

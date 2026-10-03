@@ -346,7 +346,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   ├── options.lua     # CC 設定はここ
 │   │   ├── keymaps.lua
 │   │   ├── autocmds.lua
-│   │   ├── features.lua    # 下の taka\ の道具を読み込む
+│   │   ├── features.lua    # 下の taka\ の道具を読み込み、その <leader> キーを決める
 │   │   ├── clipboard.lua   # ssh で入っているとき、コピーを手元の端末へ渡す (OSC 52)
 │   │   ├── scoop_shims.lua # scoop のツールを shim とジャンクションを通さずに呼ぶ (ssh のセッション向け)
 │   │   ├── local.lua       # マシン固有の設定 (git 管理外、あれば読む)

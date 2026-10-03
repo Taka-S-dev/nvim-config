@@ -431,11 +431,4 @@ function M.close()
   end
 end
 
-vim.keymap.set("n", "<leader>jh", function()
-  M.start("callers")
-end, { desc = "Call tree: callers" })
-vim.keymap.set("n", "<leader>jH", function()
-  M.start("callees")
-end, { desc = "Call tree: callees" })
-
 return M

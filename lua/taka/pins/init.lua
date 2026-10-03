@@ -412,10 +412,6 @@ end
 
 M.toggle_panel = require("taka.pins.panel").toggle
 
-vim.keymap.set("n", "<leader>jm", M.add, { desc = "Pin this line with a note" })
-vim.keymap.set("n", "<leader>jM", M.list, { desc = "Find a pin" })
-vim.keymap.set("n", "<leader>jo", M.toggle_panel, { desc = "Pins panel (arrange)" })
-
 vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
   group = vim.api.nvim_create_augroup("config_pins", { clear = true }),
   callback = function(event)
