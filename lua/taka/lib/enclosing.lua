@@ -1,7 +1,7 @@
 -- The name of the function a place in a buffer is in, for any language
 -- treesitter has a parser for: the nearest node around the place whose type
 -- says function or method, and in its declarator or name the first name.
--- Used by the pins (lua/taka/pins.lua) and the jump stack
+-- Used by the pins (lua/taka/pins/) and the jump stack
 -- (lua/taka/jump_stack.lua).
 local M = {}
 

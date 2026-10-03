@@ -9,7 +9,7 @@ require("taka.words")
 -- The scope line, pinned in place with <leader>jl (lua/taka/scope_pin.lua).
 require("taka.scope_pin")
 
--- Pinned lines with notes, <leader>jm and <leader>jM (lua/taka/pins.lua).
+-- Pinned lines with notes, <leader>jm and <leader>jM (lua/taka/pins/).
 require("taka.pins")
 
 -- Where a diff differs, in a strip down the right edge (lua/taka/diff/map.lua).

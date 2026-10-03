@@ -374,7 +374,10 @@ $env:LOCALAPPDATA\nvim\
 │   │   ├── call_tree\
 │   │   │   ├── init.lua    # コールツリーのパネル (<leader>jh / jH)
 │   │   │   └── gtags.lua   # GTAGS とファイルの構文から、呼び出し元と呼んでいる先を出す
-│   │   ├── pins.lua        # 行をメモつきでピン留めし、階層に整理して後で戻る (<leader>jm / jM / jo)
+│   │   ├── pins\
+│   │   │   ├── init.lua    # 行をメモつきでピン留めし、後で戻る (<leader>jm / jM)。行の印
+│   │   │   ├── store.lua   # プロジェクトごとの保存、階層、取り消し、動いた行の追跡
+│   │   │   └── panel.lua   # 階層に整理するパネル (<leader>jo)
 │   │   ├── jump_stack.lua  # 定義・参照へ飛んで潜っている段を右のパネルに出す (<leader>jy)
 │   │   ├── writes.lua      # C の名前に値を入れている所の一覧 (<leader>jw)
 │   │   ├── c_macros.lua    # C のマクロと enum の値を、使っている所で色分けする

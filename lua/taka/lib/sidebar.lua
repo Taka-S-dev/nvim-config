@@ -1,4 +1,4 @@
--- What the panels on the right share: the pins (lua/taka/pins.lua), the call
+-- What the panels on the right share: the pins (lua/taka/pins/), the call
 -- tree (lua/taka/call_tree/init.lua) and the jump stack
 -- (lua/taka/jump_stack.lua) are each a snacks picker laid out as a sidebar
 -- and drawn as a tree.
