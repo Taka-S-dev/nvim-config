@@ -1,7 +1,9 @@
 -- q anywhere in a comparison ends it, whichever window the cursor is in and
 -- however the comparison was opened:
 --
---   the svn log's tab (<leader>vh)  the tab closes, the list and pane with it
+--   a tab a tool set up for a comparison and named a closer for (on_quit),
+--   as the svn log's tab (<leader>vh) does
+--                                   the closer, which there shuts the tab
 --   a file against its base (<leader>vd, git), or any other diff
 --                                   the sides that are no file close, and a
 --                                   file's own window leaves diff mode and
@@ -12,6 +14,26 @@
 -- it does not: that is the price of one key to leave every kind of it.
 local M = {}
 
+-- The closers named by tools for tabs of their own, by tab.
+local closers = {}
+
+-- q in `tab` calls `close(tab)` instead of ending a diff, for a tool that
+-- lays a comparison out in a tab of its own and knows how to put it away.
+function M.on_quit(tab, close)
+  closers[tab] = close
+end
+
+vim.api.nvim_create_autocmd("TabClosed", {
+  group = vim.api.nvim_create_augroup("config_diff_quit", { clear = true }),
+  callback = function()
+    for tab in pairs(closers) do
+      if not vim.api.nvim_tabpage_is_valid(tab) then
+        closers[tab] = nil
+      end
+    end
+  end,
+})
+
 -- Whether the cursor is in a comparison: a window in diff mode, or the pane
 -- below one (lua/taka/diff/pane.lua).
 function M.here()
@@ -19,8 +41,9 @@ function M.here()
 end
 
 function M.close()
-  if vim.t.svn_log then
-    return require("taka.svn").close_log(vim.api.nvim_get_current_tabpage())
+  local tab = vim.api.nvim_get_current_tabpage()
+  if closers[tab] then
+    return closers[tab](tab)
   end
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     if vim.api.nvim_win_is_valid(win) and vim.wo[win].diff then

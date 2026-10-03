@@ -489,8 +489,8 @@ function M.history(path)
       end
       vim.cmd("tabnew")
       state.tab, state.left = vim.api.nvim_get_current_tabpage(), vim.api.nvim_get_current_win()
-      -- For q anywhere in the tab to close it (lua/taka/diff/quit.lua).
-      vim.t.svn_log = true
+      -- q anywhere in the tab closes it (lua/taka/diff/quit.lua).
+      require("taka.diff").on_quit(state.tab, M.close_log)
       scratch({
         "",
         "  Enter on a revision lists the files it changed.",

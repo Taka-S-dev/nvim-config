@@ -1842,7 +1842,7 @@ local function run_checks()
 
       local tabs = #vim.api.nvim_list_tabpages()
       vim.cmd("tabnew")
-      vim.t.svn_log = true
+      require("taka.diff").on_quit(vim.api.nvim_get_current_tabpage(), require("taka.svn").close_log)
       vim.bo.buftype = "nofile"
       vim.api.nvim_buf_set_lines(0, 0, -1, false, { "x" })
       vim.cmd("diffthis")

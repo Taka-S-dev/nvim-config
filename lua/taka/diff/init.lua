@@ -12,4 +12,6 @@ require("taka.diff.quit")
 return {
   -- The pane switched on and off, for a key.
   pane_toggle = pane.toggle,
+  -- q in a tab of a tool's own puts it away the tool's way (quit.lua).
+  on_quit = require("taka.diff.quit").on_quit,
 }
