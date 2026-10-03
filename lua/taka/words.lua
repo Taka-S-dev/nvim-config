@@ -161,13 +161,7 @@ end
 local panel ---@type snacks.Picker?
 local closed = {} ---@type table<string, boolean>
 
-local function tree_look()
-  local tree = {}
-  pcall(function()
-    tree = Snacks.picker.config.get().icons.tree
-  end)
-  return { vertical = tree.vertical or "│ ", middle = tree.middle or "├╴", last = tree.last or "└╴" }
-end
+local tree_look = require("taka.lib.sidebar").tree_look
 
 -- Items in tree order: a word, its files, their lines. Each carries `parent`,
 -- which the matcher keeps a match's ancestors by while a filter is typed,
@@ -334,7 +328,7 @@ function M.toggle_panel()
     focus = "list",
     auto_close = false,
     jump = { close = false },
-    layout = { preset = "sidebar", preview = false, layout = { position = "right" } },
+    layout = require("taka.lib.sidebar").layout(),
     on_close = function()
       panel = nil
     end,

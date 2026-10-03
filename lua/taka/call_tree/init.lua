@@ -310,7 +310,7 @@ local function open_tree(session, direction, top)
     focus = "list",
     auto_close = false,
     jump = { close = false },
-    layout = { preset = "sidebar", preview = false, layout = { position = "right" } },
+    layout = require("taka.lib.sidebar").layout(),
     on_close = function()
       panel.picker = nil
     end,

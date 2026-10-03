@@ -183,7 +183,7 @@ local function toggle()
     -- the same side for a stack and sets each to half the height; side by side
     -- as they are, that halves the whole screen and leaves the lower half to an
     -- empty command line.
-    layout = { preset = "sidebar", preview = false, layout = { position = "right" } },
+    layout = require("taka.lib.sidebar").layout(),
     on_close = function()
       panel.picker = nil
     end,

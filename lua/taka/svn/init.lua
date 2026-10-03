@@ -473,16 +473,12 @@ function M.history(path)
         say("No history for " .. path)
         return
       end
-      local tree = {}
-      pcall(function()
-        tree = Snacks.picker.config.get().icons.tree
-      end)
       local state = {
         entries = entries,
         root = root,
         base = vim.fn.isdirectory(path) == 1 and repo_path or vim.fs.dirname(repo_path),
         opened = {},
-        look = { middle = tree.middle or "├╴", last = tree.last or "└╴" },
+        look = require("taka.lib.sidebar").tree_look(),
       }
       if state.base == "/" then
         state.base = ""
@@ -546,7 +542,7 @@ function M.history(path)
         focus = "list",
         auto_close = false,
         jump = { close = false },
-        layout = { preset = "sidebar", preview = false, layout = { position = "right", width = 50 } },
+        layout = require("taka.lib.sidebar").layout({ width = 50 }),
         on_close = function()
           M.close_log(state.tab)
         end,

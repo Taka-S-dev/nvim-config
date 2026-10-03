@@ -1,8 +1,18 @@
 -- What the panels on the right share: the pins (lua/taka/pins/), the call
--- tree (lua/taka/call_tree/init.lua) and the jump stack
--- (lua/taka/jump_stack.lua) are each a snacks picker laid out as a sidebar
--- and drawn as a tree.
+-- tree (lua/taka/call_tree/init.lua), the jump stack (lua/taka/jump_stack.lua),
+-- the lit words (lua/taka/words.lua) and the svn log (lua/taka/svn/init.lua)
+-- are each a snacks picker laid out as a sidebar and drawn as a tree.
 local M = {}
+
+-- The layout of a panel: a sidebar on the right with no preview. `extra` goes
+-- into its layout, such as a width.
+function M.layout(extra)
+  return {
+    preset = "sidebar",
+    preview = false,
+    layout = vim.tbl_extend("force", { position = "right" }, extra or {}),
+  }
+end
 
 -- The guide characters of the file tree, read from snacks when drawn, so the
 -- panels look like it.

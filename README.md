@@ -356,7 +356,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   │   ├── gtags_global.lua # global の起動と、出力が届かない global.exe の回避
 │   │   │   ├── c_outline.lua    # C ファイルの関数・呼び出し・マクロ・プロトタイプを構文から読む
 │   │   │   ├── enclosing.lua    # ある行を囲む関数の名前を、言語を問わず treesitter で取る
-│   │   │   ├── sidebar.lua      # 脇のパネル(ピン、コールツリー、ジャンプスタック)が共有する部品
+│   │   │   ├── sidebar.lua      # 脇のパネル(ピン、コールツリー、ジャンプスタック、光らせた単語、SVN のログ)が共有する配置と部品
 │   │   │   └── activity.lua     # 裏で動いている処理をステータスラインに出す
 │   │   ├── gtags\
 │   │   │   ├── init.lua    # 定義ジャンプ・ピーク・検索・索引作り (<leader>j*)。キーは plugins\gtags.lua
