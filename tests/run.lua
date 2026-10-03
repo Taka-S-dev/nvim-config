@@ -283,7 +283,7 @@ local function run_checks()
   -- would call is called here.
   check("svn: blame beside the file, lined up with local edits, asked for once", function()
     need("svn", "svnadmin")
-    local blame = require("config.svn_blame")
+    local blame = require("taka.svn.blame")
     local dir = temp_dir()
     run({ "svnadmin", "create", dir .. "/repo" })
     local url = "file:///" .. dir:gsub("^/", "") .. "/repo"
@@ -427,7 +427,7 @@ local function run_checks()
 
   check("svn: status, revision diffs and the hunk undo", function()
     need("svn", "svnadmin")
-    local svn = require("config.svn")
+    local svn = require("taka.svn")
     local dir = temp_dir()
     run({ "svnadmin", "create", dir .. "/repo" })
     local url = "file:///" .. dir:gsub("^/", "") .. "/repo"
@@ -715,7 +715,7 @@ local function run_checks()
 
     -- A name global once came back empty for is asked again the next time,
     -- not remembered as having no definition until Neovim is restarted.
-    local global = require("config.gtags_global")
+    local global = require("taka.lib.gtags_global")
     local real_run, asked = global.run, 0
     global.run = function(root, args, done)
       asked = asked + 1
@@ -916,7 +916,7 @@ local function run_checks()
   end)
 
   check("status: what runs in the background is shown, then cleared", function()
-    local activity = require("config.activity")
+    local activity = require("taka.lib.activity")
     -- The check before leaves its result on show for two seconds, and a result
     -- is a line that does not move.
     local idle = vim.wait(6000, function()
@@ -1002,7 +1002,7 @@ local function run_checks()
   -- is looked in all the same.
   check("writes: the places a C name is written to, by the grammar", function()
     need("rg")
-    local writes = require("config.writes")
+    local writes = require("taka.writes")
     local dir = temp_dir()
     write(dir .. "/sub dir/a.c", {
       "struct st { int count; int *arr; };",
@@ -1145,7 +1145,7 @@ local function run_checks()
     write(dir .. "/GTAGS", {})
     write(dir .. "/src/a.c", lines)
     local root = vim.fs.normalize(dir)
-    local pins = require("config.pins")
+    local pins = require("taka.pins")
     local store = pins.store_path(root)
     local input = vim.ui.input
     vim.ui.input = function(_, on_confirm)
@@ -1161,8 +1161,8 @@ local function run_checks()
       local note = marks[1] and marks[1][4].virt_text[1][1] or ""
       seen.mark = #marks == 1 and marks[1][2] == 19 and note:find("length is checked here", 1, true) ~= nil
       -- A new session reads the file again, and by then the line has moved.
-      package.loaded["config.pins"] = nil
-      pins = require("config.pins")
+      package.loaded["taka.pins"] = nil
+      pins = require("taka.pins")
       table.insert(lines, 1, "/* three */")
       table.insert(lines, 1, "/* lines */")
       table.insert(lines, 1, "/* added */")
@@ -1199,7 +1199,7 @@ local function run_checks()
     write(dir .. "/GTAGS", {})
     write(dir .. "/a.c", lines)
     local root = vim.fs.normalize(dir)
-    local pins = require("config.pins")
+    local pins = require("taka.pins")
     local store = pins.store_path(root)
     local input, select, confirm = vim.ui.input, vim.ui.select, vim.fn.confirm
     local seen = {}
@@ -1311,7 +1311,7 @@ local function run_checks()
   check("pins: a file outside the cwd, in no project, is pinned where it is", function()
     local elsewhere = temp_dir()
     write(elsewhere .. "/sub/far.c", { "int x;", "int y;" })
-    local pins = require("config.pins")
+    local pins = require("taka.pins")
     local store = pins.store_path(vim.fs.normalize(elsewhere .. "/sub"))
     local input = vim.ui.input
     vim.ui.input = function(_, on_confirm)
@@ -1340,7 +1340,7 @@ local function run_checks()
     write(dir .. "/GTAGS", {})
     write(dir .. "/a.c", { "int a;", "int b;", "int c;", "int d;" })
     local root = vim.fs.normalize(dir)
-    local pins = require("config.pins")
+    local pins = require("taka.pins")
     local store = pins.store_path(root)
     -- A file from before pins had ids or parents.
     local legacy = { file = "a.c", line = 1, text = "int a;", symbol = "", memo = "A" }
@@ -1527,7 +1527,7 @@ local function run_checks()
   -- rows of both strips, the part in view is lit and moves with the view, a
   -- click on a change lands on it, and the strips go with the diff.
   check("diff map: a strip shows where two files differ, and a click goes there", function()
-    local map = require("config.diff_map")
+    local map = require("taka.diff.map")
     local left_lines, right_lines = {}, {}
     for line = 1, 200 do
       left_lines[line] = "line " .. line
@@ -1626,7 +1626,7 @@ local function run_checks()
   -- together; the cursor's line alone is shown where nothing changed; the pane
   -- keeps its place while the block stays the same, and goes with the diff.
   check("diff pane: the block under the cursor from both sides, the difference marked", function()
-    local pane = require("config.diff_pane")
+    local pane = require("taka.diff.pane")
     local long = "static int parse_record(struct stream *s, size_t limit, int flags, const char *name, void *userdata)"
     -- Two changes in one line: each is marked, and what lies between is not.
     local changed = (long:gsub("int flags", "int mode"):gsub("void %*userdata", "const void *context"))
@@ -1755,7 +1755,7 @@ local function run_checks()
   -- the foot of the view stays in sight, and entering the window leaves the
   -- cursor on it rather than pulling it up to what is still shown.
   check("diff pane: opening it keeps the change under the cursor in view", function()
-    local pane = require("config.diff_pane")
+    local pane = require("taka.diff.pane")
     local left_lines = {}
     for line = 1, 120 do
       left_lines[line] = "line " .. line
@@ -1793,7 +1793,7 @@ local function run_checks()
   -- loses that side and leaves diff mode, the svn log's tab closes; outside a
   -- comparison q still records a macro.
   check("diff quit: q ends a comparison, and records a macro elsewhere", function()
-    local quit = require("config.diff_quit")
+    local quit = require("taka.diff.quit")
     local function typed(keys)
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "xt", false)
     end
@@ -1899,7 +1899,7 @@ local function run_checks()
   -- the lines only one side has. The event that sets it off does not come in
   -- a headless run, which has no screen, so the part it calls is run here.
   check("diff scroll: a side scrolled by the wheel brings the other along", function()
-    local follow = require("config.diff_scroll").follow
+    local follow = require("taka.diff.scroll").follow
     local left_lines = {}
     for line = 1, 400 do
       left_lines[line] = "line " .. line
@@ -2008,7 +2008,7 @@ local function run_checks()
   end)
 
   check("scope pin: the line stays on its block while the cursor leaves", function()
-    require("config.scope_pin")
+    require("taka.scope_pin")
     local dir = temp_dir()
     local lines = { "int f(void)", "{", "    while (1) {", "        a();", "        b();", "    }" }
     for i = 1, 100 do
@@ -2044,7 +2044,7 @@ local function run_checks()
   -- own definitions and from the tags file; a lowercase name only from the
   -- file, and a name found nowhere left to the grammar.
   check("c macros: macros and enum values are told apart where they are used", function()
-    local names = require("config.c_macros")
+    local names = require("taka.c_macros")
     local dir = temp_dir()
     write(dir .. "/tags", {
       "!_TAG_FILE_FORMAT\t2\t/extended format/",
@@ -2113,8 +2113,8 @@ local function run_checks()
   -- empty does not drop the way remembered.
   check("c macros: a header's macros from gtags, when there is no tags file", function()
     need("gtags", "global")
-    local names = require("config.c_macros")
-    local global = require("config.gtags_global")
+    local names = require("taka.c_macros")
+    local global = require("taka.lib.gtags_global")
     local dir = temp_dir()
     write(dir .. "/b.h", {
       "#define H_MAX 3",
@@ -2185,7 +2185,7 @@ local function run_checks()
   -- one pattern.
   check("call tree: callers and callees from GTAGS, opened a branch at a time", function()
     need("gtags", "global")
-    local tree = require("config.call_tree")
+    local tree = require("taka.call_tree")
     local dir = temp_dir()
     write(dir .. "/a.c", {
       "static int leaf(int x) { return x + 1; }",
@@ -2373,12 +2373,12 @@ local function run_checks()
   end)
 
   -- The panel knows a source only by the interface at the top of
-  -- lua/config/call_tree.lua. One that answers from a graph in memory, after a
+  -- lua/taka/call_tree/init.lua. One that answers from a graph in memory, after a
   -- turn of the event loop as a language server would, is drawn and opened as
   -- GTAGS is; a source that cannot answer for the buffer passes to the next,
   -- and when none can, the first one's reason is shown.
   check("call tree: a source that keeps to the interface is drawn as GTAGS is", function()
-    local tree = require("config.call_tree")
+    local tree = require("taka.call_tree")
     -- parse calls itself through expr: only the rows above tell it.
     local graph =
       { main = { "parse", "print", "missing" }, parse = { "next_token", "expr" }, expr = { "parse" }, print = {} }
@@ -2477,8 +2477,8 @@ local function run_checks()
   -- level named by the function it was made from. A headless run moves no
   -- cursor through the screen, so what CursorMoved would call is called here.
   check("jump stack: the jumps the cursor is inside, in C and Lua alike", function()
-    local stack = require("config.jump_stack")
-    local pins = require("config.pins")
+    local stack = require("taka.jump_stack")
+    local pins = require("taka.pins")
     local dir = temp_dir()
     write(
       dir .. "/a.c",
@@ -2588,7 +2588,7 @@ local function run_checks()
   -- selection puts the rest out. A headless run moves no cursor through the
   -- screen, so what CursorMoved would call is called here.
   check("selection matches: the text selected is lit where else it stands", function()
-    local matches = require("config.selection_matches")
+    local matches = require("taka.selection_matches")
     local dir = temp_dir()
     write(dir .. "/a.c", {
       "foo(bar) + foo(bar)",
@@ -2633,7 +2633,7 @@ local function run_checks()
   end)
 
   check("words: several words stay lit across files and windows, and are stepped through", function()
-    local words = require("config.words")
+    local words = require("taka.words")
     local dir = temp_dir()
     write(dir .. "/a.c", { "int len = 0;", "int buflen = len + 1;", "return len;" })
     write(dir .. "/b.c", { "size_t len;", "len = 2;" })

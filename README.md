@@ -342,34 +342,42 @@ $env:LOCALAPPDATA\nvim\
 ├── doc\
 │   └── cfg.txt             # 使い方のヘルプ (:h cfg)。doc\tags は起動時に作る (git 管理外)
 ├── lua\
-│   ├── config\
+│   ├── config\            # 設定そのもの
 │   │   ├── options.lua     # CC 設定はここ
+│   │   ├── keymaps.lua
+│   │   ├── autocmds.lua
+│   │   ├── features.lua    # 下の taka\ の道具を読み込む
 │   │   ├── clipboard.lua   # ssh で入っているとき、コピーを手元の端末へ渡す (OSC 52)
 │   │   ├── scoop_shims.lua # scoop のツールを shim とジャンクションを通さずに呼ぶ (ssh のセッション向け)
-│   │   ├── gtags_global.lua # global の起動と、出力が届かない global.exe の回避
 │   │   ├── local.lua       # マシン固有の設定 (git 管理外、あれば読む)
-│   │   ├── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)
-│   │   ├── keymaps.lua
-│   │   ├── diff_map.lua    # 比べている窓の右端に、違いの場所を示す帯
-│   │   ├── diff_scroll.lua # 比べている左右の窓を、ホイールでも一緒にスクロールさせる
-│   │   ├── diff_pane.lua   # 比べている窓の下に、カーソルのある変更の左右を上下に並べるペイン (<leader>uP)
-│   │   ├── diff_quit.lua   # 比べている画面を、どの窓でも q で終える
-│   │   ├── c_macros.lua    # C のマクロと enum の値を、使っている所で色分けする
-│   │   ├── selection_matches.lua # 選んだ文字列と同じものを、選んでいる間だけ光らせる
-│   │   ├── call_tree.lua   # コールツリーのパネル (<leader>jh / jH)。何が何を呼ぶかは call_tree/ から
-│   │   ├── call_tree/
-│   │   │   └── gtags.lua   # GTAGS とファイルの構文から、呼び出し元と呼んでいる先を出す
-│   │   ├── c_outline.lua   # C ファイルの関数・呼び出し・マクロ・プロトタイプを構文から読む
-│   │   ├── writes.lua      # C の名前に値を入れている所の一覧 (<leader>jw)
-│   │   ├── jump_stack.lua  # 定義・参照へ飛んで潜っている段を右のパネルに出す (<leader>jy)
-│   │   ├── enclosing.lua   # ある行を囲む関数の名前を、言語を問わず treesitter で取る
-│   │   ├── sidebar.lua     # 脇のパネル(ピン、コールツリー、ジャンプスタック)が共有する部品
-│   │   ├── markdown_links.lua # Markdown のリンクを gf でたどる
-│   │   ├── svn_blame.lua   # 行ごとに誰がどのリビジョンで書いたかを、左の窓に出す (<leader>vb)
-│   │   ├── svn.lua         # SVN の status / log / リビジョン差分 (<leader>v)
-│   │   ├── pins.lua        # 行をメモつきでピン留めし、階層に整理して後で戻る (<leader>jm / jM / jo)
-│   │   ├── autocmds.lua
 │   │   └── lazy.lua
+│   ├── taka\              # この設定が足す道具。ほかの道具は init.lua の関数だけを使う
+│   │   ├── lib\           # 複数の道具が使う部品
+│   │   │   ├── gtags_global.lua # global の起動と、出力が届かない global.exe の回避
+│   │   │   ├── c_outline.lua    # C ファイルの関数・呼び出し・マクロ・プロトタイプを構文から読む
+│   │   │   ├── enclosing.lua    # ある行を囲む関数の名前を、言語を問わず treesitter で取る
+│   │   │   ├── sidebar.lua      # 脇のパネル(ピン、コールツリー、ジャンプスタック)が共有する部品
+│   │   │   └── activity.lua     # 裏で動いている処理をステータスラインに出す
+│   │   ├── diff\
+│   │   │   ├── map.lua     # 比べている窓の右端に、違いの場所を示す帯
+│   │   │   ├── scroll.lua  # 比べている左右の窓を、ホイールでも一緒にスクロールさせる
+│   │   │   ├── pane.lua    # 比べている窓の下に、カーソルのある変更の左右を上下に並べるペイン (<leader>uP)
+│   │   │   └── quit.lua    # 比べている画面を、どの窓でも q で終える
+│   │   ├── svn\
+│   │   │   ├── init.lua    # SVN の status / log / リビジョン差分 (<leader>v)
+│   │   │   └── blame.lua   # 行ごとに誰がどのリビジョンで書いたかを、左の窓に出す (<leader>vb)
+│   │   ├── call_tree\
+│   │   │   ├── init.lua    # コールツリーのパネル (<leader>jh / jH)
+│   │   │   └── gtags.lua   # GTAGS とファイルの構文から、呼び出し元と呼んでいる先を出す
+│   │   ├── pins.lua        # 行をメモつきでピン留めし、階層に整理して後で戻る (<leader>jm / jM / jo)
+│   │   ├── jump_stack.lua  # 定義・参照へ飛んで潜っている段を右のパネルに出す (<leader>jy)
+│   │   ├── writes.lua      # C の名前に値を入れている所の一覧 (<leader>jw)
+│   │   ├── c_macros.lua    # C のマクロと enum の値を、使っている所で色分けする
+│   │   ├── words.lua       # 複数の単語を色分けして光らせる (<leader>hh)
+│   │   ├── selection_matches.lua # 選んだ文字列と同じものを、選んでいる間だけ光らせる
+│   │   ├── scope_pin.lua   # いまのスコープの線を固定する (<leader>jl)
+│   │   ├── markdown_links.lua # Markdown のリンクを gf でたどる
+│   │   └── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)
 │   └── plugins\            # 追加プラグイン定義
 │       ├── aerial.lua      # シンボルアウトライン
 │       ├── gtags.lua       # gtags ナビ(定義ジャンプ・<leader>j*)

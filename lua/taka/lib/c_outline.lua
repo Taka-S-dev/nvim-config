@@ -1,7 +1,7 @@
 -- What a C file holds, read from its syntax tree: its functions with the
 -- calls in each, its macros and its prototypes. Used by the call tree
--- (lua/config/call_tree/gtags.lua) and, for the function a line is in, by
--- lua/config/enclosing.lua, where the grammar alone cannot tell: a function
+-- (lua/taka/call_tree/gtags.lua) and, for the function a line is in, by
+-- lua/taka/lib/enclosing.lua, where the grammar alone cannot tell: a function
 -- an #ifdef hides from the grammar is found by its layout here.
 local M = {}
 

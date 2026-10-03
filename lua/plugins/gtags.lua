@@ -25,7 +25,7 @@
 -- software. Each cscope query has a global equivalent that returns the same
 -- matches: definitions -d, references -r, other symbols -s, text -g, files -P.
 --
--- How global is started lives in config/gtags_global.lua, which also handles a
+-- How global is started lives in lua/taka/lib/gtags_global.lua, which also handles a
 -- global.exe that cannot write its results to Neovim's pipe.
 --
 -- A resident gtags-cscope was measured and rejected: it still starts global.exe
@@ -152,7 +152,7 @@ local function ctags_definitions(symbol)
       items[#items + 1] = { filename = filename, lnum = lnum, col = 1, text = vim.trim(text) }
     end
   end
-  require("config.activity").begin("ctags: " .. symbol)(found(items))
+  require("taka.lib.activity").begin("ctags: " .. symbol)(found(items))
   return items
 end
 
@@ -177,11 +177,11 @@ end
 --
 -- It is the statusline rather than a notification because the message is only
 -- true for a moment: a popup crosses the code being read and stays in the
--- notification history. lua/config/activity.lua keeps what is running.
+-- notification history. lua/taka/lib/activity.lua keeps what is running.
 
 ---Show `label` as being looked up. The returned function reports the answer.
 local function begin_lookup(label)
-  return require("config.activity").begin("gtags: " .. label)
+  return require("taka.lib.activity").begin("gtags: " .. label)
 end
 
 local function run_global(root, invocations, done, label)
@@ -189,7 +189,7 @@ local function run_global(root, invocations, done, label)
   local items, pending = {}, #invocations
   local answered = begin_lookup(label)
   for _, args in ipairs(invocations) do
-    require("config.gtags_global").run(root, args, function(output)
+    require("taka.lib.gtags_global").run(root, args, function(output)
       vim.list_extend(items, parse(output))
       pending = pending - 1
       if pending > 0 then
@@ -949,7 +949,7 @@ return {
     end, {})
 
     vim.api.nvim_create_user_command("GtagsTransport", function(opts)
-      local global = require("config.gtags_global")
+      local global = require("taka.lib.gtags_global")
       if opts.args == "reset" then
         global.reset()
       end

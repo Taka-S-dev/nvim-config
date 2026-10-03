@@ -59,7 +59,7 @@ local function line_on(rows, row)
   return low, rows[low] - row
 end
 
--- For lua/config/diff_pane.lua, which finds the line facing the cursor's.
+-- For lua/taka/diff/pane.lua, which finds the line facing the cursor's.
 M.rows_of, M.line_on = rows_of, line_on
 
 -- The other windows of the diff in the tab, lined up with `win`.

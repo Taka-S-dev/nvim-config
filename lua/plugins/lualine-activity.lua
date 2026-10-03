@@ -1,6 +1,6 @@
 -- Show what is running in the background: a gtags lookup, an index being built
--- or updated, a ctags run. lua/config/activity.lua keeps the list and puts the
--- text to draw in vim.g.background_activity: a spinner, the label and the
+-- or updated, a ctags run. lua/taka/lib/activity.lua keeps the list and puts
+-- the text to draw in vim.g.background_activity: a spinner, the label and the
 -- seconds gone while something runs, then what it took for two seconds after.
 -- Nothing is shown when nothing runs.
 return {

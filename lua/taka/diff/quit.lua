@@ -13,14 +13,14 @@
 local M = {}
 
 -- Whether the cursor is in a comparison: a window in diff mode, or the pane
--- below one (lua/config/diff_pane.lua).
+-- below one (lua/taka/diff/pane.lua).
 function M.here()
   return vim.wo.diff or vim.bo.filetype == "diffpane"
 end
 
 function M.close()
   if vim.t.svn_log then
-    return require("config.svn").close_log(vim.api.nvim_get_current_tabpage())
+    return require("taka.svn").close_log(vim.api.nvim_get_current_tabpage())
   end
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     if vim.api.nvim_win_is_valid(win) and vim.wo[win].diff then

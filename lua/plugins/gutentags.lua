@@ -75,7 +75,7 @@ return {
     end
 
     -- With its output gone a ctags run shows nothing at all, so its start and
-    -- end go to the statusline (lua/config/activity.lua). Updating is fired
+    -- end go to the statusline (lua/taka/lib/activity.lua). Updating is fired
     -- even when no job was started, and Updated once per job, so both check
     -- what is actually in progress: a spinner that nothing ends would spin on.
     local finished
@@ -85,7 +85,7 @@ return {
       pattern = "GutentagsUpdating",
       callback = function()
         if not finished and #vim.fn["gutentags#inprogress"]() > 0 then
-          finished = require("config.activity").begin("ctags: indexing")
+          finished = require("taka.lib.activity").begin("ctags: indexing")
         end
       end,
     })

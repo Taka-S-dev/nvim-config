@@ -1,4 +1,4 @@
--- Call trees from GTAGS, for lua/config/call_tree.lua.
+-- Call trees from GTAGS, for lua/taka/call_tree/init.lua.
 --
 -- Callers come from the references global finds (global -r), each put under
 -- the function it stands in, which the file's syntax tree tells. Callees come
@@ -8,7 +8,7 @@
 -- and two static functions of one name in different files are taken for one.
 local M = {}
 
-local c_outline = require("config.c_outline")
+local c_outline = require("taka.lib.c_outline")
 local outline, enclosing = c_outline.read, c_outline.enclosing
 
 -- `global --result=ctags` prints `name<Tab>path<Tab>line`: a path with spaces
@@ -26,7 +26,7 @@ end
 
 -- Through ask, not run: a function no one calls rightly finds nothing.
 local function ask(root, args, done, names)
-  local global = require("config.gtags_global")
+  local global = require("taka.lib.gtags_global")
   local full = { "--result=ctags", "-a" }
   vim.list_extend(full, args)
   local function answer(output)

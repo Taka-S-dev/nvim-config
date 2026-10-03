@@ -1,8 +1,8 @@
 -- The name of the function a place in a buffer is in, for any language
 -- treesitter has a parser for: the nearest node around the place whose type
 -- says function or method, and in its declarator or name the first name.
--- Used by the pins (lua/config/pins.lua) and the jump stack
--- (lua/config/jump_stack.lua).
+-- Used by the pins (lua/taka/pins.lua) and the jump stack
+-- (lua/taka/jump_stack.lua).
 local M = {}
 
 -- What treesitter hands back as a name when a declaration is wrapped in macros
@@ -65,7 +65,7 @@ function M.at(buf, row)
   -- with no function in it; the C reader finds the function by its layout.
   local name = vim.api.nvim_buf_get_name(buf)
   if vim.bo[buf].filetype == "c" and name ~= "" then
-    return require("config.c_outline").function_at(name, row) or ""
+    return require("taka.lib.c_outline").function_at(name, row) or ""
   end
   return ""
 end

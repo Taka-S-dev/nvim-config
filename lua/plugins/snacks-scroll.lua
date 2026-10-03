@@ -2,11 +2,11 @@
 -- once, as in WinMerge.
 --
 -- Smooth scrolling moves only the window scrolled, a step at a time. In a diff
--- the other side and the strip beside it (lua/config/diff_scroll.lua and
--- lua/config/diff_map.lua) follow each step only after it is on screen, so
+-- the other side and the strip beside it (lua/taka/diff/scroll.lua and
+-- lua/taka/diff/map.lua) follow each step only after it is on screen, so
 -- through a long jump, such as a click on the strip, they trail a step behind
 -- and the view stutters. A file and its blame beside it
--- (lua/config/svn_blame.lua) are kept level the same way, and stuttered the
+-- (lua/taka/svn/blame.lua) are kept level the same way, and stuttered the
 -- same way. Everywhere else the scrolling is as LazyVim sets it.
 return {
   "folke/snacks.nvim",

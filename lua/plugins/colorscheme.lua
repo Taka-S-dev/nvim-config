@@ -16,7 +16,7 @@ return {
       -- tables. They are decoration rather than a control, so they stay under
       -- the 3:1 the separator needs, but far enough up to be readable.
       hl.SnacksIndent = { fg = c.dark3 }
-      -- The scope line pinned with <leader>jl (lua/config/scope_pin.lua), in
+      -- The scope line pinned with <leader>jl (lua/taka/scope_pin.lua), in
       -- orange so that beside the blue line that follows the cursor there is
       -- no doubt which one was pinned; orange is otherwise used for numbers
       -- only, so the line does not blend into the code.
@@ -40,7 +40,7 @@ return {
       -- type look alike; and a macro reads as an enum value or, called, as a
       -- function. Types go yellow and NULL orange with the other constants,
       -- and macros, where they are defined and where they are used
-      -- (lua/config/c_macros.lua), go rose, with enum values left orange.
+      -- (lua/taka/c_macros.lua), go rose, with enum values left orange.
       -- Types, macros and enum values now stand at least 17.5 from any other
       -- colour in C code but that of numbers, which enum values share as
       -- shipped, and rose reads at 3.15:1 on changed text in a diff, about

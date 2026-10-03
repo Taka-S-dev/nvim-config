@@ -156,7 +156,7 @@ local function from_gtags(buf)
   running[buf] = true
   -- Through ask, as a query for names may rightly find none, and in patterns
   -- short enough for global.
-  require("config.gtags_global").ask_names(root, { "-x", "-d" }, names, function(output)
+  require("taka.lib.gtags_global").ask_names(root, { "-x", "-d" }, names, function(output)
     running[buf] = nil
     local known = tagged[buf]
     if not known or not vim.api.nvim_buf_is_valid(buf) then

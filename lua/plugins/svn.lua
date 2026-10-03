@@ -1,5 +1,5 @@
 -- Subversion: change marks in the sign column from vim-signify, and the status,
--- log and revision diffs of lua/config/svn.lua under <leader>v. <leader>g
+-- log and revision diffs of lua/taka/svn/init.lua under <leader>v. <leader>g
 -- stays git's; ]h / [h are the same keys gitsigns gives a git checkout, which
 -- it maps per buffer and so wins where both could apply.
 --
@@ -72,35 +72,35 @@ return {
     {
       "<leader>vs",
       function()
-        require("config.svn").status_here()
+        require("taka.svn").status_here()
       end,
       desc = "Status of the cwd or the folder selected",
     },
     {
       "<leader>vS",
       function()
-        require("config.svn").status_of_choice()
+        require("taka.svn").status_of_choice()
       end,
       desc = "Status of a folder",
     },
     {
       "<leader>vd",
       function()
-        require("config.svn").diff_file()
+        require("taka.svn").diff_file()
       end,
       desc = "Diff the file against base",
     },
     {
       "<leader>vh",
       function()
-        require("config.svn").history()
+        require("taka.svn").history()
       end,
       desc = "Log and revision diffs",
     },
     {
       "<leader>vb",
       function()
-        require("config.svn_blame").toggle()
+        require("taka.svn.blame").toggle()
       end,
       desc = "Who wrote each line (blame), shown or put away",
     },
@@ -108,7 +108,7 @@ return {
     {
       "<leader>vr",
       function()
-        require("config.svn").undo_hunk()
+        require("taka.svn").undo_hunk()
       end,
       desc = "Put this change back (asks)",
     },

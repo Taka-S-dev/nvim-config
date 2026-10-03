@@ -38,7 +38,7 @@ local function run(args, done)
   end)
 end
 
--- For lua/config/svn_blame.lua, which runs svn the same way.
+-- For lua/taka/svn/blame.lua, which runs svn the same way.
 M.run = run
 
 local function lines_of(text)
@@ -200,7 +200,7 @@ function M.status(dir)
       title = "SVN status: " .. dir,
       items = items,
       context = { svn_status = dir },
-      quickfixtextfunc = "v:lua.require'config.svn'.status_text",
+      quickfixtextfunc = "v:lua.require'taka.svn'.status_text",
     })
     if #items == 0 then
       say("No changes under " .. dir)
@@ -489,7 +489,7 @@ function M.history(path)
       end
       vim.cmd("tabnew")
       state.tab, state.left = vim.api.nvim_get_current_tabpage(), vim.api.nvim_get_current_win()
-      -- For q anywhere in the tab to close it (lua/config/diff_quit.lua).
+      -- For q anywhere in the tab to close it (lua/taka/diff/quit.lua).
       vim.t.svn_log = true
       scratch({
         "",

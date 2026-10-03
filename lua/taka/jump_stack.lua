@@ -6,7 +6,7 @@
 -- it is the same for any language.
 --
 -- Each row is where a jump was made from, named by the function it is in
--- (lua/config/enclosing.lua), and the last is where the last jump landed. A
+-- (lua/taka/lib/enclosing.lua), and the last is where the last jump landed. A
 -- level gone back from with <C-t> stays, dimmed, until the next jump drops it,
 -- as the tag stack keeps it.
 --
@@ -17,8 +17,8 @@
 --   X                empty the stack
 local M = {}
 
-local sidebar = require("config.sidebar")
-local enclosing = require("config.enclosing")
+local sidebar = require("taka.lib.sidebar")
+local enclosing = require("taka.lib.enclosing")
 
 -- The panel, and the window whose stack it shows: the last window with a file
 -- in it that was entered.
@@ -203,7 +203,7 @@ function M.pin()
       }
     end
   end
-  local added = require("config.pins").add_chain(places)
+  local added = require("taka.pins").add_chain(places)
   vim.notify(("Pinned %d of %d levels (<leader>jo shows them)"):format(added, #places))
 end
 

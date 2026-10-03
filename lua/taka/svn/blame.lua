@@ -18,7 +18,7 @@ local ns = vim.api.nvim_create_namespace("config_svn_blame")
 local same = vim.api.nvim_create_namespace("config_svn_blame_same")
 
 -- The rows of that revision take the colour a selection's other occurrences
--- are lit in (lua/config/selection_matches.lua): the same thing elsewhere,
+-- are lit in (lua/taka/selection_matches.lua): the same thing elsewhere,
 -- and not the cursor line's. In the file only the line numbers are coloured,
 -- so the code, a diff's colours and the cursor line are left as they are.
 local function colours()
@@ -357,7 +357,7 @@ function M.message(row)
   if not (row and row.revision) then
     return
   end
-  require("config.svn").run({ "log", "-r", tostring(row.revision), "--", M.file_of(row) }, function(result)
+  require("taka.svn").run({ "log", "-r", tostring(row.revision), "--", M.file_of(row) }, function(result)
     vim.notify(vim.trim(result.stdout ~= "" and result.stdout or result.stderr), vim.log.levels.INFO, { title = "svn" })
   end)
 end
@@ -380,7 +380,7 @@ local function answer_for(buf, done)
   if file == "" or vim.bo[buf].buftype ~= "" then
     return done(nil, "(no file)")
   end
-  local svn = require("config.svn")
+  local svn = require("taka.svn")
   svn.run({ "cat", "-r", "BASE", "--", file }, function(cat)
     if cat.code ~= 0 then
       return done(nil, "(not under svn)")
@@ -390,7 +390,7 @@ local function answer_for(buf, done)
     if known and vim.deep_equal(known.base, base) then
       return done(known)
     end
-    local answered = require("config.activity").begin("svn blame: " .. vim.fs.basename(file))
+    local answered = require("taka.lib.activity").begin("svn blame: " .. vim.fs.basename(file))
     svn.run({ "blame", "--xml", "-r", "BASE", "--", file }, function(result)
       if result.code ~= 0 then
         answered("failed")

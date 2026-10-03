@@ -77,9 +77,9 @@ local function new_id(pins)
   return tostring(number)
 end
 
--- Words a function name found before lua/config/enclosing.lua could be, when a
+-- Words a function name found before lua/taka/lib/enclosing.lua could be, when a
 -- declaration was wrapped in macros; a stored pin with one has no name.
-local not_a_name = require("config.enclosing").not_a_name
+local not_a_name = require("taka.lib.enclosing").not_a_name
 
 -- The list as stored: a flat array whose order is the order among siblings,
 -- each pin naming its parent. Files written before pins had ids are read as a
@@ -187,7 +187,7 @@ end
 
 -- The name of the function the cursor is in, where treesitter can tell.
 local function enclosing_function()
-  return require("config.enclosing").at(0, vim.api.nvim_win_get_cursor(0)[1])
+  return require("taka.lib.enclosing").at(0, vim.api.nvim_win_get_cursor(0)[1])
 end
 
 -- Where the pinned line is now: the recorded line if it still holds the
@@ -261,7 +261,7 @@ end
 -- md-bookmark_multiple).
 local markers = { leaf = "󰃃 ", open = "󰸖 ", closed = "󰸕 " }
 
-local tree_look = require("config.sidebar").tree_look
+local tree_look = require("taka.lib.sidebar").tree_look
 
 local function panel_is_open()
   return panel.picker ~= nil and not panel.picker.closed
@@ -311,7 +311,7 @@ local function row_text(row, look, searching)
 end
 
 -- Reads the pins again and leaves the cursor on the pin with the given id, or
--- where it was (lua/config/sidebar.lua). Where the pin will be once the list
+-- where it was (lua/taka/lib/sidebar.lua). Where the pin will be once the list
 -- is filled again is known beforehand, from the same outline the finder reads,
 -- except while a filter is typed.
 local function panel_refresh(focus_id)
@@ -333,7 +333,7 @@ local function panel_refresh(focus_id)
       end
     end
   end
-  require("config.sidebar").refresh(picker, target, function(item)
+  require("taka.lib.sidebar").refresh(picker, target, function(item)
     return item.pin.id == focus_id
   end)
 end
@@ -350,7 +350,7 @@ local function redraw_everything(root, focus_id)
 end
 
 -- Pins for a chain of places, each under the one before, as the jump stack
--- (lua/config/jump_stack.lua) keeps the jumps it holds. Each place is
+-- (lua/taka/jump_stack.lua) keeps the jumps it holds. Each place is
 -- { file, line, text, symbol, memo }, the file absolute. A pin is kept with
 -- its project, so places outside the project of the first are left out. How
 -- many were pinned, and the project.

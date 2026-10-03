@@ -39,7 +39,7 @@
 local M = {}
 
 -- Where the call trees come from, in order of preference.
-M.sources = { "config.call_tree.gtags" }
+M.sources = { "taka.call_tree.gtags" }
 
 -- What the panel shows: where it comes from, the function the tree starts
 -- from and which way it goes.
@@ -62,7 +62,7 @@ local function can_open(node)
     and not (node.children and #node.children == 0)
 end
 
-local tree_look = require("config.sidebar").tree_look
+local tree_look = require("taka.lib.sidebar").tree_look
 
 -- The rows on show, the tree walked through its open branches.
 local function rows()
@@ -140,7 +140,7 @@ local function is_open()
 end
 
 -- The rows read again with the cursor kept on `focus`, or on the row it was
--- on (lua/config/sidebar.lua).
+-- on (lua/taka/lib/sidebar.lua).
 local function refresh(focus)
   if not is_open() then
     return
@@ -156,7 +156,7 @@ local function refresh(focus)
       end
     end
   end
-  require("config.sidebar").refresh(picker, target, function(item)
+  require("taka.lib.sidebar").refresh(picker, target, function(item)
     return item.node == focus
   end)
 end

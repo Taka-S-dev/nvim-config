@@ -8,9 +8,9 @@
 --
 -- It opens by itself in a tab with two windows in diff mode and goes when the
 -- diff does; <leader>uP closes it and brings it back, and q in it ends the
--- whole comparison, as it does anywhere in one (lua/config/diff_quit.lua).
+-- whole comparison, as it does anywhere in one (lua/taka/diff/quit.lua).
 -- Lines are paired through the rows of the aligned diff
--- (lua/config/diff_scroll.lua): a line only one side has faces a blank line
+-- (lua/taka/diff/scroll.lua): a line only one side has faces a blank line
 -- on the other, so the halves stay row for row.
 local M = {}
 
@@ -103,7 +103,7 @@ end
 -- One side's view of the rows of the diff: the line on a row, or nil where
 -- the row is a filler line, the line being only on the other side.
 local function side_of(win)
-  local scroll = require("config.diff_scroll")
+  local scroll = require("taka.diff.scroll")
   local rows = scroll.rows_of(win)
   local buf = vim.api.nvim_win_get_buf(win)
   local side = { rows = rows, win = win }
@@ -374,7 +374,7 @@ function M.refresh()
   local current = vim.api.nvim_get_current_win()
   local from = vim.tbl_contains(wins, current) and current or wins[1]
   local cursor = vim.api.nvim_win_get_cursor(from)[1]
-  local row = require("config.diff_scroll").rows_of(from)[cursor]
+  local row = require("taka.diff.scroll").rows_of(from)[cursor]
   if not row then
     return
   end

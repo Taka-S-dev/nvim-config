@@ -135,7 +135,7 @@ function M.show()
     vim.notify("rg is not on PATH", vim.log.levels.ERROR)
     return
   end
-  local answered = require("config.activity").begin("writes: " .. name)
+  local answered = require("taka.lib.activity").begin("writes: " .. name)
   M.find(name, root_of(0), function(items)
     answered(#items == 0 and "nothing found" or ("%d found"):format(#items))
     if #items == 0 then
