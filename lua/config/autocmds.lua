@@ -42,9 +42,3 @@ vim.api.nvim_create_autocmd("FileType", {
     require("config.markdown_links").setup(event.buf)
   end,
 })
-
--- Macros and enum values told apart in C, where they are used (lua/config/c_macros.lua).
-require("config.c_macros")
-
--- The text selected, lit where else it stands (lua/config/selection_matches.lua).
-require("config.selection_matches")

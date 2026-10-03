@@ -61,3 +61,13 @@ require("lazy").setup({
     },
   },
 })
+
+-- The config's tools, once LazyVim has read keymaps.lua and autocmds.lua on the
+-- same event (lua/config/features.lua).
+vim.api.nvim_create_autocmd("User", {
+  pattern = "VeryLazy",
+  once = true,
+  callback = function()
+    require("config.features")
+  end,
+})

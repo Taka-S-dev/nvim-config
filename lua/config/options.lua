@@ -114,7 +114,3 @@ do
     pcall(vim.cmd.helptags, vim.fn.fnameescape(doc))
   end
 end
-
--- scoop's tools started from the folder of their version, past the junction a
--- session opened over ssh cannot follow (lua/config/scoop_shims.lua).
-require("config.scoop_shims")
