@@ -320,6 +320,8 @@ function M.toggle()
   panel.picker = Snacks.picker({
     source = "jump_stack",
     title = "Jump Stack",
+    -- Open with no jumps yet too: the panel is where they will show up.
+    show_empty = true,
     finder = function()
       local items = {}
       for _, row in ipairs(M.rows(panel.win)) do
