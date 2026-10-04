@@ -47,7 +47,10 @@ local function open_peek(symbol, items, opts)
   vim.opt.shortmess:append("A")
   pcall(vim.fn.bufload, source)
   vim.o.shortmess = shortmess
-  local height = 14
+  -- Four tenths of the screen, so most of a function shows while the code it
+  -- is called from keeps the larger part; never under fourteen rows, which
+  -- was the height on every screen and left a forty-line function half seen.
+  local height = math.max(14, math.floor(vim.o.lines * 0.4))
   local first = math.max(item.lnum - 2, 1)
   -- Copy far past what the window shows, so the rest of a long function can be
   -- scrolled to inside it. The window still opens on the definition.
@@ -82,13 +85,23 @@ local function open_peek(symbol, items, opts)
   -- clearance was a single row, so the margin is explicit rather than derived.
   local gap = 2
 
+  -- The room is counted on the whole screen, not in the window: there is one
+  -- peek at a time, and in a short split the window held it to a few rows
+  -- while the screen above stood free. Rows are on the screen from here on,
+  -- and turned into the window's own for nvim_open_win.
+  local win_top = vim.fn.win_screenpos(origin)[1] - 1
+  local tabline = (vim.o.showtabline == 2 or (vim.o.showtabline == 1 and #vim.api.nvim_list_tabpages() > 1)) and 1 or 0
+  local screen_bottom = vim.o.lines - vim.o.cmdheight - (vim.o.laststatus == 3 and 1 or 0)
+  local cursor_screen = win_top + cursor_row
+
   local function room(side)
-    return side == "above" and (cursor_row - 2 - gap) or (win_height - cursor_row - 3 - gap)
+    return side == "above" and (cursor_screen - tabline - 2 - gap) or (screen_bottom - cursor_screen - 3 - gap)
   end
 
   local function geometry(side)
     local h = math.max(math.min(wanted_height, room(side)), 3)
-    return { height = h, row = side == "above" and (cursor_row - h - 1 - gap) or (cursor_row + 2 + gap) }
+    local row = side == "above" and (cursor_screen - h - 1 - gap) or (cursor_screen + 2 + gap)
+    return { height = h, row = row - win_top }
   end
 
   -- A window in the empty space to the right of the longest visible line cannot
@@ -125,9 +138,9 @@ local function open_peek(symbol, items, opts)
     -- Level with the cursor, so the definition reads next to the call, and as
     -- tall as the window allows: a short window left this at three rows while
     -- the whole column beside it stood empty.
-    local h = math.max(math.min(wanted_height, win_height - 2), 3)
-    local row = math.min(math.max(cursor_row - math.floor(h / 2), 0), math.max(win_height - h - 2, 0))
-    chosen = { height = h, row = row }
+    local h = math.max(math.min(wanted_height, screen_bottom - tabline - 2), 3)
+    local row = math.min(math.max(cursor_screen - math.floor(h / 2), tabline), math.max(screen_bottom - h - 2, tabline))
+    chosen = { height = h, row = row - win_top }
   end
 
   peek_window = vim.api.nvim_open_win(buf, true, {

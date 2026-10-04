@@ -243,6 +243,53 @@ return function(T)
     expect(scratch, "a jump inside the peek loaded a file into it")
     expect(left == 0, "Esc did not close the peek")
   end)
+  -- The peek's room is the screen's, not the window's: from a short split at
+  -- the bottom it was held to the few rows of that split while the screen
+  -- above stood free. It may reach over the window above, and still leaves the
+  -- line under the cursor in view.
+  check("peek: from a short split, four tenths of the screen tall", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    local body = { "int long_fn(int x)", "{" }
+    for i = 1, 20 do
+      body[#body + 1] = ("    x = x + %d;"):format(i)
+    end
+    body[#body + 1] = "    return x;"
+    body[#body + 1] = "}"
+    write(dir .. "/lib.c", body)
+    write(dir .. "/main.c", { "int long_fn(int x);", "int main(void)", "{", "    return long_fn(1);", "}" })
+    run({ "gtags" }, dir)
+    -- Sixty rows, of which four tenths is twenty-four: the whole of long_fn.
+    local lines = vim.o.lines
+    vim.o.lines = 60
+    vim.cmd.edit(dir .. "/main.c")
+    vim.cmd("split")
+    vim.cmd("resize 6")
+    local origin = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_cursor(0, { 4, 12 })
+    key("<leader>jp")()
+    vim.wait(5000, function()
+      return #floats() > 0
+    end, 20)
+    local peek = floats()[1]
+    local height = peek and vim.api.nvim_win_get_height(peek)
+    local top = peek and vim.fn.win_screenpos(peek)[1]
+    local cursor_screen = vim.fn.win_screenpos(origin)[1] + 3
+    local window_height = vim.api.nvim_win_get_height(origin)
+    if peek then
+      vim.api.nvim_win_close(peek, true)
+    end
+    reset_editor()
+    vim.o.lines = lines
+    expect(height, "no peek opened")
+    expect(height == 24, ("the peek has %d rows on a screen of 60, not four tenths of it"):format(height))
+    expect(height > window_height, ("the peek has %d rows, the window %d"):format(height, window_height))
+    expect(
+      cursor_screen < top - 1 or cursor_screen > top + height,
+      ("the peek on rows %d to %d covers the cursor line, row %d"):format(top - 1, top + height, cursor_screen)
+    )
+  end)
+
   check("ctags: <leader>jB writes tags to the root of a tree that is not under version control", function()
     need(vim.g.gutentags_ctags_executable or "ctags")
     local dir = c_project()
