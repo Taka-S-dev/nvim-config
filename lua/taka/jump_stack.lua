@@ -82,10 +82,23 @@ function M.rows(win)
   return out, stack
 end
 
+-- The level the cursor is at, marked as a debugger marks the frame it stopped
+-- in: the stack frame arrow of the Nerd Font (cod-debug_stackframe), one column
+-- wide where a plain triangle is of ambiguous width, in the yellow of a
+-- debugger's current line (JumpStackCurrent, a warning's colour by default).
+local here = " "
+vim.api.nvim_set_hl(0, "JumpStackCurrent", { link = "DiagnosticWarn", default = true })
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("config_jump_stack_colours", { clear = true }),
+  callback = function()
+    vim.api.nvim_set_hl(0, "JumpStackCurrent", { link = "DiagnosticWarn", default = true })
+  end,
+})
+
 local function row_text(row)
   local place = row.file and ("%s:%d"):format(vim.fs.basename(row.file), row.lnum) or ""
   return {
-    { row.current and "● " or "  ", "DiagnosticInfo" },
+    { row.current and here or "  ", "JumpStackCurrent" },
     { row.name ~= "" and row.name or "(top level)", row.returned and "Comment" or "Function" },
     { row.tag and ("  → " .. row.tag) or "", "Comment" },
     {
