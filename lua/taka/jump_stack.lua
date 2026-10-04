@@ -54,7 +54,12 @@ end
 -- The levels of a window's stack: where each jump was made from, then where
 -- the last one landed, if that is known.
 function M.rows(win)
+  -- A window closed while the panel follows it has no stack: gettagstack()
+  -- hands back an empty dictionary, and the panel stopped with an error.
   local stack = vim.fn.gettagstack(win)
+  if not stack.items then
+    stack = { items = {}, curidx = 1, length = 0 }
+  end
   local out = {}
   for index, item in ipairs(stack.items) do
     out[#out + 1] = { index = index, buf = item.from[1], lnum = item.from[2], tag = item.tagname }

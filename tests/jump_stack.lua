@@ -107,6 +107,11 @@ return function(T)
       "  greet  @b.lua:2",
     }, "back a level")
     expect(seen.visited == "c.c:8 at level 2", "showing the first level: " .. tostring(seen.visited))
+    -- The window the panel follows can be closed; its stack is then empty.
+    local gone = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false, { split = "below" })
+    vim.api.nvim_win_close(gone, true)
+    local rows_ok, rows = pcall(stack.rows, gone)
+    expect(rows_ok and #rows == 0, "the rows of a closed window: " .. tostring(rows))
     expect(seen.nothing == 0, "an empty chain pinned " .. tostring(seen.nothing))
     same(seen.pinned or {}, { "0:broken → helper", "1:run → greet", "2:greet" }, "the levels pinned")
     expect(seen.back == "c.c:8 at level 1", "back to the first level: " .. tostring(seen.back))
