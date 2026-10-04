@@ -92,6 +92,17 @@ return function(T)
       -- Going back to a level is :pop down to it.
       stack.back_to(stack.rows(win)[1])
       seen.back = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".") .. " at level " .. vim.fn.gettagstack(win).curidx
+      -- And forward again to the last level, gone back from: the stack's place
+      -- and the arrow follow, as they do going back.
+      stack.back_to(stack.rows(win)[3])
+      vim.wait(300)
+      seen.forward = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".") .. " at level " .. vim.fn.gettagstack(win).curidx
+      seen.forward_rows = stack.lines()
+      -- A click in the code right after going forward to the last level is no
+      -- jump settling: the landing stays.
+      vim.api.nvim_win_set_cursor(win, { 1, 0 })
+      stack.track(win)
+      seen.forward_kept = stack.lines()[3]
       stack.clear()
       vim.wait(300)
       seen.cleared = #stack.lines()
@@ -125,6 +136,16 @@ return function(T)
     expect(seen.nothing == 0, "an empty chain pinned " .. tostring(seen.nothing))
     same(seen.pinned or {}, { "0:broken → helper", "1:run → greet", "2:greet" }, "the levels pinned")
     expect(seen.back == "c.c:8 at level 1", "back to the first level: " .. tostring(seen.back))
+    expect(seen.forward == "b.lua:2 at level 3", "forward to the last level: " .. tostring(seen.forward))
+    same(seen.forward_rows or {}, {
+      "  broken  → helper  @c.c:8",
+      "  run  → greet  @b.lua:5",
+      " greet  @b.lua:2",
+    }, "forward again")
+    expect(
+      tostring(seen.forward_kept):find("greet  @b.lua:2", 1, true),
+      "the landing after a click in the code: " .. tostring(seen.forward_kept)
+    )
     expect(seen.cleared == 0, "rows left after emptying the stack: " .. tostring(seen.cleared))
   end)
 

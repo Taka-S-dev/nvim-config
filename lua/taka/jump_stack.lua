@@ -253,7 +253,12 @@ function M.track(win)
   end
   seen[win] = now
   local top = stack.items[#stack.items]
-  if top and stack.curidx == stack.length + 1 then
+  local known = top and landings[win] and landings[win][stack.length]
+  -- Only a jump not seen before has its landing taken. Gone forward to again
+  -- from the panel, the top level's landing is known, and taken anew it
+  -- followed the next click in the code for a second: the last row turned
+  -- into wherever that click was.
+  if top and stack.curidx == stack.length + 1 and not (known and known.key == key_of(top)) then
     landings[win] = landings[win] or {}
     local count = stack.length
     -- After the jump: the code that made it moves the cursor once it has put
@@ -303,15 +308,21 @@ function M.visit(row, go)
 end
 
 -- Back to a level, the levels above it kept for going forward, as :pop does,
--- and with the cursor in the window. A level ahead of where the stack is, one
--- gone back from, is only shown.
+-- and with the cursor in the window. A level gone back from is gone forward
+-- to the same way, the stack's place set to it again, as a debugger selects a
+-- frame either way: it had only been shown, the arrow left where it was.
 function M.back_to(row)
   local win = panel.win
   if not (win and vim.api.nvim_win_is_valid(win)) then
     return
   end
   local stack = vim.fn.gettagstack(win)
-  if row.index >= stack.curidx then
+  if row.index > stack.curidx then
+    vim.fn.settagstack(win, { items = stack.items, curidx = row.index }, "r")
+    M.visit(row, true)
+    return M.track(win)
+  end
+  if row.index == stack.curidx then
     return M.visit(row, true)
   end
   vim.api.nvim_set_current_win(win)
