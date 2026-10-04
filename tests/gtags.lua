@@ -103,10 +103,14 @@ return function(T)
 
   -- <C-]> on a name where it is defined, as on a macro in its own #define,
   -- went to the line it was on and still put a jump on the tag stack: each
-  -- press added a level to the jump stack. It adds none.
-  check("gtags: <C-]> on a name where it is defined adds no jump", function()
+  -- press added a level to the jump stack. It adds none. Nor does a name with
+  -- several definitions until one is chosen from the list: closed without a
+  -- choice, the list left a level that went nowhere.
+  check("gtags: <C-]> puts no jump on the tag stack until it moves", function()
     need("gtags", "global")
     local dir = c_project()
+    write(dir .. "/x.c", { "int twice(void)", "{", "    return 1;", "}" })
+    write(dir .. "/y.c", { "int twice(void)", "{", "    return 2;", "}", "int caller(void) { return twice(); }" })
     run({ "gtags" }, dir)
     vim.cmd.edit(dir .. "/lib.c")
     vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = {} }, "r")
@@ -125,10 +129,26 @@ return function(T)
     end)
     vim.notify = notify
     local depth = #vim.fn.gettagstack().items
+    -- Several definitions: a list, and nothing on the tag stack yet.
+    vim.cmd.edit(dir .. "/y.c")
+    vim.api.nvim_win_set_cursor(0, { 5, 27 })
+    key("<C-]>")()
+    vim.wait(5000, function()
+      return Snacks.picker.get()[1] ~= nil
+    end, 20)
+    local listed = Snacks.picker.get()[1] ~= nil
+    local listed_depth = #vim.fn.gettagstack().items
+    for _, picker in ipairs(Snacks.picker.get()) do
+      picker:close()
+    end
     reset_editor()
     expect(ok, tostring(err))
     expect(depth == 0, "jumps on the tag stack after three presses: " .. depth)
     expect(tostring(said):find("defined here", 1, true), "the message: " .. tostring(said))
+    expect(
+      listed and listed_depth == 0,
+      ("a list of several: %s, %d on the tag stack"):format(tostring(listed), listed_depth)
+    )
   end)
 
   check("scoop: the tools run from their own folder, not through a shim or junction", function()

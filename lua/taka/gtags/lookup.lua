@@ -69,14 +69,18 @@ end
 local function open_picker(title, items)
   vim.fn.setqflist({}, " ", { title = title, items = items })
   if Snacks and Snacks.picker then
-    Snacks.picker.qflist()
+    -- The jump goes on the tag stack when one is chosen, from where the list
+    -- was opened; none when the list is closed.
+    Snacks.picker.qflist({ jump = { tagstack = true } })
   else
     vim.cmd.copen()
   end
 end
 
--- One result opens directly; several open in the quickfix picker. Either way
--- the origin is pushed on the tag stack, so <C-t> returns here.
+-- One result opens directly; several open in the quickfix picker. The origin
+-- goes on the tag stack, so <C-t> returns here: at once for one, and for
+-- several when one is chosen. Pushed as the list opened, a list closed without
+-- a choice left a level that went nowhere, landed where it started.
 ---@param from? table position recorded by the caller, for when the jump starts
 ---from somewhere the cursor has already left, such as the peek window.
 local function show(title, symbol, items, from)
@@ -93,8 +97,8 @@ local function show(title, symbol, items, from)
     vim.notify(symbol .. " is defined here")
     return
   end
-  vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = { { tagname = symbol, from = from } } }, "t")
   if #items == 1 then
+    vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = { { tagname = symbol, from = from } } }, "t")
     vim.cmd("normal! m'")
     -- A definition in the file already open is reached without :edit, which
     -- would read the file again and have its language server attach anew.
