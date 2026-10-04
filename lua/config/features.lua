@@ -24,6 +24,17 @@ key("n", "<leader>hc", "taka.words", "clear", "Put every word out")
 require("taka.scope_pin")
 key("n", "<leader>jl", "taka.scope_pin", "toggle", "Pin the scope line")
 
+-- The right click menu, for reading with the mouse: the definition of the
+-- word clicked, peeked (<leader>jp) or jumped to (<C-]>), by GTAGS or a
+-- language server (lua/taka/gtags/). The menu moves the cursor to the word
+-- first ('mousemodel' popup_setpos). Neovim's own "Go to definition" there
+-- asks a language server only, and finds nothing in C read with GTAGS.
+vim.cmd([[
+  anoremenu 500.1 PopUp.Peek\ definition <Cmd>lua require("taka.gtags").peek(vim.fn.expand("<cword>"))<CR>
+  anoremenu 500.2 PopUp.Jump\ to\ definition <Cmd>lua require("taka.gtags").jump(vim.fn.expand("<cword>"), "menu")<CR>
+  anoremenu 500.3 PopUp.-gtags- <Nop>
+]])
+
 -- Pinned lines with notes, <leader>jm and <leader>jM, the notes put away with
 -- <leader>uN (lua/taka/pins/).
 require("taka.pins")

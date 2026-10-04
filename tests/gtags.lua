@@ -151,6 +151,27 @@ return function(T)
     )
   end)
 
+  -- With the mouse alone: the right click menu starts with the peek and the
+  -- jump of the gtags keys, Neovim's own "Go to definition" there asking a
+  -- language server only.
+  check("gtags: the right click menu peeks and jumps to the definition clicked", function()
+    local items = vim.fn.menu_info("PopUp").submenus or {}
+    local peek = vim.fn.menu_info("PopUp.Peek definition", "n")
+    local jump = vim.fn.menu_info("PopUp.Jump to definition", "n")
+    expect(
+      items[1] == "Peek definition" and items[2] == "Jump to definition",
+      "the menu starts with: " .. table.concat(vim.list_slice(items, 1, 3), ", ")
+    )
+    expect(
+      tostring(peek.rhs):find('require("taka.gtags").peek', 1, true),
+      "Peek definition runs: " .. tostring(peek.rhs)
+    )
+    expect(
+      tostring(jump.rhs):find('require("taka.gtags").jump', 1, true),
+      "Jump to definition runs: " .. tostring(jump.rhs)
+    )
+  end)
+
   check("scoop: the tools run from their own folder, not through a shim or junction", function()
     local shims = vim.fs.joinpath(vim.env.SCOOP or vim.fs.joinpath(vim.env.USERPROFILE or "", "scoop"), "shims")
     local shimmed = {}
