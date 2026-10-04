@@ -132,29 +132,35 @@ return function(T)
   -- next jump on top, and the same function showed up level after level. The
   -- stack goes back to that level instead; a jump from where the last one
   -- landed, into the same function as a recursive call is, still goes deeper.
-  check("jump stack: back in a level without <C-t>, the next jump replaces the levels below", function()
+  -- The same jump again, from the same line to the same name, adds nothing.
+  check("jump stack: one level per place gone back to or jumped from again", function()
     local stack = require("taka.jump_stack")
     local dir = temp_dir()
     write(dir .. "/a.c", {
       "int helper(int x)",
       "{",
+      "    if (x > 9) return helper(x / 2);",
       "    return x ? helper(x - 1) : 0;",
       "}",
       "int main(void)",
       "{",
+      "    helper(1);",
       "    return helper(2);",
       "}",
     })
     -- The cursor reaches where the jump went by way of a line next to the
     -- start, as smooth scrolling carries it: the landing is where it stops.
-    local function jump(line_from, col_from, line_to)
+    local function jump(line_from, col_from, line_to, file)
       vim.api.nvim_win_set_cursor(0, { line_from, col_from })
       local from = vim.fn.getpos(".")
       from[1] = vim.api.nvim_get_current_buf()
       vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = { { tagname = "helper", from = from } } }, "t")
-      vim.api.nvim_win_set_cursor(0, { line_from - 1, 0 })
+      vim.api.nvim_win_set_cursor(0, { math.max(1, line_from - 1), 0 })
       stack.track()
       vim.wait(50)
+      if file then
+        vim.cmd.edit(file)
+      end
       vim.api.nvim_win_set_cursor(0, { line_to, 0 })
       stack.track()
     end
@@ -170,15 +176,19 @@ return function(T)
     local ok, err = pcall(function()
       vim.cmd.edit(dir .. "/a.c")
       vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = {} }, "r")
-      jump(7, 11, 3)
-      -- Back to main with something other than <C-t>, and the same jump again.
-      jump(7, 11, 3)
+      jump(8, 4, 4)
+      -- Back to main with something other than <C-t>, and a jump from its other
+      -- call: main's level is taken again, not stacked under helper's.
+      jump(9, 11, 4)
       seen.again = names()
-      -- From where it landed into helper again, twice, as a recursive call
-      -- goes: a level deeper each time, though helper is on the stack.
-      jump(3, 15, 1)
-      jump(3, 15, 1)
+      -- From where it landed into helper again, from two calls in it: a level
+      -- deeper each time, though helper is on the stack already.
+      jump(4, 15, 1)
+      jump(3, 22, 1)
       seen.deeper = names()
+      -- The last jump once more: nothing is added.
+      jump(3, 22, 1)
+      seen.repeated = names()
       -- An empty stack opens the panel all the same.
       vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = {} }, "r")
       stack.toggle()
@@ -188,11 +198,15 @@ return function(T)
       end, vim.api.nvim_list_wins())
       stack.toggle()
     end)
-    vim.cmd("bwipeout!")
+    vim.cmd("silent! %bwipeout!")
     reset_editor()
     expect(ok, tostring(err))
-    expect(seen.again == "main:7 helper:3", "the same jump twice: " .. tostring(seen.again))
-    expect(seen.deeper == "main:7 helper:3 helper:3 helper:1", "a recursive jump: " .. tostring(seen.deeper))
+    expect(seen.again == "main:9 helper:4", "a jump from main after going back to it: " .. tostring(seen.again))
+    expect(
+      seen.deeper == "main:9 helper:4 helper:3 helper:1",
+      "recursive jumps from two calls: " .. tostring(seen.deeper)
+    )
+    expect(seen.repeated == seen.deeper, "the same jump again: " .. tostring(seen.repeated))
     expect(seen.empty_open == 1, "panels open on an empty stack: " .. tostring(seen.empty_open))
   end)
 end

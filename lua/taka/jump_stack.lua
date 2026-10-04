@@ -121,20 +121,29 @@ local function refresh()
   end)
 end
 
--- The jump just made, when it starts in the function of a level already on
--- the stack rather than where the last jump landed: the reader went back to
--- that level some other way than <C-t>, with <C-o> or a click, and Vim, which
--- learns of a return only from <C-t>, stacked the jump on top again, so one
--- function showed up level after level. The levels from that one down are
--- dropped and the jump takes its place, as a debugger shows a frame stepped
--- back into. A jump from where the last one landed goes a level deeper, even
--- into the same function, as a recursive call does.
-local function back_in_a_level(win, stack)
+-- The stack set right after a jump; true when it was changed. A jump that
+-- starts in the function of a level already on the stack, rather than where the
+-- last jump landed, means the reader went back to that level some other way
+-- than <C-t>, with <C-o> or a click, and Vim, which learns of a return only
+-- from <C-t>, stacked the jump on top again, so one function showed up level
+-- after level. The levels from that one down are dropped and the jump takes its
+-- place, as a debugger shows a frame stepped back into. A jump from where the
+-- last one landed goes a level deeper, even into the same function, as a
+-- recursive call does.
+local function set_right(win, stack)
   local count = #stack.items
   if count < 2 or stack.curidx ~= count + 1 then
     return false
   end
   local new = stack.items[count]
+  -- The same jump again, from the same line to the same name as the level
+  -- below, as <C-]> on a macro's name in its own #define does, lands where the
+  -- last one did: it adds no level, where it stacked one per press.
+  local below = stack.items[count - 1]
+  if below.from[1] == new.from[1] and below.from[2] == new.from[2] and below.tagname == new.tagname then
+    vim.fn.settagstack(win, { items = vim.list_slice(stack.items, 1, count - 1), curidx = count }, "r")
+    return true
+  end
   local buf = new.from[1]
   if not vim.api.nvim_buf_is_valid(buf) then
     return false
@@ -206,7 +215,7 @@ function M.track(win)
     return settle(win, stack)
   end
   -- Looked at only when the stack has changed, not at every cursor move.
-  if back_in_a_level(win, stack) then
+  if set_right(win, stack) then
     stack = vim.fn.gettagstack(win)
     now = signature(stack)
   end

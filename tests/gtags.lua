@@ -101,6 +101,36 @@ return function(T)
     )
   end)
 
+  -- <C-]> on a name where it is defined, as on a macro in its own #define,
+  -- went to the line it was on and still put a jump on the tag stack: each
+  -- press added a level to the jump stack. It adds none.
+  check("gtags: <C-]> on a name where it is defined adds no jump", function()
+    need("gtags", "global")
+    local dir = c_project()
+    run({ "gtags" }, dir)
+    vim.cmd.edit(dir .. "/lib.c")
+    vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = {} }, "r")
+    vim.api.nvim_win_set_cursor(0, { 1, 6 })
+    local notify, said = vim.notify, nil
+    vim.notify = function(message)
+      said = message
+    end
+    local ok, err = pcall(function()
+      for _ = 1, 3 do
+        key("<C-]>")()
+        vim.wait(3000, function()
+          return said ~= nil
+        end, 20)
+      end
+    end)
+    vim.notify = notify
+    local depth = #vim.fn.gettagstack().items
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(depth == 0, "jumps on the tag stack after three presses: " .. depth)
+    expect(tostring(said):find("defined here", 1, true), "the message: " .. tostring(said))
+  end)
+
   check("scoop: the tools run from their own folder, not through a shim or junction", function()
     local shims = vim.fs.joinpath(vim.env.SCOOP or vim.fs.joinpath(vim.env.USERPROFILE or "", "scoop"), "shims")
     local shimmed = {}

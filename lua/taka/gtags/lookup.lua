@@ -84,6 +84,15 @@ local function show(title, symbol, items, from)
     from = vim.fn.getpos(".")
     from[1] = vim.api.nvim_get_current_buf()
   end
+  -- <C-]> on a name where it is defined, as on a macro in its own #define:
+  -- the only definition is the line the jump starts from. Nothing moves, and
+  -- nothing goes on the tag stack, where it made a level of the jump stack
+  -- that leads nowhere.
+  local origin = vim.fs.normalize(vim.api.nvim_buf_get_name(from[1])):lower()
+  if #items == 1 and items[1].lnum == from[2] and vim.fs.normalize(items[1].filename):lower() == origin then
+    vim.notify(symbol .. " is defined here")
+    return
+  end
   vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = { { tagname = symbol, from = from } } }, "t")
   if #items == 1 then
     vim.cmd("normal! m'")
