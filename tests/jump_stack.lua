@@ -98,13 +98,13 @@ return function(T)
     end
     same(seen.two, {
       "  broken  → helper  @c.c:8",
-      "  └╴run  → greet  @b.lua:5",
-      "●   └╴greet  @b.lua:2",
+      "  run  → greet  @b.lua:5",
+      "● greet  @b.lua:2",
     }, "after a jump in C and one in Lua")
     same(seen.popped, {
       "  broken  → helper  @c.c:8",
-      "● └╴run  → greet  @b.lua:5",
-      "    └╴greet  @b.lua:2",
+      "● run  → greet  @b.lua:5",
+      "  greet  @b.lua:2",
     }, "back a level")
     expect(seen.visited == "c.c:8 at level 2", "showing the first level: " .. tostring(seen.visited))
     expect(seen.nothing == 0, "an empty chain pinned " .. tostring(seen.nothing))

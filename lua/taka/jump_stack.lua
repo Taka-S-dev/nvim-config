@@ -1,7 +1,9 @@
 -- The jump stack: the jumps to a definition or a reference the cursor is inside
--- now, one row a level and indented by depth, the way a debugger shows its call
--- stack as you step in (<leader>jy). It is Vim's tag stack, which <C-]> and
--- <C-t> already keep, and which the jumps of gtags (lua/taka/gtags/), of
+-- now, one row a level, the deepest last, as a debugger lists its call stack
+-- (<leader>jy). The rows are not indented by depth: the stack has no branches,
+-- so the order says the depth, and nine levels down an indent took half the
+-- panel and cut the function names short. It is Vim's tag stack, which <C-]>
+-- and <C-t> already keep, and which the jumps of gtags (lua/taka/gtags/), of
 -- ctags and of a language server's definitions and references all go onto; so
 -- it is the same for any language.
 --
@@ -75,12 +77,10 @@ function M.rows(win)
   return out, stack
 end
 
-local function row_text(row, look)
-  local guides = row.index > 1 and (("  "):rep(row.index - 2) .. look.last) or ""
+local function row_text(row)
   local place = row.file and ("%s:%d"):format(vim.fs.basename(row.file), row.lnum) or ""
   return {
     { row.current and "● " or "  ", "DiagnosticInfo" },
-    { guides, "SnacksPickerTree" },
     { row.name ~= "" and row.name or "(top level)", row.returned and "Comment" or "Function" },
     { row.tag and ("  → " .. row.tag) or "", "Comment" },
     {
@@ -213,7 +213,6 @@ function M.toggle()
   end
   local win = vim.api.nvim_get_current_win()
   panel.win = is_code_window(win) and win or panel.win or win
-  local look = sidebar.tree_look()
   local function current_row()
     local item = is_open() and panel.picker:current()
     return item and item.row
@@ -230,7 +229,7 @@ function M.toggle()
       return items
     end,
     format = function(item)
-      return row_text(item.row, look)
+      return row_text(item.row)
     end,
     matcher = { sort_empty = false, fuzzy = false },
     sort = { fields = { "sort" } },
@@ -291,10 +290,10 @@ function M.lines()
   if not is_open() then
     return {}
   end
-  local look, out = sidebar.tree_look(), {}
+  local out = {}
   for _, row in ipairs(M.rows(panel.win)) do
     local parts = {}
-    for _, part in ipairs(row_text(row, look)) do
+    for _, part in ipairs(row_text(row)) do
       if part[1] then
         parts[#parts + 1] = part[1]
       elseif part.virt_text then
