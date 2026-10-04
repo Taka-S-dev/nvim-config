@@ -121,6 +121,77 @@ local function refresh()
   end)
 end
 
+-- The jump just made, when it starts in the function of a level already on
+-- the stack rather than where the last jump landed: the reader went back to
+-- that level some other way than <C-t>, with <C-o> or a click, and Vim, which
+-- learns of a return only from <C-t>, stacked the jump on top again, so one
+-- function showed up level after level. The levels from that one down are
+-- dropped and the jump takes its place, as a debugger shows a frame stepped
+-- back into. A jump from where the last one landed goes a level deeper, even
+-- into the same function, as a recursive call does.
+local function back_in_a_level(win, stack)
+  local count = #stack.items
+  if count < 2 or stack.curidx ~= count + 1 then
+    return false
+  end
+  local new = stack.items[count]
+  local buf = new.from[1]
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return false
+  end
+  local origin = enclosing.at(buf, new.from[2])
+  if origin == "" then
+    return false
+  end
+  local landed = landings[win] and landings[win][count - 1]
+  if landed and landed.buf == buf and enclosing.at(buf, landed.lnum) == origin then
+    return false
+  end
+  for level = count - 1, 1, -1 do
+    local item = stack.items[level]
+    if item.from[1] == buf and enclosing.at(buf, item.from[2]) == origin then
+      local items = vim.list_slice(stack.items, 1, level - 1)
+      items[#items + 1] = new
+      vim.fn.settagstack(win, { items = items, curidx = #items + 1 }, "r")
+      for gone = level, count do
+        if landings[win] then
+          landings[win][gone] = nil
+        end
+      end
+      return true
+    end
+  end
+  return false
+end
+
+-- How long after a jump the place it landed follows the cursor. Smooth
+-- scrolling carries the cursor from where the jump started to where it went
+-- in steps; taken at the first step, the landing was a line next to the start,
+-- which also made the next jump from there look like a return to that level.
+local SETTLING = 1e9
+
+-- The landing of the jump on top, moved to where the cursor is while the jump
+-- is recent.
+local function settle(win, stack)
+  local count = #stack.items
+  local landing = landings[win] and landings[win][count]
+  if
+    not landing
+    or stack.curidx ~= count + 1
+    or landing.key ~= key_of(stack.items[count])
+    or vim.uv.hrtime() - landing.since > SETTLING
+  then
+    return
+  end
+  local buf, lnum = vim.api.nvim_win_get_buf(win), vim.api.nvim_win_get_cursor(win)[1]
+  if landing.buf ~= buf or landing.lnum ~= lnum then
+    landing.buf, landing.lnum = buf, lnum
+    if win == panel.win then
+      refresh()
+    end
+  end
+end
+
 -- A window's stack looked at again, after the cursor moved or a buffer or
 -- window was entered: a jump is noted where it landed, and the panel drawn
 -- again when the stack it shows has changed.
@@ -132,7 +203,12 @@ function M.track(win)
   local stack = vim.fn.gettagstack(win)
   local now = signature(stack)
   if now == seen[win] then
-    return
+    return settle(win, stack)
+  end
+  -- Looked at only when the stack has changed, not at every cursor move.
+  if back_in_a_level(win, stack) then
+    stack = vim.fn.gettagstack(win)
+    now = signature(stack)
   end
   seen[win] = now
   local top = stack.items[#stack.items]
@@ -147,6 +223,7 @@ function M.track(win)
           key = key_of(top),
           buf = vim.api.nvim_win_get_buf(win),
           lnum = vim.api.nvim_win_get_cursor(win)[1],
+          since = vim.uv.hrtime(),
         }
         if win == panel.win then
           refresh()
@@ -165,6 +242,11 @@ function M.visit(row, go)
   local win = panel.win
   if not (win and vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(row.buf)) then
     return
+  end
+  -- The cursor moved from the panel is no jump settling: the place the last
+  -- jump landed stays, where it followed a click made within the second.
+  for _, landing in pairs(landings[win] or {}) do
+    landing.since = 0
   end
   vim.api.nvim_win_call(win, function()
     vim.cmd("normal! m'")

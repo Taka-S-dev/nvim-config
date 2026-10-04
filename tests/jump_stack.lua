@@ -63,6 +63,12 @@ return function(T)
       stack.toggle()
       vim.wait(300)
       seen.two = stack.lines()
+      -- A level shown from the panel within the second after the jump, as a
+      -- double click can be: the cursor moved there is not taken for the jump
+      -- settling, and the landing stays.
+      stack.visit(stack.rows(win)[1])
+      stack.track(win)
+      seen.landing_kept = stack.lines()[3]
       -- Back a level from the panel, as <C-t> in the code: the level stays,
       -- and the mark goes up one.
       stack.back_to(stack.rows(win)[2])
@@ -107,6 +113,10 @@ return function(T)
       "  greet  @b.lua:2",
     }, "back a level")
     expect(seen.visited == "c.c:8 at level 2", "showing the first level: " .. tostring(seen.visited))
+    expect(
+      tostring(seen.landing_kept):find("greet  @b.lua:2", 1, true),
+      "the landing after a click in the panel: " .. tostring(seen.landing_kept)
+    )
     -- The window the panel follows can be closed; its stack is then empty.
     local gone = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false, { split = "below" })
     vim.api.nvim_win_close(gone, true)
@@ -116,5 +126,64 @@ return function(T)
     same(seen.pinned or {}, { "0:broken → helper", "1:run → greet", "2:greet" }, "the levels pinned")
     expect(seen.back == "c.c:8 at level 1", "back to the first level: " .. tostring(seen.back))
     expect(seen.cleared == 0, "rows left after emptying the stack: " .. tostring(seen.cleared))
+  end)
+
+  -- Back in a level by <C-o> or a click rather than <C-t>, Vim still stacks the
+  -- next jump on top, and the same function showed up level after level. The
+  -- stack goes back to that level instead; a jump from where the last one
+  -- landed, into the same function as a recursive call is, still goes deeper.
+  check("jump stack: back in a level without <C-t>, the next jump replaces the levels below", function()
+    local stack = require("taka.jump_stack")
+    local dir = temp_dir()
+    write(dir .. "/a.c", {
+      "int helper(int x)",
+      "{",
+      "    return x ? helper(x - 1) : 0;",
+      "}",
+      "int main(void)",
+      "{",
+      "    return helper(2);",
+      "}",
+    })
+    -- The cursor reaches where the jump went by way of a line next to the
+    -- start, as smooth scrolling carries it: the landing is where it stops.
+    local function jump(line_from, col_from, line_to)
+      vim.api.nvim_win_set_cursor(0, { line_from, col_from })
+      local from = vim.fn.getpos(".")
+      from[1] = vim.api.nvim_get_current_buf()
+      vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = { { tagname = "helper", from = from } } }, "t")
+      vim.api.nvim_win_set_cursor(0, { line_from - 1, 0 })
+      stack.track()
+      vim.wait(50)
+      vim.api.nvim_win_set_cursor(0, { line_to, 0 })
+      stack.track()
+    end
+    local function names()
+      return table.concat(
+        vim.tbl_map(function(row)
+          return row.name .. ":" .. row.lnum
+        end, stack.rows(vim.api.nvim_get_current_win())),
+        " "
+      )
+    end
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = {} }, "r")
+      jump(7, 11, 3)
+      -- Back to main with something other than <C-t>, and the same jump again.
+      jump(7, 11, 3)
+      seen.again = names()
+      -- From where it landed into helper again, twice, as a recursive call
+      -- goes: a level deeper each time, though helper is on the stack.
+      jump(3, 15, 1)
+      jump(3, 15, 1)
+      seen.deeper = names()
+    end)
+    vim.cmd("bwipeout!")
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.again == "main:7 helper:3", "the same jump twice: " .. tostring(seen.again))
+    expect(seen.deeper == "main:7 helper:3 helper:3 helper:1", "a recursive jump: " .. tostring(seen.deeper))
   end)
 end
