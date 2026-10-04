@@ -79,6 +79,18 @@ function M.rows(win)
       row.name = enclosing.at(row.buf, row.lnum)
     end
   end
+  -- The module of each level, the folder its file is in, numbered in the order
+  -- the stack reaches them: 1 for the first folder, 2 for the next and so on.
+  local modules = {}
+  for _, row in ipairs(out) do
+    if row.file then
+      local folder = vim.fs.dirname(vim.fs.normalize(row.file)):lower()
+      if not modules[folder] then
+        modules[folder] = vim.tbl_count(modules) + 1
+      end
+      row.module = modules[folder]
+    end
+  end
   return out, stack
 end
 
@@ -87,13 +99,33 @@ end
 -- wide where a plain triangle is of ambiguous width, in the yellow of a
 -- debugger's current line (JumpStackCurrent, a warning's colour by default).
 local here = " "
-vim.api.nvim_set_hl(0, "JumpStackCurrent", { link = "DiagnosticWarn", default = true })
+
+-- The place of a level takes the colour of its module, so a jump into another
+-- folder shows where it happens without reading the file names: the same
+-- folder the same colour, the next folder reached the next colour, in turn.
+-- Colours of the scheme the names and the arrow do not use; each is a group
+-- of its own (JumpStackModule1 to 5) to be set apart from them.
+local MODULE_COLOURS = { "String", "Constant", "Keyword", "Label", "DiagnosticHint" }
+
+local function colours()
+  vim.api.nvim_set_hl(0, "JumpStackCurrent", { link = "DiagnosticWarn", default = true })
+  for index, link in ipairs(MODULE_COLOURS) do
+    vim.api.nvim_set_hl(0, "JumpStackModule" .. index, { link = link, default = true })
+  end
+end
+colours()
 vim.api.nvim_create_autocmd("ColorScheme", {
   group = vim.api.nvim_create_augroup("config_jump_stack_colours", { clear = true }),
-  callback = function()
-    vim.api.nvim_set_hl(0, "JumpStackCurrent", { link = "DiagnosticWarn", default = true })
-  end,
+  callback = colours,
 })
+
+-- The colour of a level's place: its module's, or dim once gone back from.
+local function place_colour(row)
+  if row.returned or not row.module then
+    return "Comment"
+  end
+  return "JumpStackModule" .. ((row.module - 1) % #MODULE_COLOURS + 1)
+end
 
 local function row_text(row)
   local place = row.file and ("%s:%d"):format(vim.fs.basename(row.file), row.lnum) or ""
@@ -103,7 +135,7 @@ local function row_text(row)
     { row.tag and ("  → " .. row.tag) or "", "Comment" },
     {
       col = 0,
-      virt_text = { { " " }, { place, "Comment" }, { " " } },
+      virt_text = { { " " }, { place, place_colour(row) }, { " " } },
       virt_text_pos = "right_align",
       hl_mode = "combine",
     },

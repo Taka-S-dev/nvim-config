@@ -133,6 +133,7 @@ return function(T)
   -- stack goes back to that level instead; a jump from where the last one
   -- landed, into the same function as a recursive call is, still goes deeper.
   -- The same jump again, from the same line to the same name, adds nothing.
+  -- Each level's place takes the colour of the folder its file is in.
   check("jump stack: one level per place gone back to or jumped from again", function()
     local stack = require("taka.jump_stack")
     local dir = temp_dir()
@@ -148,6 +149,7 @@ return function(T)
       "    return helper(2);",
       "}",
     })
+    write(dir .. "/lib/b.c", { "int other(void)", "{", "    return 0;", "}" })
     -- The cursor reaches where the jump went by way of a line next to the
     -- start, as smooth scrolling carries it: the landing is where it stops.
     local function jump(line_from, col_from, line_to, file)
@@ -189,6 +191,14 @@ return function(T)
       -- The last jump once more: nothing is added.
       jump(3, 22, 1)
       seen.repeated = names()
+      -- Into another folder: its place takes the next colour.
+      jump(1, 4, 3, dir .. "/lib/b.c")
+      seen.modules = table.concat(
+        vim.tbl_map(function(row)
+          return tostring(row.module)
+        end, stack.rows(vim.api.nvim_get_current_win())),
+        " "
+      )
       -- An empty stack opens the panel all the same.
       vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = {} }, "r")
       stack.toggle()
@@ -207,6 +217,7 @@ return function(T)
       "recursive jumps from two calls: " .. tostring(seen.deeper)
     )
     expect(seen.repeated == seen.deeper, "the same jump again: " .. tostring(seen.repeated))
+    expect(seen.modules == "1 1 1 1 2", "the modules of the levels: " .. tostring(seen.modules))
     expect(seen.empty_open == 1, "panels open on an empty stack: " .. tostring(seen.empty_open))
   end)
 end
