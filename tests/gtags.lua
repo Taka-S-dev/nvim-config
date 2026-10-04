@@ -257,11 +257,20 @@ return function(T)
     body[#body + 1] = "    return x;"
     body[#body + 1] = "}"
     write(dir .. "/lib.c", body)
-    write(dir .. "/main.c", { "int long_fn(int x);", "int main(void)", "{", "    return long_fn(1);", "}" })
+    -- The call's line runs past where a peek beside the code would start, so
+    -- the peek lies over the code, as it does on most real lines.
+    write(dir .. "/main.c", {
+      "int long_fn(int x);",
+      "int main(void)",
+      "{",
+      "    return long_fn(1); /* " .. ("the rest of a long line "):rep(4) .. "*/",
+      "}",
+    })
     run({ "gtags" }, dir)
     -- Sixty rows, of which four tenths is twenty-four: the whole of long_fn.
-    local lines = vim.o.lines
-    vim.o.lines = 60
+    -- Wider than the peek, so that m has an edge to move it to.
+    local lines, columns = vim.o.lines, vim.o.columns
+    vim.o.lines, vim.o.columns = 60, 140
     vim.cmd.edit(dir .. "/main.c")
     vim.cmd("split")
     vim.cmd("resize 6")
@@ -276,12 +285,32 @@ return function(T)
     local top = peek and vim.fn.win_screenpos(peek)[1]
     local cursor_screen = vim.fn.win_screenpos(origin)[1] + 3
     local window_height = vim.api.nvim_win_get_height(origin)
+    -- m moves it to the right edge of the screen and back, its rows kept.
+    local home = peek and vim.fn.win_screenpos(peek)[2]
+    local moves = {}
+    if peek then
+      local move = vim.fn.maparg("m", "n", false, true).callback
+      for _ = 1, 2 do
+        move()
+        -- The new place shows on the screen, and in win_screenpos, once drawn.
+        vim.cmd("redraw")
+        local at = vim.fn.win_screenpos(peek)
+        moves[#moves + 1] = ("%d..%d@%d"):format(at[2], at[2] + vim.api.nvim_win_get_width(peek) + 1, at[1])
+      end
+    end
     if peek then
       vim.api.nvim_win_close(peek, true)
     end
     reset_editor()
-    vim.o.lines = lines
+    vim.o.lines, vim.o.columns = lines, columns
     expect(height, "no peek opened")
+    expect(
+      moves[1]
+        and moves[1]:match("%.%.(%d+)@") == "140"
+        and moves[2]:match("^(%d+)%.%.") == tostring(home)
+        and moves[1]:match("@(%d+)$") == moves[2]:match("@(%d+)$"),
+      ("m moved the peek from column %s: %s"):format(home, table.concat(moves, " then "))
+    )
     expect(height == 24, ("the peek has %d rows on a screen of 60, not four tenths of it"):format(height))
     expect(height > window_height, ("the peek has %d rows, the window %d"):format(height, window_height))
     expect(

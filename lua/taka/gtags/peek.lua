@@ -1,7 +1,8 @@
 -- Read a definition without leaving the current position: a window opens clear
 -- of the line being read, with the code around the definition, and the file
 -- being read stays on screen around it. q or Esc closes it, Enter jumps there
--- after all. Nothing is pushed on the tag stack until something actually moves.
+-- after all, m moves it aside. Nothing is pushed on the tag stack until
+-- something actually moves.
 
 local lookup = require("taka.gtags.lookup")
 local show, ctags_definitions = lookup.show, lookup.ctags_definitions
@@ -265,6 +266,20 @@ local function open_peek(symbol, items, opts)
   for _, key in ipairs({ "q", "<Esc>" }) do
     vim.keymap.set({ "n", "x" }, key, close_peek, { buffer = buf, nowait = true })
   end
+  -- m moves the window to the right edge of the screen and back to where it
+  -- opened: laid over the code, it can hide the lines to be read with the
+  -- definition. Already at the right edge, beside the code, it goes to the
+  -- left edge instead. Only sideways: its height and its rows stay, so the
+  -- cursor line stays clear.
+  local origin_col = vim.fn.win_screenpos(origin)[2] - 1
+  local home = vim.api.nvim_win_get_config(peek_window).col
+  local right = vim.o.columns - width - 2 - origin_col
+  local away = home < right and right or -origin_col
+  vim.keymap.set("n", "m", function()
+    local config = vim.api.nvim_win_get_config(peek_window)
+    local to = config.col == home and away or home
+    vim.api.nvim_win_set_config(peek_window, { relative = "win", win = origin, row = config.row, col = to })
+  end, { buffer = buf, nowait = true, desc = "Move the peek to the other edge of the screen" })
   vim.keymap.set("n", "<CR>", function()
     close_peek()
     vim.api.nvim_set_current_win(origin)
