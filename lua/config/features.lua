@@ -66,6 +66,23 @@ key("n", "<leader>jH", "taka.call_tree", "start", "Call tree: callees", "callees
 require("taka.jump_stack")
 key("n", "<leader>jy", "taka.jump_stack", "toggle", "Jump stack")
 
+-- A trace through the code, written down step by step elsewhere and shown in
+-- the code and in a panel, <leader>ja (lua/taka/trace/).
+require("taka.trace")
+key("n", "<leader>ja", "taka.trace", "toggle_panel", "Trace panel")
+key("n", "<leader>jA", "taka.trace", "pick", "Choose a trace")
+key("n", "]n", "taka.trace", "step", "Next trace step", 1)
+key("n", "[n", "taka.trace", "step", "Previous trace step", -1)
+Snacks.toggle({
+  name = "Every trace note",
+  get = function()
+    return require("taka.trace").all_notes_shown()
+  end,
+  set = function(on)
+    require("taka.trace").show_all_notes(on)
+  end,
+}):map("<leader>uR")
+
 -- Where a C name is written to, <leader>jw (lua/taka/writes.lua).
 require("taka.writes")
 key("n", "<leader>jw", "taka.writes", "show", "Where this name is written to")

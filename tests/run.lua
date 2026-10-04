@@ -47,6 +47,7 @@ local function run_checks()
     "call_tree",
     "lsp",
     "jump_stack",
+    "trace",
     "highlight",
   }) do
     dofile(here .. "/" .. file .. ".lua")(T)
