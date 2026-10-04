@@ -399,6 +399,7 @@ $env:LOCALAPPDATA\nvim\
 │       ├── completion.lua  # 補完に gtags の候補を足す (blink.cmp)
 │       ├── svn.lua         # SVN: 変更行の印 (vim-signify、svn のみ) と <leader>v のキー
 │       ├── snacks-scroll.lua # 差分の窓ではなめらかスクロールを切る
+│       ├── snacks-terminal.lua # <C-/> の端末を、閉じたときの高さで開き直す
 │       ├── markdown.lua    # Markdown を画面上で整形表示 (render-markdown.nvim)
 │       └── treesitter.lua  # 追加パーサ
 ├── tests\

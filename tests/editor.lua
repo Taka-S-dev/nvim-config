@@ -109,4 +109,24 @@ return function(T)
       expect(not vim.tbl_contains(names, unwanted), unwanted .. " turned up among the matches")
     end
   end)
+
+  -- The terminal of <C-/>, hidden and shown again, came back at four tenths of
+  -- the editor whatever height it had been given
+  -- (lua/plugins/snacks-terminal.lua).
+  check("terminal: shown again at the height it was hidden at", function()
+    local term = Snacks.terminal.open(nil, { cwd = vim.fn.getcwd() })
+    local first = vim.api.nvim_win_get_height(term.win)
+    vim.api.nvim_win_set_height(term.win, 7)
+    term:hide()
+    term:show()
+    local again = term.win and vim.api.nvim_win_is_valid(term.win) and vim.api.nvim_win_get_height(term.win)
+    term:close()
+    -- The terminal starts insert mode as it is entered; the checks after this
+    -- one press keys in normal mode.
+    vim.cmd.stopinsert()
+    vim.wait(100)
+    reset_editor()
+    expect(first ~= 7, "the terminal opened at 7 rows already")
+    expect(again == 7, "shown again at " .. tostring(again) .. " rows")
+  end)
 end
