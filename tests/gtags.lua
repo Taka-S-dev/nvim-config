@@ -243,6 +243,91 @@ return function(T)
     expect(scratch, "a jump inside the peek loaded a file into it")
     expect(left == 0, "Esc did not close the peek")
   end)
+  -- The peek opens on the head of a definition, as far as its line stays in
+  -- view: the members of a typedef struct, which are above the line its name
+  -- is on, and the comment over a function. It showed two lines above the
+  -- definition, and scrolling up found nothing more.
+  check("peek: opens on a typedef's members and a function's comment", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    -- Forty lines before each definition: the peek's window, fourteen rows or
+    -- more, would show all of a short file whatever line it opened on.
+    local function after_filler(lines)
+      local out = {}
+      for i = 1, 40 do
+        out[i] = ("int filler_%d;"):format(i)
+      end
+      return vim.list_extend(out, lines)
+    end
+    write(
+      dir .. "/types.h",
+      after_filler({
+        "typedef struct point_st {",
+        "    int x;",
+        "    int y;",
+        "    int z;",
+        "    int w;",
+        "    int v;",
+        "} point_t;",
+      })
+    )
+    write(
+      dir .. "/lib.c",
+      after_filler({
+        '#include "types.h"',
+        "",
+        "/**",
+        " * Adds two numbers.",
+        " * Never fails.",
+        " */",
+        "int add(int a, int b)",
+        "{",
+        "    return a + b;",
+        "}",
+      })
+    )
+    write(dir .. "/main.c", {
+      '#include "types.h"',
+      "int add(int a, int b);",
+      "int main(void)",
+      "{",
+      "    point_t p;",
+      "    return add(1, 2);",
+      "}",
+    })
+    run({ "gtags" }, dir)
+    vim.api.nvim_set_current_dir(dir)
+    local seen = {}
+    local function peek_top(row, col)
+      vim.cmd.edit(dir .. "/main.c")
+      vim.fn.cursor(row, col)
+      key("<leader>jp")()
+      vim.wait(15000, function()
+        return #floats() == 1
+      end, 20)
+      -- The peek, told from the window treesitter-context lays over the top of
+      -- it by the line numbers it shows, those of the file it copies.
+      local top = "no peek"
+      for _, win in ipairs(floats()) do
+        if vim.wo[win].statuscolumn:find("v:lnum +", 1, true) then
+          local info = vim.fn.getwininfo(win)[1]
+          top = vim.api.nvim_buf_get_lines(info.bufnr, info.topline - 1, info.topline, false)[1]
+        end
+      end
+      for _, win in ipairs(floats()) do
+        pcall(vim.api.nvim_win_close, win, true)
+      end
+      return top
+    end
+    local ok, err = pcall(function()
+      seen.typedef = peek_top(5, 5)
+      seen.func = peek_top(6, 12)
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.typedef == "typedef struct point_st {", "the typedef's peek starts at: " .. tostring(seen.typedef))
+    expect(seen.func == "/**", "the function's peek starts at: " .. tostring(seen.func))
+  end)
   -- The peek's room is the screen's, not the window's: from a short split at
   -- the bottom it was held to the few rows of that split while the screen
   -- above stood free. It may reach over the window above, and still leaves the

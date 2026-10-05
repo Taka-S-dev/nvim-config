@@ -52,10 +52,15 @@ local function open_peek(symbol, items, opts)
   -- is called from keeps the larger part; never under fourteen rows, which
   -- was the height on every screen and left a forty-line function half seen.
   local height = math.max(14, math.floor(vim.o.lines * 0.4))
-  local first = math.max(item.lnum - 2, 1)
-  -- Copy far past what the window shows, so the rest of a long function can be
-  -- scrolled to inside it. The window still opens on the definition.
-  local last = math.min(first + 400, vim.api.nvim_buf_line_count(source))
+  -- Where the definition starts, with the comment over it: the members of a
+  -- typedef struct are above the line its name is on, which gtags points at,
+  -- and a function's comment is above its name. Two lines above was all the
+  -- window held, and scrolling up found nothing more.
+  local head, tail = require("taka.lib.enclosing").head(source, item.lnum)
+  -- Copy far past what the window shows either way, so the rest of a long
+  -- function can be scrolled to inside it, and what comes before it too.
+  local first = math.max(math.min(head or item.lnum, item.lnum - 2) - 100, 1)
+  local last = math.min(item.lnum + 400, vim.api.nvim_buf_line_count(source))
   local lines = vim.api.nvim_buf_get_lines(source, first - 1, last, false)
 
   -- A scratch copy, so keymaps and the cursor here cannot touch the real file.
@@ -247,6 +252,20 @@ local function open_peek(symbol, items, opts)
   vim.wo[peek_window].number = true
   vim.wo[peek_window].statuscolumn = ("%%{v:lnum + %d} "):format(first - 1)
   vim.api.nvim_win_set_cursor(peek_window, { item.lnum - first + 1, 0 })
+  -- The window opens with the definition's head in view, as far as the
+  -- definition line stays in it: a name that ends its definition, as a
+  -- typedef's does, may have all but two rows of the window above it. One that
+  -- begins it, as a function's does, has half of them, or as many as its
+  -- comment takes while eight rows of the body still show below.
+  local window_height = vim.api.nvim_win_get_height(peek_window)
+  local above
+  if tail and tail == item.lnum then
+    above = window_height - 3
+  else
+    above = math.max(math.floor(window_height / 2), math.min(item.lnum - (head or item.lnum), window_height - 8))
+  end
+  local top = math.max(head or (item.lnum - 2), item.lnum - above, first)
+  vim.fn.winrestview({ topline = top - first + 1, lnum = item.lnum - first + 1, col = 0 })
   -- The definition line keeps its own highlight: the cursor line follows the
   -- cursor, so after scrolling down a long function nothing else marks where
   -- the definition was. Visual is the selection color every colorscheme makes

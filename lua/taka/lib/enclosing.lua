@@ -70,4 +70,55 @@ function M.at(buf, row)
   return ""
 end
 
+-- The kinds of node a definition is: a function, a type, a declaration, a
+-- macro. A parameter or a field is part of one, not one of its own.
+local function is_definition(kind)
+  if kind == "parameter_declaration" or kind == "field_declaration" then
+    return false
+  end
+  return kind:find("definition$") ~= nil
+    or kind:find("declaration$") ~= nil
+    or kind == "struct_specifier"
+    or kind == "union_specifier"
+    or kind == "enum_specifier"
+    or kind == "preproc_def"
+    or kind == "preproc_function_def"
+end
+
+-- The first line (1-based) of the definition line `row` of `buf` is in, with
+-- the comments right above it: the comment that says what a function does,
+-- and the members of a struct, which come before the line its name is on in
+-- `typedef struct { ... } name;`. The last line of the definition too. nil
+-- where the buffer has no parser or the line is in no definition.
+function M.head(buf, row)
+  local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1]
+  if not line then
+    return nil
+  end
+  local ok, parser = pcall(vim.treesitter.get_parser, buf)
+  if not ok or not parser then
+    return nil
+  end
+  parser:parse({ math.max(row - 400, 0), row + 1 })
+  local col = (line:find("%S") or 1) - 1
+  local found_node, node = pcall(vim.treesitter.get_node, { bufnr = buf, pos = { row - 1, col } })
+  if not found_node then
+    return nil
+  end
+  while node and not is_definition(node:type()) do
+    node = node:parent()
+  end
+  if not node then
+    return nil
+  end
+  local top = node:start()
+  local last = select(1, node:end_())
+  local above = node:prev_sibling()
+  while above and above:type() == "comment" and select(1, above:end_()) >= top - 1 do
+    top = above:start()
+    above = above:prev_sibling()
+  end
+  return top + 1, last + 1
+end
+
 return M
