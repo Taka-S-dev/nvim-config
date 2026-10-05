@@ -10,7 +10,8 @@
 --               A new pin always goes to the end of the list, at the top level.
 --               On a line that is pinned already: edit its note or remove it
 --   <leader>jM  find a pin: filter by note, function or file name, Enter jumps;
---               <A-e> edits the note and <A-d> removes the pin
+--               <A-e> edits the note and <C-x> removes the pin (dd in the
+--               list), as in the lists of buffers and marks
 --   <leader>jo  the panel, a sidebar on the right built like the file tree's, with a filter box on
 --               top (/ or i goes to it) and the pins below:
 --                 Enter  jump             r   edit the note
@@ -385,30 +386,32 @@ end
 
 function M.list()
   local root = project_root(vim.api.nvim_buf_get_name(0))
-  local rows = outline(load(root))
-  if #rows == 0 then
+  if #load(root) == 0 then
     vim.notify("No pins in " .. root .. " yet (<leader>jm pins a line)")
     return
   end
-  local items = {}
-  for _, row in ipairs(rows) do
-    local pin = row.pin
-    items[#items + 1] = {
-      idx = row.index,
-      depth = row.depth,
-      text = table.concat({ pin.memo, pin.symbol, pin.file }, " "),
-      file = absolute(root, pin),
-      pos = { pin.line, 0 },
-      pin = pin,
-    }
-  end
-  local function reopen(picker)
-    picker:close()
-    vim.schedule(M.list)
+  -- Read anew each time the list is drawn, so a pin removed from it goes from
+  -- the list in place, the filter typed and the cursor kept, as a buffer does
+  -- from the list of buffers.
+  local function items()
+    local out = {}
+    for _, row in ipairs(outline(load(root))) do
+      local pin = row.pin
+      out[#out + 1] = {
+        idx = row.index,
+        depth = row.depth,
+        text = table.concat({ pin.memo, pin.symbol, pin.file }, " "),
+        file = absolute(root, pin),
+        pos = { pin.line, 0 },
+        pin = pin,
+      }
+    end
+    return out
   end
   Snacks.picker({
+    source = "pin_list",
     title = "Pins",
-    items = items,
+    finder = items,
     format = function(item)
       local pin = item.pin
       return {
@@ -427,11 +430,22 @@ function M.list()
       end
     end,
     actions = {
-      pin_remove = function(picker, item)
-        if item then
-          M.remove(root, item.idx)
-          reopen(picker)
+      -- The pins marked with Tab, or the one under the cursor.
+      pin_remove = function(picker)
+        local ids = vim.tbl_map(function(item)
+          return item.pin.id
+        end, picker:selected({ fallback = true }))
+        if #ids == 0 then
+          return
         end
+        picker.list:set_selected()
+        if #ids == 1 then
+          M.remove(root, index_of(load(root), ids[1]))
+        else
+          M.remove_many(root, ids)
+        end
+        picker.list:set_target()
+        picker:find()
       end,
       pin_edit = function(picker, item)
         if item then
@@ -443,10 +457,11 @@ function M.list()
     win = {
       input = {
         keys = {
-          ["<a-d>"] = { "pin_remove", mode = { "n", "i" }, desc = "Remove pin" },
+          ["<c-x>"] = { "pin_remove", mode = { "n", "i" }, desc = "Remove pin" },
           ["<a-e>"] = { "pin_edit", mode = { "n", "i" }, desc = "Edit note" },
         },
       },
+      list = { keys = { ["dd"] = "pin_remove" } },
     },
   })
 end

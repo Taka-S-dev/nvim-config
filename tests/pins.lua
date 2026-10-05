@@ -401,4 +401,67 @@ return function(T)
     expect(seen.jumped == "a.c:4", "Enter in the panel: " .. tostring(seen.jumped))
     expect(seen.still_open, "the panel closed on a jump")
   end)
+
+  -- In the list of <leader>jM a pin is removed with <C-x>, as a buffer is in
+  -- the list of buffers and a mark in the list of marks: it goes from the list
+  -- in place, the list staying open with what was typed in its filter.
+  check("pins: <C-x> in the list removes a pin in place, the filter kept", function()
+    local dir = temp_dir()
+    write(dir .. "/GTAGS", {})
+    write(dir .. "/a.c", { "int a;", "int b;", "int c;" })
+    local root = vim.fs.normalize(dir)
+    local pins = require("taka.pins")
+    local store = pins.store_path(root)
+    local seen = {}
+    local picker
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      local places = {}
+      for line, memo in ipairs({ "keep one", "drop this", "keep two" }) do
+        places[#places + 1] = { file = dir .. "/a.c", line = line, text = "", symbol = "", memo = memo }
+      end
+      pins.add_chain(places)
+      key("<leader>jM")()
+      picker = Snacks.picker.get({ source = "pin_list" })[1]
+      expect(picker, "the list did not open")
+      vim.wait(1000, function()
+        return #picker:items() == 3
+      end, 20)
+      -- Typed as the panel's check does: a headless run has no keys to type.
+      local input = picker.input.win.buf
+      vim.api.nvim_buf_set_lines(input, 0, -1, false, { "drop" })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
+      vim.wait(1000, function()
+        return #picker:items() == 1
+      end, 20)
+      seen.mapped = vim.tbl_contains(
+        vim.tbl_map(function(map)
+          return map.lhs
+        end, vim.api.nvim_buf_get_keymap(input, "i")),
+        "<C-X>"
+      )
+      picker:action("pin_remove")
+      vim.wait(1000, function()
+        return #picker:items() == 0
+      end, 20)
+      seen.open = not picker.closed
+      seen.filter = picker.input:get()
+      seen.left = pins.outline(root)
+    end)
+    if picker and not picker.closed then
+      picker:close()
+    end
+    vim.fn.delete(store)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.mapped, "<C-x> is not a key of the list")
+    expect(seen.open, "the list closed when a pin was removed")
+    expect(seen.filter == "drop", "the filter became " .. vim.inspect(seen.filter))
+    expect(
+      -- The pins are a chain, each under the one before: the one under the
+      -- pin removed moves up into its place.
+      vim.deep_equal(seen.left, { "0:keep one", "1:keep two" }),
+      "the pins left: " .. vim.inspect(seen.left)
+    )
+  end)
 end

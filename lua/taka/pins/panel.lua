@@ -255,6 +255,7 @@ local function toggle()
           ["h"] = "pin_close",
           ["l"] = "pin_open",
           ["dd"] = "pin_remove",
+          ["<c-x>"] = "pin_remove",
           ["r"] = "pin_edit",
           ["u"] = "pin_undo",
           ["<C-r>"] = "pin_redo",
