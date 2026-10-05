@@ -265,7 +265,14 @@ local function open_peek(symbol, items, opts)
     above = math.max(math.floor(window_height / 2), math.min(item.lnum - (head or item.lnum), window_height - 8))
   end
   local top = math.max(head or (item.lnum - 2), item.lnum - above, first)
-  vim.fn.winrestview({ topline = top - first + 1, lnum = item.lnum - first + 1, col = 0 })
+  local opening = { topline = top - first + 1, lnum = item.lnum - first + 1, col = 0 }
+  vim.fn.winrestview(opening)
+  -- gd goes back to the definition, as the window opened, after scrolling
+  -- away from it: '' does only after a jump, not after j or <C-d>. gd is what
+  -- goes to a definition in the code; in this copy of it, it had nothing to do.
+  vim.keymap.set("n", "gd", function()
+    vim.fn.winrestview(opening)
+  end, { buffer = buf, nowait = true, desc = "Back to the definition" })
   -- The definition line keeps its own highlight: the cursor line follows the
   -- cursor, so after scrolling down a long function nothing else marks where
   -- the definition was. Visual is the selection color every colorscheme makes

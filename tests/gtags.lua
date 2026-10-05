@@ -312,6 +312,16 @@ return function(T)
         if vim.wo[win].statuscolumn:find("v:lnum +", 1, true) then
           local info = vim.fn.getwininfo(win)[1]
           top = vim.api.nvim_buf_get_lines(info.bufnr, info.topline - 1, info.topline, false)[1]
+          -- Scrolled to the end and back with gd: the window is as it opened.
+          local cursor = vim.api.nvim_win_get_cursor(win)
+          vim.api.nvim_win_call(win, function()
+            vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(info.bufnr), 0 })
+            vim.cmd("normal! zt")
+            vim.fn.maparg("gd", "n", false, true).callback()
+          end)
+          seen.back = (seen.back or "")
+            .. tostring(vim.fn.getwininfo(win)[1].topline == info.topline)
+            .. tostring(vim.api.nvim_win_get_cursor(win)[1] == cursor[1])
         end
       end
       for _, win in ipairs(floats()) do
@@ -327,6 +337,7 @@ return function(T)
     expect(ok, tostring(err))
     expect(seen.typedef == "typedef struct point_st {", "the typedef's peek starts at: " .. tostring(seen.typedef))
     expect(seen.func == "/**", "the function's peek starts at: " .. tostring(seen.func))
+    expect(seen.back == "truetruetruetrue", "gd did not bring the peek back as it opened: " .. tostring(seen.back))
   end)
   -- The peek's room is the screen's, not the window's: from a short split at
   -- the bottom it was held to the few rows of that split while the screen
