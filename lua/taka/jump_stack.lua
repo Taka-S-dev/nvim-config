@@ -417,10 +417,10 @@ function M.toggle()
     win = {
       list = {
         keys = {
-          ["<2-LeftMouse>"] = "stack_back",
-          ["<C-t>"] = "stack_back",
-          ["m"] = "stack_pin",
-          ["X"] = "stack_clear",
+          ["<2-LeftMouse>"] = { "stack_back", desc = "Go back to this level" },
+          ["<C-t>"] = { "stack_back", desc = "Go back to this level" },
+          ["m"] = { "stack_pin", desc = "Pin the levels" },
+          ["X"] = { "stack_clear", desc = "Empty the stack" },
         },
       },
     },

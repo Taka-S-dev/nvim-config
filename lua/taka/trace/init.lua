@@ -655,7 +655,7 @@ function M.pick()
     },
     win = {
       input = { keys = { ["<c-x>"] = { "trace_delete", mode = { "n", "i" }, desc = "Delete trace" } } },
-      list = { keys = { ["dd"] = "trace_delete" } },
+      list = { keys = { ["dd"] = { "trace_delete", desc = "Delete the trace (Tab marks several)" } } },
     },
   })
 end

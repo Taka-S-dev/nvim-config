@@ -246,20 +246,20 @@ local function toggle()
     win = {
       list = {
         keys = {
-          ["K"] = "pin_up",
-          ["J"] = "pin_down",
-          [">"] = "pin_in",
-          ["<"] = "pin_out",
+          ["K"] = { "pin_up", desc = "Move up" },
+          ["J"] = { "pin_down", desc = "Move down" },
+          [">"] = { "pin_in", desc = "Make it a child of the pin above" },
+          ["<"] = { "pin_out", desc = "Move it out a level" },
           -- Tab stays what it is in every picker and in the file tree: it marks
           -- a row, here for dd.
-          ["za"] = "pin_fold",
-          ["h"] = "pin_close",
-          ["l"] = "pin_open",
-          ["dd"] = "pin_remove",
-          ["<c-x>"] = "pin_remove",
-          ["r"] = "pin_edit",
-          ["u"] = "pin_undo",
-          ["<C-r>"] = "pin_redo",
+          ["za"] = { "pin_fold", desc = "Open or close the pins under it" },
+          ["h"] = { "pin_close", desc = "Close the pins under it" },
+          ["l"] = { "pin_open", desc = "Open the pins under it" },
+          ["dd"] = { "pin_remove", desc = "Remove the pin (Tab marks several)" },
+          ["<c-x>"] = { "pin_remove", desc = "Remove the pin (Tab marks several)" },
+          ["r"] = { "pin_edit", desc = "Edit the note" },
+          ["u"] = { "pin_undo", desc = "Undo" },
+          ["<C-r>"] = { "pin_redo", desc = "Redo" },
         },
       },
     },

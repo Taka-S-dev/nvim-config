@@ -349,13 +349,13 @@ local function open_tree(session, direction, top)
     win = {
       list = {
         keys = {
-          ["l"] = "call_open",
-          ["<Right>"] = "call_open",
-          ["h"] = "call_close",
-          ["<Left>"] = "call_close",
-          ["L"] = "call_open_all",
-          ["gd"] = "call_definition",
-          ["t"] = "call_turn",
+          ["l"] = { "call_open", desc = "Open the branch" },
+          ["<Right>"] = { "call_open", desc = "Open the branch" },
+          ["h"] = { "call_close", desc = "Close the branch" },
+          ["<Left>"] = { "call_close", desc = "Close the branch" },
+          ["L"] = { "call_open_all", desc = "Open three levels below" },
+          ["gd"] = { "call_definition", desc = "Go to the function's definition" },
+          ["t"] = { "call_turn", desc = "Switch callers and callees" },
         },
       },
     },

@@ -262,6 +262,13 @@ return function(T)
     end
     local notify = vim.notify
     vim.notify = function() end
+    -- The trace panel reads traces from a folder of the checks' own.
+    local trace_store = require("taka.trace.store")
+    local traces = temp_dir()
+    local real_dir = trace_store.dir
+    trace_store.dir = function()
+      return traces
+    end
     local seen = {}
     local pins = require("taka.pins")
     local store
@@ -287,6 +294,7 @@ return function(T)
       end
     end)
     vim.notify = notify
+    trace_store.dir = real_dir
     require("taka.trace").close()
     require("taka.words").clear()
     if store then
@@ -303,5 +311,68 @@ return function(T)
       }),
       vim.inspect(seen)
     )
+  end)
+
+  -- ? in a panel lists its keys by what they do. snacks names a key by its
+  -- action where it is given no words, and the names of this config's own
+  -- actions (trace_edit, stack_back) said little to whoever forgot a key.
+  check("panels: ? lists every key of a panel by what it does", function()
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "int a;" })
+    local pins = require("taka.pins")
+    local notify = vim.notify
+    vim.notify = function() end
+    -- The trace panel reads traces from a folder of the checks' own.
+    local trace_store = require("taka.trace.store")
+    local traces = temp_dir()
+    local real_dir = trace_store.dir
+    trace_store.dir = function()
+      return traces
+    end
+    local bare = {}
+    local store
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      pins.add_chain({ { file = dir .. "/a.c", line = 1, text = "int a;", symbol = "", memo = "a" } })
+      store = pins.store_path(vim.fs.normalize(dir))
+      vim.api.nvim_win_set_cursor(0, { 1, 4 })
+      require("taka.words").toggle()
+      for _, panel in ipairs({
+        { "<leader>jy", "jump_stack" },
+        { "<leader>jo", "pins" },
+        { "<leader>ja", "trace" },
+        { "<leader>ho", "words" },
+      }) do
+        T.key(panel[1])()
+        vim.wait(300)
+        local picker = Snacks.picker.get({ source = panel[2] })[1]
+        expect(picker, panel[2] .. " did not open")
+        for _, map in ipairs(vim.api.nvim_buf_get_keymap(picker.list.win.buf, "n")) do
+          if
+            (map.desc or ""):match("^[a-z]+_[a-z_]+$")
+            and (
+              map.desc:match("^trace_")
+              or map.desc:match("^stack_")
+              or map.desc:match("^pins?_")
+              or map.desc:match("^words?_")
+              or map.desc:match("^call_")
+            )
+          then
+            bare[#bare + 1] = panel[2] .. " " .. map.lhs .. " = " .. map.desc
+          end
+        end
+        picker:close()
+      end
+    end)
+    vim.notify = notify
+    trace_store.dir = real_dir
+    require("taka.trace").close()
+    require("taka.words").clear()
+    if store then
+      vim.fn.delete(store)
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(#bare == 0, "keys listed by their action's name: " .. table.concat(bare, ", "))
   end)
 end

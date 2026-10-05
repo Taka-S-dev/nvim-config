@@ -231,12 +231,12 @@ function M.open()
       },
       list = {
         keys = {
-          ["N"] = "trace_notes",
-          ["R"] = "trace_reload",
-          ["y"] = "trace_yank",
-          ["r"] = "trace_edit",
-          ["t"] = "trace_pick",
-          ["X"] = "trace_close",
+          ["N"] = { "trace_notes", desc = "Every note, or only the chosen step's" },
+          ["R"] = { "trace_reload", desc = "Read the trace again" },
+          ["y"] = { "trace_yank", desc = "Copy the step (Tab marks several)" },
+          ["r"] = { "trace_edit", desc = "Edit the title and the note" },
+          ["t"] = { "trace_pick", desc = "Another trace" },
+          ["X"] = { "trace_close", desc = "Put the trace away" },
         },
       },
     },

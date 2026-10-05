@@ -76,7 +76,7 @@ Snacks.toggle({
 -- after <leader>; what each key does is in :h cfg.
 pcall(function()
   require("which-key").add({
-    { "<leader>j", group = "jump: gtags, pins, call tree, jump stack" },
+    { "<leader>j", group = "read code: jump, peek, pins, call tree, jump stack, trace" },
     { "<leader>h", group = "highlight words" },
   })
 end)

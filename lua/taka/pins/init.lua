@@ -461,7 +461,7 @@ function M.list()
           ["<a-e>"] = { "pin_edit", mode = { "n", "i" }, desc = "Edit note" },
         },
       },
-      list = { keys = { ["dd"] = "pin_remove" } },
+      list = { keys = { ["dd"] = { "pin_remove", desc = "Remove the pin (Tab marks several)" } } },
     },
   })
 end

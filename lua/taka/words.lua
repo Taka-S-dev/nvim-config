@@ -361,9 +361,9 @@ function M.toggle_panel()
       list = {
         keys = {
           ["<2-LeftMouse>"] = "confirm",
-          ["dd"] = "word_out",
-          ["h"] = "words_close",
-          ["l"] = "words_open",
+          ["dd"] = { "word_out", desc = "Put the word out" },
+          ["h"] = { "words_close", desc = "Close the branch" },
+          ["l"] = { "words_open", desc = "Open the branch" },
         },
       },
     },
