@@ -548,4 +548,56 @@ return function(T)
       "the window held: " .. tostring(seen)
     )
   end)
+
+  -- Whoever writes a trace checks it the way it is read here, before handing
+  -- it on: lines that could not be read, and steps whose file or line is
+  -- wrong. A last line not yet ended is being written and is no problem.
+  -- Read for the panel, a trace with lines left out says so once.
+  check("trace: a trace is checked as it is read, and lines left out are told", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/c.c", { "int a;", "int b;", "int c;" })
+    local path = folder .. "/c.jsonl"
+    local lines = lines_of({
+      { title = "Check", root = code },
+      { id = "a", file = "c.c", line = 2, text = "int b;", title = "Right" },
+      '{"id": "b", "file": "c.c", "line": 1, "title": "unended}',
+      { id = "c", file = "c.c", line = 1, text = "int c;", title = "Off by two" },
+      { id = "d", file = "gone.c", line = 1, text = "int a;", title = "No file" },
+      { id = "a", file = "c.c", line = 1, text = "int a;", title = "Same id" },
+      { id = "e", parent = "zz", file = "c.c", line = 1, text = "int a;", title = "No parent" },
+      { id = "f", file = "c.c", line = 3, title = "No text" },
+    })
+    -- Being written: no line break after it yet.
+    local file = assert(io.open(path, "w"))
+    file:write(table.concat(lines, "\n") .. '\n{"id": "g", "file": "c.c", "li')
+    file:close()
+    local notices = {}
+    local notify = vim.notify
+    local report, count
+    local ok, err = pcall(function()
+      report, count = trace.check(path)
+      vim.notify = function(message)
+        notices[#notices + 1] = message
+      end
+      trace.open(path, false)
+      trace.reload()
+    end)
+    vim.notify = notify
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(vim.deep_equal(report, {
+      "c.jsonl: 6 steps, 6 problems",
+      "line 3: not JSON",
+      "line 4, step 2 (c.c:1): the text is on line 3, not on line 1",
+      "line 5, step 3 (gone.c:1): the file is not there",
+      'line 6: the id "a" is given to an earlier step too',
+      'line 7: the parent "zz" is not a step',
+      "line 8, step 6 (c.c:3): no text, so the step cannot be found again once the code moves",
+    }) and count == 6, "report: " .. vim.inspect(report))
+    expect(#notices == 1 and notices[1]:find("3 lines could not be read", 1, true), "notices: " .. vim.inspect(notices))
+  end)
 end

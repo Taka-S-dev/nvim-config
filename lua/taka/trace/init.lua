@@ -220,7 +220,11 @@ end
 -- never points at the wrong line without a word. A step with no text is on
 -- the line it names.
 function M.locate(buf, step)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  return M.locate_in(vim.api.nvim_buf_get_lines(buf, 0, -1, false), step)
+end
+
+-- The same in the lines of a file not read into a buffer.
+function M.locate_in(lines, step)
   local fallback = math.max(1, math.min(step.line, #lines))
   if step.text == "" then
     return fallback, true
@@ -324,6 +328,19 @@ local function read_again()
   state.located = {}
   decorate_all()
   panel().refresh()
+  -- Lines left out are told once for each change in them, not at every read.
+  local problems = state.trace.problems
+  local said = ("%s|%d|%s"):format(state.path, #problems, problems[1] and problems[1].line or "")
+  if #problems > 0 and said ~= state.said then
+    vim.notify(
+      ("Trace %s: %d lines could not be read (:TraceCheck lists them)"):format(
+        vim.fn.fnamemodify(state.path, ":t"),
+        #problems
+      ),
+      vim.log.levels.WARN
+    )
+  end
+  state.said = #problems > 0 and said or nil
 end
 
 -- The files are watched as a folder, through the system's notice of a change
@@ -769,6 +786,86 @@ function M.pick()
     },
   })
 end
+
+-- A trace file checked the way it is read here, so whoever writes one can
+-- check it before handing it on: what could not be read, and for each step
+-- whether its file is there and its text is on the line it names, else where
+-- it is. The trace file is `path`, or the newest. The report as lines, the
+-- first one a summary, and the number of problems.
+function M.check(path)
+  if not path or path == "" then
+    path = (store.files()[1] or {}).path
+  else
+    path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+  end
+  if not path or not vim.uv.fs_stat(path) then
+    return { "No trace file: " .. tostring(path) }, 1
+  end
+  local trace = store.read(path)
+  local problems = {}
+  for _, found in ipairs(trace.problems) do
+    problems[#problems + 1] =
+      { line = found.line or 0, text = ("line %s: %s"):format(found.line or "?", found.message) }
+  end
+  local files = {}
+  for _, row in ipairs(store.outline(trace)) do
+    local step = row.step
+    local function problem(message)
+      problems[#problems + 1] = {
+        line = step.source or 0,
+        text = ("line %s, step %d (%s:%d): %s"):format(
+          step.source or "?",
+          row.number,
+          vim.fs.basename(step.file),
+          step.line,
+          message
+        ),
+      }
+    end
+    if files[step.file] == nil then
+      files[step.file] = vim.uv.fs_stat(step.file) and vim.fn.readfile(step.file) or false
+    end
+    local lines = files[step.file]
+    if not lines then
+      problem("the file is not there")
+    elseif step.line > #lines then
+      problem(("the file has %d lines"):format(#lines))
+    elseif step.text == "" then
+      problem("no text, so the step cannot be found again once the code moves")
+    else
+      local line, found = M.locate_in(lines, step)
+      if not found then
+        problem(("the text is not in the file: %q"):format(step.text))
+      elseif line ~= step.line then
+        problem(("the text is on line %d, not on line %d"):format(line, step.line))
+      end
+    end
+  end
+  table.sort(problems, function(a, b)
+    return a.line < b.line
+  end)
+  local report = {
+    ("%s: %d steps, %d problems"):format(vim.fs.basename(path), #trace.steps, #problems),
+  }
+  for _, found in ipairs(problems) do
+    report[#report + 1] = found.text
+  end
+  return report, #problems
+end
+
+-- The check run headless by whoever writes a trace, the report on standard
+-- output and the number of problems as the exit code:
+--   nvim --headless -c "lua require('taka.trace').check_and_exit([[file]])"
+function M.check_and_exit(path)
+  local report, count = M.check(path)
+  io.stdout:write(table.concat(report, "\n") .. "\n")
+  vim.cmd(count == 0 and "qa!" or ("cquit " .. math.min(count, 99)))
+end
+
+vim.api.nvim_create_user_command("TraceCheck", function(opts)
+  local report, count = M.check(opts.args)
+  vim.notify(table.concat(report, "\n"), count == 0 and vim.log.levels.INFO or vim.log.levels.WARN)
+end, { nargs = "?", complete = "file", desc = "Check a trace file: the one given, or the newest" })
 
 M.reload = read_again
 

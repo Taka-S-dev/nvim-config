@@ -93,34 +93,61 @@ local function ids_of(steps)
   return ids
 end
 
--- The trace in `path`: its title and steps, each step with an absolute file.
--- Lines that are not JSON, half written as the file grows, are left out.
+-- The trace in `path`: its title and steps, each step with an absolute file
+-- and the line of the trace file it was read from. What could not be read is
+-- left out and listed in `problems`, each with that line and what is wrong:
+-- a line that is no JSON, a step with no file or no line number, an id given
+-- twice, a parent that is no step. The last line of a file that does not end
+-- in a line break is being written, and is left out without a word.
 function M.read(path)
-  local trace = { path = path, title = "", steps = {} }
+  local trace = { path = path, title = "", steps = {}, problems = {} }
   local content = content_of(path)
   if not content then
     return trace
   end
+  local function problem(line, message)
+    trace.problems[#trace.problems + 1] = { line = line, message = message }
+  end
+  -- Each record with the line of the file it is on, nil in a file that is one
+  -- JSON object.
   local records = {}
   local ok, whole = pcall(vim.json.decode, content)
   if ok and type(whole) == "table" and type(whole.steps) == "table" then
-    records = vim.list_extend({ whole }, whole.steps)
+    records[1] = { record = whole }
+    for _, step in ipairs(whole.steps) do
+      records[#records + 1] = { record = step }
+    end
   else
-    for line in content:gmatch("[^\r\n]+") do
-      local fine, record = pcall(vim.json.decode, line)
-      if fine and type(record) == "table" then
-        records[#records + 1] = record
+    local lines = vim.split(content, "\n", { plain = true })
+    local finished = content:sub(-1) == "\n"
+    for number, line in ipairs(lines) do
+      line = line:gsub("\r$", "")
+      if line:match("%S") then
+        local fine, record = pcall(vim.json.decode, line)
+        if fine and type(record) == "table" then
+          records[#records + 1] = { record = record, line = number }
+        elseif fine then
+          problem(number, "not a JSON object")
+        elseif finished or number < #lines then
+          problem(number, "not JSON")
+        end
       end
     end
   end
   local root
-  local steps = {}
-  for _, record in ipairs(records) do
-    if record.line == nil then
+  local steps, origins = {}, {}
+  for _, entry in ipairs(records) do
+    local record = entry.record
+    if is_step(record) then
+      steps[#steps + 1] = record
+      origins[#steps] = entry.line
+    elseif record.line ~= nil then
+      problem(entry.line, type(record.file) == "string" and "the line is not a number" or "a step with no file")
+    elseif record.file ~= nil then
+      problem(entry.line, "a step with no line")
+    else
       trace.title = record.title and text_of(record.title) or trace.title
       root = record.root and text_of(record.root) or root
-    elseif is_step(record) then
-      steps[#steps + 1] = record
     end
   end
   root = vim.fs.normalize(root or vim.fn.getcwd())
@@ -140,7 +167,11 @@ function M.read(path)
       kind = text_of(record.kind),
       text = M.squash(text_of(record.text)),
       edited = record.edited == true,
+      source = origins[index],
     }
+    if step.id:find("#", 1, true) and record.id ~= nil then
+      problem(step.source, ("the id %q is given to an earlier step too"):format(text_of(record.id)))
+    end
     step.parent = record.parent ~= nil and text_of(record.parent) or nil
     local title = text_of(record.title)
     step.title = title ~= "" and title or (step.note:match("^[^\n]+") or vim.fs.basename(step.file))
@@ -149,6 +180,7 @@ function M.read(path)
   end
   for _, step in ipairs(trace.steps) do
     if step.parent and (not known[step.parent] or step.parent == step.id) then
+      problem(step.source, ("the parent %q is not a step"):format(step.parent))
       step.parent = nil
     end
   end
