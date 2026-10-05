@@ -8,7 +8,8 @@
 --                    a line of its own above the line, set off by a bar in
 --                    the colour of its kind (a cause red, a suspect yellow);
 --                    the step chosen also has its note there, or every step
---                    does with <leader>uR
+--                    does with N in the panel; <leader>uR puts the notes
+--                    away and shows them again
 --   in the panel     the steps as a tree on the right (<leader>ja), each
 --                    under the step it came from; moving through the rows
 --                    shows each step in the code beside it
@@ -24,30 +25,69 @@ local namespace = vim.api.nvim_create_namespace("config_trace")
 
 -- The trace shown: the file, the trace read from it and its rows in order,
 -- the step chosen last, whether the newest file is followed (not when one was
--- picked) and whether every step shows its note in the code, not only the
--- step chosen.
-local state = { path = nil, trace = nil, rows = {}, current = nil, follow = true, all_notes = false }
+-- picked), whether the notes show in the code at all (<leader>uR) and
+-- whether every step shows its note there, not only the step chosen (N in the
+-- panel).
+local state = {
+  path = nil,
+  trace = nil,
+  rows = {},
+  current = nil,
+  follow = true,
+  notes = true,
+  all_notes = false,
+  located = {},
+}
 
 -- The colour of a step goes by its kind, from the diagnostics, which every
 -- scheme sets: a cause in the colour of an error, a suspect of a warning, the
--- rest of information. The note is in italics in the colour of information,
--- whatever the kind, set apart from the comments of the code it sits among.
--- The title of a step not chosen is dimmed as a comment is, and the line of
--- the step chosen last is tinted as a diagnostic's text is.
+-- rest of information. The step chosen shows its note on a card: a block whose
+-- background is the scheme's own, tinted with the colour of the kind, its
+-- number on a label of that colour. Italic text in a colour of its own, the
+-- way the note first was, read as more code at a glance, the thin bar beside it
+-- too little to tell where the note ended; a background marks the whole of it
+-- as something laid over the code, as a comment of a review is. The title of a
+-- step not chosen is dimmed as a comment is, and the line of the step chosen
+-- last is tinted as a diagnostic's text is.
+local KINDS = { TraceStep = "DiagnosticInfo", TraceCause = "DiagnosticError", TraceSuspect = "DiagnosticWarn" }
+
+-- `a` laid over `b` at `amount`, both colours as numbers.
+local function mix(a, b, amount)
+  local out = 0
+  for _, shift in ipairs({ 16, 8, 0 }) do
+    local x = bit.band(bit.rshift(a, shift), 255)
+    local y = bit.band(bit.rshift(b, shift), 255)
+    out = out + bit.lshift(math.floor(x * amount + y * (1 - amount) + 0.5), shift)
+  end
+  return out
+end
+
 local function colours()
   local function set(name, opts)
     opts.default = true
     vim.api.nvim_set_hl(0, name, opts)
   end
-  set("TraceStep", { link = "DiagnosticInfo" })
-  set("TraceCause", { link = "DiagnosticError" })
-  set("TraceSuspect", { link = "DiagnosticWarn" })
-  local info = vim.api.nvim_get_hl(0, { name = "DiagnosticInfo", link = false })
-  set("TraceNote", { fg = info.fg, italic = true })
   local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
-  set("TraceTitle", { fg = normal.fg, bold = true })
+  local light = vim.o.background == "light"
+  -- A terminal's own background, where the scheme leaves it to the terminal.
+  local bg = normal.bg or (light and 0xffffff or 0x000000)
+  local fg = normal.fg or (light and 0x000000 or 0xffffff)
+  local warn = vim.api.nvim_get_hl(0, { name = "DiagnosticWarn", link = false }).fg or fg
+  for group, diagnostic in pairs(KINDS) do
+    set(group, { link = diagnostic })
+    local colour = vim.api.nvim_get_hl(0, { name = diagnostic, link = false }).fg or fg
+    local card = mix(colour, bg, 0.18)
+    set(group .. "Card", { fg = fg, bg = card })
+    set(group .. "Bar", { fg = colour, bg = card })
+    set(group .. "Head", { fg = fg, bg = card, bold = true })
+    set(group .. "Label", { fg = bg, bg = colour, bold = true })
+    set(group .. "Lost", { fg = warn, bg = card })
+  end
   set("TraceTitleOther", { link = "Comment" })
   set("TraceCurrent", { link = "DiagnosticVirtualTextInfo" })
+  set("TraceLost", { link = "DiagnosticWarn" })
+  -- The file of a place in the panel: the text of the sidebar, unlit.
+  set("TraceFile", { link = "SnacksPickerFile" })
 end
 colours()
 vim.api.nvim_create_autocmd("ColorScheme", {
@@ -92,30 +132,57 @@ end
 
 local BAR = "▎"
 
--- The lines above a step: its number and title, then its note, each behind a
--- bar in the colour of its kind and indented as the code line is, so the note
--- reads as a block that belongs to that line. A step other than the one chosen
--- keeps to its title, dimmed, unless every note is to show: notes on every
--- step of a function pushed its lines apart until the code was hard to read,
--- while a line each still says where the other steps are. Its note, left out,
--- is marked with an ellipsis.
+-- The lines above a step, indented as the code line is so they read as
+-- belonging to it. The step chosen, or every step while every note shows, has
+-- a card: its number on a label and its title, then its note, every line
+-- filled out to one width so the background makes a block. A step other than
+-- the one chosen keeps to a line with its number and its title, dimmed and
+-- with no background: cards on every step of a function pushed its lines
+-- apart until the code was hard to read, while a line each still says where
+-- the other steps are. Its note, left out, is marked with an ellipsis.
 local function note_lines(row, indent, width)
-  local colour = M.kind_colour(row.step)
-  local pad = string.rep(" ", indent)
-  local full = state.all_notes or row.step.id == state.current
+  local kind = M.kind_colour(row.step)
+  local pad = { string.rep(" ", indent) }
+  local lost = M.where(row.step).lost and "  (line not found)" or ""
+  if not (state.all_notes or row.step.id == state.current) then
+    return {
+      {
+        pad,
+        { BAR .. " ", kind },
+        { tostring(row.number) .. " ", kind },
+        { row.step.title, "TraceTitleOther" },
+        { row.step.note ~= "" and " …" or "", "TraceTitleOther" },
+        { lost, "TraceLost" },
+      },
+    }
+  end
+  local label = (" %d "):format(row.number)
+  local title = " " .. row.step.title
+  local body = row.step.note ~= "" and wrap(row.step.note, width) or {}
+  local function cells(text)
+    return vim.fn.strdisplaywidth(text)
+  end
+  local inner = cells(label) + cells(title) + cells(lost)
+  for _, text in ipairs(body) do
+    inner = math.max(inner, 2 + cells(text))
+  end
+  inner = inner + 1
   local lines = {
     {
-      { pad },
-      { BAR .. " ", colour },
-      { tostring(row.number) .. " ", colour },
-      { row.step.title, full and "TraceTitle" or "TraceTitleOther" },
-      { (not full and row.step.note ~= "") and " …" or "", "TraceTitleOther" },
+      pad,
+      { BAR, kind .. "Bar" },
+      { label, kind .. "Label" },
+      { title, kind .. "Head" },
+      { lost, kind .. "Lost" },
+      { string.rep(" ", inner - cells(label) - cells(title) - cells(lost)), kind .. "Card" },
     },
   }
-  if full and row.step.note ~= "" then
-    for _, text in ipairs(wrap(row.step.note, width)) do
-      lines[#lines + 1] = { { pad }, { BAR .. "   ", colour }, { text, "TraceNote" } }
-    end
+  for _, text in ipairs(body) do
+    lines[#lines + 1] = {
+      pad,
+      { BAR, kind .. "Bar" },
+      { "  " .. text .. string.rep(" ", inner - 2 - cells(text)), kind .. "Card" },
+    }
   end
   return lines
 end
@@ -124,7 +191,51 @@ local function same_file(a, b)
   return vim.fs.normalize(a):lower() == vim.fs.normalize(b):lower()
 end
 
--- Draws the steps of the trace that are in one buffer.
+-- Where a step's line is now in `buf`, and whether it was found there. A step
+-- that gives the text of its line is on the line it names while that line
+-- still says it, else on the nearest line that does: the code may have moved
+-- since the trace was written, by an edit or an update, and the line number
+-- written may be off. A line it is not found on at all is marked, so a step
+-- never points at the wrong line without a word. A step with no text is on
+-- the line it names.
+function M.locate(buf, step)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local fallback = math.max(1, math.min(step.line, #lines))
+  if step.text == "" then
+    return fallback, true
+  end
+  -- A part of a line is taken too, but not so short a part that it is found
+  -- anywhere.
+  local function says(number)
+    local line = lines[number]
+    if not line then
+      return false
+    end
+    line = store.squash(line)
+    return line == step.text or (#step.text >= 8 and line:find(step.text, 1, true) ~= nil)
+  end
+  if says(step.line) then
+    return step.line, true
+  end
+  for distance = 1, #lines do
+    for _, number in ipairs({ step.line - distance, step.line + distance }) do
+      if says(number) then
+        return number, true
+      end
+    end
+  end
+  return fallback, false
+end
+
+-- Where a step was last found: its line, and whether it was lost. Until its
+-- file is read, the line it names.
+function M.where(step)
+  local found = state.located[step.id]
+  return found or { line = step.line, lost = false }
+end
+
+-- Draws the steps of the trace that are in one buffer. True when a step was
+-- found on another line than before, for the panel to show.
 function M.decorate(buf)
   if not vim.api.nvim_buf_is_loaded(buf) then
     return
@@ -134,7 +245,7 @@ function M.decorate(buf)
   if name == "" or not state.trace then
     return
   end
-  local count = vim.api.nvim_buf_line_count(buf)
+  local moved = false
   -- The text area of the narrowest window the buffer is in, which a line of
   -- the note must fit: one that does not is cut off at the edge, not wrapped.
   local room
@@ -145,21 +256,27 @@ function M.decorate(buf)
   room = room or vim.o.columns
   for _, row in ipairs(state.rows) do
     if same_file(row.step.file, name) then
-      local line = math.min(row.step.line, count)
+      local line, found = M.locate(buf, row.step)
+      local before = state.located[row.step.id]
+      if not before or before.line ~= line or before.lost == found then
+        moved = true
+      end
+      state.located[row.step.id] = { line = line, lost = not found }
       local indent = vim.api.nvim_buf_call(buf, function()
         return vim.fn.indent(line)
       end)
       vim.api.nvim_buf_set_extmark(buf, namespace, line - 1, 0, {
         sign_text = row.number < 100 and ("%2d"):format(row.number) or "··",
-        sign_hl_group = M.kind_colour(row.step),
-        line_hl_group = row.step.id == state.current and "TraceCurrent" or nil,
+        sign_hl_group = found and M.kind_colour(row.step) or "TraceLost",
+        line_hl_group = state.notes and row.step.id == state.current and "TraceCurrent" or nil,
         -- Past a hundred columns a line is hard to follow back to its start.
-        virt_lines = note_lines(row, indent, math.max(20, math.min(100, room - indent - 6))),
+        virt_lines = state.notes and note_lines(row, indent, math.max(20, math.min(100, room - indent - 6))) or nil,
         virt_lines_above = true,
         priority = 20,
       })
     end
   end
+  return moved
 end
 
 local function decorate_all()
@@ -183,6 +300,7 @@ local function read_again()
   end
   state.trace = store.read(state.path)
   state.rows = store.outline(state.trace)
+  state.located = {}
   decorate_all()
   panel().refresh()
 end
@@ -247,12 +365,24 @@ function M.close()
     settle_timer:close()
     watcher, settle_timer = nil, nil
   end
-  state.path, state.trace, state.rows, state.current = nil, nil, {}, nil
+  state.path, state.trace, state.rows, state.current, state.located = nil, nil, {}, nil, {}
   decorate_all()
   panel().close()
 end
 
--- Whether every step shows its note, not only the one chosen (<leader>uR).
+-- Whether the notes show in the code (<leader>uR): put away, the code reads as
+-- it is, the number of each step left in the sign column to say where the
+-- steps are, as the notes of the pins are put away (<leader>uN).
+function M.notes_shown()
+  return state.notes
+end
+
+function M.show_notes(on)
+  state.notes = on
+  decorate_all()
+end
+
+-- Whether every step shows its note, not only the one chosen (N in the panel).
 function M.all_notes_shown()
   return state.all_notes
 end
@@ -287,7 +417,7 @@ function M.show(row, win, go)
     end)
   end
   vim.api.nvim_win_set_buf(win, buf)
-  local line = math.min(row.step.line, vim.api.nvim_buf_line_count(buf))
+  local line = M.locate(buf, row.step)
   vim.api.nvim_win_set_cursor(win, { line, 0 })
   vim.api.nvim_win_call(win, function()
     vim.cmd("normal! ^zz")
@@ -331,32 +461,107 @@ function M.toggle_panel()
   panel().toggle()
 end
 
--- A trace chosen from the stored ones, the newest first, and shown in the
--- panel; it stays shown when newer ones are written.
+-- A step as it is handed to whoever wrote the trace, to ask about it: the
+-- trace, the step's number and title, and its place, under the trace's root
+-- where it is, as the trace wrote it.
+function M.reference(row)
+  local where = M.where(row.step)
+  local file = row.step.file
+  local root = state.trace and state.trace.root
+  if root and file:lower():sub(1, #root + 1) == root:lower() .. "/" then
+    file = file:sub(#root + 2)
+  end
+  return ('Trace "%s" step %d/%d: %s (%s:%d)'):format(
+    vim.fn.fnamemodify(state.path or "", ":t:r"),
+    row.number,
+    #state.rows,
+    row.step.title,
+    file,
+    where.line
+  )
+end
+
+-- Steps copied to the clipboard and to the unnamed register, a line each.
+function M.yank(rows)
+  local text = table.concat(vim.tbl_map(M.reference, rows), "\n")
+  vim.fn.setreg('"', text)
+  pcall(vim.fn.setreg, "+", text)
+  vim.notify(#rows == 1 and ("Copied: " .. text) or ("Copied %d steps"):format(#rows))
+end
+
+-- The stored traces, the newest first, in a list as the other lists are:
+-- Enter shows one in the panel, and it stays shown when newer ones are
+-- written; <C-x>, or dd in the list, deletes the one under the cursor or the
+-- ones marked with Tab. A trace is a file and gone once deleted, unlike a pin
+-- or a buffer, so the list asks first.
 function M.pick()
-  local files = store.files()
-  if #files == 0 then
+  if #store.files() == 0 then
     return vim.notify("No traces yet: they are read from " .. store.dir(), vim.log.levels.WARN)
   end
-  local choices = {}
-  for _, file in ipairs(files) do
-    local trace = store.read(file.path)
-    choices[#choices + 1] = {
-      path = file.path,
-      label = ("%s  (%d steps, %s)"):format(trace.title, #trace.steps, os.date("%m-%d %H:%M", math.floor(file.mtime))),
-    }
-  end
-  vim.ui.select(choices, {
-    prompt = "Trace",
-    format_item = function(choice)
-      return choice.label
+  Snacks.picker({
+    source = "trace_files",
+    title = "Traces",
+    finder = function()
+      local items = {}
+      for _, file in ipairs(store.files()) do
+        local trace = store.read(file.path)
+        items[#items + 1] = {
+          text = trace.title .. " " .. vim.fs.basename(file.path),
+          path = file.path,
+          title = trace.title,
+          steps = #trace.steps,
+          mtime = file.mtime,
+        }
+      end
+      return items
     end,
-  }, function(choice)
-    if choice then
-      M.open(choice.path, false)
-      panel().open()
-    end
-  end)
+    format = function(item)
+      return {
+        { item.path == state.path and "● " or "  ", "TraceStep" },
+        { item.title },
+        { ("  %d steps · %s"):format(item.steps, os.date("%m-%d %H:%M", math.floor(item.mtime))), "Comment" },
+      }
+    end,
+    layout = { preset = "select" },
+    -- The trace chosen is shown once the list has closed: its windows go on
+    -- the next tick, and a panel made over them meanwhile met a resize of
+    -- snacks on a window half closed, an error on a slow screen.
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        vim.schedule(function()
+          M.open(item.path, false)
+          panel().open()
+        end)
+      end
+    end,
+    actions = {
+      trace_delete = function(picker)
+        local items = picker:selected({ fallback = true })
+        if #items == 0 then
+          return
+        end
+        local question = #items == 1 and ('Delete the trace "%s"?'):format(items[1].title)
+          or ("Delete %d traces?"):format(#items)
+        if vim.fn.confirm(question, "&Delete\n&Keep", 2) ~= 1 then
+          return
+        end
+        for _, item in ipairs(items) do
+          os.remove(item.path)
+          if item.path == state.path then
+            M.close()
+          end
+        end
+        picker.list:set_selected()
+        picker.list:set_target()
+        picker:find()
+      end,
+    },
+    win = {
+      input = { keys = { ["<c-x>"] = { "trace_delete", mode = { "n", "i" }, desc = "Delete trace" } } },
+      list = { keys = { ["dd"] = "trace_delete" } },
+    },
+  })
 end
 
 M.reload = read_again
@@ -365,8 +570,10 @@ local group = vim.api.nvim_create_augroup("config_trace", { clear = true })
 vim.api.nvim_create_autocmd("BufReadPost", {
   group = group,
   callback = function(event)
-    if state.trace then
-      M.decorate(event.buf)
+    -- A file read for the first time may find a step on another line than
+    -- the one written, which the panel then shows.
+    if state.trace and M.decorate(event.buf) then
+      panel().refresh()
     end
   end,
 })
@@ -378,6 +585,30 @@ vim.api.nvim_create_autocmd({ "WinResized", "BufWinEnter" }, {
     if state.trace then
       decorate_all()
     end
+  end,
+})
+
+-- An edit of a file with steps in it finds them again, so the panel names the
+-- lines they are on now: the cards move with the lines by themselves, but the
+-- panel kept the line numbers they had before. Not while typing, when a step's
+-- own line is half written and would show as not found, but once insert mode
+-- is left or a change is made in normal mode, and once for a run of changes.
+-- The panel is drawn again only when a step's line has changed.
+local edited_buffers = {}
+vim.api.nvim_create_autocmd({ "InsertLeave", "TextChanged" }, {
+  group = group,
+  callback = function(event)
+    local buf = event.buf
+    if not state.trace or edited_buffers[buf] then
+      return
+    end
+    edited_buffers[buf] = true
+    vim.defer_fn(function()
+      edited_buffers[buf] = nil
+      if state.trace and vim.api.nvim_buf_is_valid(buf) and M.decorate(buf) then
+        panel().refresh()
+      end
+    end, 200)
   end,
 })
 

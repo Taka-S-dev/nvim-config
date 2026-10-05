@@ -14,7 +14,9 @@
 -- "root", or the cwd. A step is under the step its "parent" names, else at the
 -- top, in the order written. "note" may run over several lines, as a string
 -- with line breaks or a list of strings. "kind" is "cause", "suspect" or left
--- out. A file that is one JSON object with a "steps" list is read too.
+-- out. "text" is what the line says, the whole of it or a part, by which the
+-- step is found again once the line has moved. A file that is one JSON object
+-- with a "steps" list is read too.
 local M = {}
 
 function M.dir()
@@ -42,6 +44,13 @@ local function text_of(value)
     return table.concat(vim.tbl_map(tostring, value), "\n")
   end
   return value ~= nil and value ~= vim.NIL and tostring(value) or ""
+end
+
+-- A line of code as it is compared: the spaces at its ends dropped and every
+-- run of spaces inside it made one, so a change of indentation or a text
+-- copied with its tabs turned to spaces still matches.
+function M.squash(text)
+  return vim.trim((text:gsub("%s+", " ")))
 end
 
 local function is_absolute(path)
@@ -81,6 +90,7 @@ function M.read(path)
     end
   end
   root = vim.fs.normalize(root or vim.fn.getcwd())
+  trace.root = root
   local known = {}
   for index, record in ipairs(steps) do
     local file_path = record.file
@@ -93,6 +103,7 @@ function M.read(path)
       line = math.max(1, math.floor(tonumber(record.line))),
       note = text_of(record.note),
       kind = text_of(record.kind),
+      text = M.squash(text_of(record.text)),
     }
     -- An id written twice names the first step; the second is kept under one
     -- of its own.

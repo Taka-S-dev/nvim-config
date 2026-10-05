@@ -125,6 +125,11 @@ return function(T)
       trace.show_all_notes(true)
       seen.all = marks(0)
       trace.show_all_notes(false)
+      -- <leader>uR puts every note away, the numbers kept, and shows them again.
+      key("<leader>uR")()
+      seen.hidden = marks(0)
+      key("<leader>uR")()
+      seen.shown_again = marks(0)
     end)
     trace.close()
     store.dir = real_dir
@@ -136,20 +141,22 @@ return function(T)
       ("]n went to %s, then %s"):format(seen.first, seen.second)
     )
     expect(
-      vim.deep_equal(seen.parse, { "3 [2] ▎ 2 Returns -1 | ▎   on every input" }),
+      vim.deep_equal(seen.parse, { "3 [2] ▎ 2  Returns -1 | ▎  on every input" }),
       "parse.c: " .. vim.inspect(seen.parse)
     )
     expect(
-      vim.deep_equal(seen.added, { "1 [3] ▎ 3 Declared here …", "3 [2] ▎ 2 Returns -1 | ▎   on every input" }),
+      vim.deep_equal(seen.added, { "1 [3] ▎ 3 Declared here …", "3 [2] ▎ 2  Returns -1 | ▎  on every input" }),
       "added: " .. vim.inspect(seen.added)
     )
     expect(
       vim.deep_equal(
         seen.all,
-        { "1 [3] ▎ 3 Declared here | ▎   a prototype", "3 [2] ▎ 2 Returns -1 | ▎   on every input" }
+        { "1 [3] ▎ 3  Declared here | ▎  a prototype", "3 [2] ▎ 2  Returns -1 | ▎  on every input" }
       ),
       "every note: " .. vim.inspect(seen.all)
     )
+    expect(vim.deep_equal(seen.hidden, { "1 [3] ", "3 [2] " }), "put away: " .. vim.inspect(seen.hidden))
+    expect(vim.deep_equal(seen.shown_again, seen.added), "shown again: " .. vim.inspect(seen.shown_again))
   end)
 
   -- The panel lists the steps as a tree, and moving its cursor shows each step
@@ -166,6 +173,8 @@ return function(T)
         { title = "Panel", root = code },
         { id = "1", file = "a.c", line = 2, title = "In a" },
         { parent = "1", file = "lib/b.c", line = 2, title = "Then b", kind = "suspect" },
+        { file = "a.c", line = 3, title = "Back in a" },
+        { file = "a.c", line = 1, title = "Still in a" },
       })
     )
     local seen = {}
@@ -174,7 +183,7 @@ return function(T)
       local code_win = vim.api.nvim_get_current_win()
       key("<leader>ja")()
       vim.wait(1000, function()
-        return #require("taka.trace.panel").lines() == 2
+        return #require("taka.trace.panel").lines() == 4
       end, 20)
       seen.rows = require("taka.trace.panel").lines()
       local picker = Snacks.picker.get({ source = "trace" })[1]
@@ -192,10 +201,160 @@ return function(T)
     reset_editor()
     expect(ok, err)
     expect(
-      seen.rows and seen.rows[1] == " 1 In a  @a.c:2" and seen.rows[2]:match("^└╴ 2 .+Then b  @b%.c:2$"),
+      -- A row names its file only where it is not the file of the row above.
+      seen.rows
+        and seen.rows[1] == " 1 In a  @a.c:2"
+        and seen.rows[2]:match("^└╴ 2 .+Then b  @b%.c:2$")
+        and seen.rows[3] == " 3 Back in a  @a.c:3"
+        and seen.rows[4] == " 4 Still in a  @:1",
       "rows: " .. vim.inspect(seen.rows)
     )
     expect(seen.shown == "b.c:2", "the code window shows " .. tostring(seen.shown))
     expect(seen.stayed, "the cursor left the panel")
+  end)
+
+  -- A step that gives the text of its line is found by it once the code has
+  -- moved, or its line number was written wrong; one whose text is nowhere is
+  -- marked, not shown on a line it does not mean. A step is copied with its
+  -- place, to ask about it.
+  check("trace: a step is found by its line's text, marked when lost, and copied", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    -- Two lines were added at the top since the trace was written.
+    write(code .. "/s.c", {
+      "/* new */",
+      "/* new */",
+      "int main(void)",
+      "{",
+      "\tint len = parse(buf);",
+      "\treturn len;",
+      "}",
+    })
+    write(
+      folder .. "/moved.jsonl",
+      lines_of({
+        { title = "Moved", root = code },
+        { file = "s.c", line = 3, title = "Parses", text = "int len =   parse(buf);" },
+        { file = "s.c", line = 4, title = "Gone", text = "free(buf);" },
+        { file = "s.c", line = 1, title = "No text" },
+      })
+    )
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/s.c")
+      expect(trace.open(), "the trace was not found")
+      local namespace = vim.api.nvim_get_namespaces().config_trace
+      for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })) do
+        local first = {}
+        for _, chunk in ipairs(mark[4].virt_lines[1]) do
+          first[#first + 1] = chunk[1]
+        end
+        seen[#seen + 1] = ("%d %s %s"):format(mark[2] + 1, mark[4].sign_hl_group, vim.trim(table.concat(first)))
+      end
+      key("]n")()
+      seen.cursor = vim.fn.line(".")
+      trace.yank({ trace.state().rows[1] })
+      seen.copied = vim.fn.getreg('"')
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    table.sort(seen)
+    expect(
+      vim.deep_equal({ seen[1], seen[2], seen[3] }, {
+        "1 TraceStep ▎ 3 No text",
+        "4 TraceLost ▎ 2 Gone  (line not found)",
+        "5 TraceStep ▎ 1 Parses",
+      }),
+      "marks: " .. vim.inspect(seen)
+    )
+    expect(seen.cursor == 5, "]n went to line " .. tostring(seen.cursor))
+    expect(seen.copied == 'Trace "moved" step 1/3: Parses (s.c:5)', "copied: " .. tostring(seen.copied))
+  end)
+
+  -- The stored traces are listed as the other lists are, and <C-x> deletes
+  -- one, after asking: a trace is a file, gone once deleted.
+  check("trace: <C-x> in the list of traces deletes one", function()
+    local folder = trace_folder()
+    for _, name in ipairs({ "old", "new" }) do
+      write(folder .. "/" .. name .. ".jsonl", lines_of({ { title = name } }))
+    end
+    local seen = {}
+    local picker
+    local ok, err = pcall(function()
+      key("<leader>jA")()
+      picker = Snacks.picker.get({ source = "trace_files" })[1]
+      expect(picker, "the list did not open")
+      vim.wait(1000, function()
+        return #picker:items() == 2
+      end, 20)
+      seen.before = #picker:items()
+      seen.mapped = vim.tbl_contains(
+        vim.tbl_map(function(map)
+          return map.lhs
+        end, vim.api.nvim_buf_get_keymap(picker.input.win.buf, "i")),
+        "<C-X>"
+      )
+      local target = picker:current().title
+      picker:action("trace_delete")
+      vim.wait(1000, function()
+        return #picker:items() == 1
+      end, 20)
+      seen.after = #picker:items()
+      seen.gone = vim.fn.filereadable(folder .. "/" .. target .. ".jsonl") == 0
+      seen.open = not picker.closed
+    end)
+    if picker and not picker.closed then
+      picker:close()
+    end
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(seen.mapped, "<C-x> is not a key of the list")
+    expect(seen.before == 2 and seen.after == 1, ("%s traces, then %s"):format(seen.before, seen.after))
+    expect(seen.gone, "the file is still there")
+    expect(seen.open, "the list closed")
+  end)
+
+  -- Lines added above a step move its card with them at once, and the line
+  -- number the panel shows follows once the edit is made, not while typing.
+  check("trace: an edit of the file moves the line numbers in the panel", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/e.c", { "int main(void)", "{", "    return run_all();", "}" })
+    write(
+      folder .. "/e.jsonl",
+      lines_of({
+        { title = "Edit", root = code },
+        { file = "e.c", line = 3, text = "return run_all();", title = "Runs" },
+      })
+    )
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/e.c")
+      local buf = vim.api.nvim_get_current_buf()
+      local code_win = vim.api.nvim_get_current_win()
+      key("<leader>ja")()
+      vim.wait(1000, function()
+        return #require("taka.trace.panel").lines() == 1
+      end, 20)
+      seen.before = require("taka.trace.panel").lines()[1]
+      vim.api.nvim_set_current_win(code_win)
+      vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "/* one */", "/* two */" })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = buf })
+      vim.wait(2000, function()
+        return (require("taka.trace.panel").lines()[1] or ""):find(":5$") ~= nil
+      end, 20)
+      seen.after = require("taka.trace.panel").lines()[1]
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(seen.before == " 1 Runs  @e.c:3", "before: " .. tostring(seen.before))
+    expect(seen.after == " 1 Runs  @e.c:5", "after the edit: " .. tostring(seen.after))
   end)
 end

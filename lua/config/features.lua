@@ -74,12 +74,12 @@ key("n", "<leader>jA", "taka.trace", "pick", "Choose a trace")
 key("n", "]n", "taka.trace", "step", "Next trace step", 1)
 key("n", "[n", "taka.trace", "step", "Previous trace step", -1)
 Snacks.toggle({
-  name = "Every trace note",
+  name = "Trace notes",
   get = function()
-    return require("taka.trace").all_notes_shown()
+    return require("taka.trace").notes_shown()
   end,
   set = function(on)
-    require("taka.trace").show_all_notes(on)
+    require("taka.trace").show_notes(on)
   end,
 }):map("<leader>uR")
 

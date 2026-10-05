@@ -8,6 +8,8 @@
 --                    go to the step
 --   N                the notes of every step shown in the code, or only the
 --                    note of the step chosen
+--   y, <C-y>         copy the step, or the steps marked with Tab, to ask
+--                    about them
 --   R                read the trace again
 --   t                another trace
 --   X                put the trace away
@@ -27,19 +29,19 @@ local function is_open()
   return panel.picker ~= nil and not panel.picker.closed
 end
 
--- The place of a step takes the colour of its folder, so a step into another
--- module shows without reading the file names, as in the jump stack: the same
--- folder the same colour, the next folder reached the next colour, in turn.
-local MODULE_COLOURS = { "String", "Constant", "Keyword", "Label", "DiagnosticHint" }
-for index, link in ipairs(MODULE_COLOURS) do
-  vim.api.nvim_set_hl(0, "TraceModule" .. index, { link = link, default = true })
-end
-
 -- A cause and a suspect carry a mark beside their number, so they stand out in
 -- a long trace (cod-bug and cod-question of the Nerd Font).
 local MARKS = { cause = " ", suspect = " " }
 
-local function row_text(row, module, look)
+-- The place of a step is at the right edge, the file named only where it is
+-- not the file of the row above: a trace stays in one file for steps on end,
+-- and the same name on each row took the room of the titles, which were cut
+-- short. So a row with a file name is where the trace goes to another file.
+-- The place is in one quiet colour: here the colours say the kind of a step,
+-- and the colour of each folder, as the jump stack has them, mixed with them
+-- (a folder in orange beside a cause in red). A step whose line is not found
+-- has its place in the colour of a warning.
+local function row_text(row, short, look)
   local guides = ""
   if row.depth > 0 then
     for level = 2, #row.ancestors_last do
@@ -48,7 +50,9 @@ local function row_text(row, module, look)
     guides = guides .. (row.last and look.last or look.middle)
   end
   local colour = trace().kind_colour(row.step)
-  local place = ("%s:%d"):format(vim.fs.basename(row.step.file), row.step.line)
+  local where = trace().where(row.step)
+  local file = short and "" or vim.fs.basename(row.step.file)
+  local line = ":" .. where.line
   return {
     { guides, "SnacksPickerTree" },
     { ("%2d "):format(row.number), colour },
@@ -58,7 +62,8 @@ local function row_text(row, module, look)
       col = 0,
       virt_text = {
         { " " },
-        { place, "TraceModule" .. ((module - 1) % #MODULE_COLOURS + 1) },
+        { file, where.lost and "TraceLost" or "TraceFile" },
+        { line, where.lost and "TraceLost" or "Comment" },
         { " " },
       },
       virt_text_pos = "right_align",
@@ -117,8 +122,11 @@ function M.open()
       return
     end
     -- The title is the trace's, set as the panel is made; and a panel in
-    -- another tab page is made again in this one.
+    -- another tab page is made again in this one. The new one is made once
+    -- the old one's windows are gone, on the next tick, as the list of traces
+    -- does it.
     panel.picker:close()
+    return vim.schedule(M.open)
   end
   local look = sidebar.tree_look()
   local state = trace().state()
@@ -129,21 +137,23 @@ function M.open()
     -- Open with no trace yet too: the panel is where it will show up.
     show_empty = true,
     finder = function()
-      local items, modules = {}, {}
+      local items, above = {}, nil
       for _, row in ipairs(trace().state().rows) do
-        local folder = vim.fs.dirname(row.step.file):lower()
-        modules[folder] = modules[folder] or (vim.tbl_count(modules) + 1)
         items[#items + 1] = {
           text = table.concat({ row.step.title, row.step.note, vim.fs.basename(row.step.file) }, " "),
           row = row,
-          module = modules[folder],
+          same_file = above ~= nil and above:lower() == row.step.file:lower(),
           sort = ("%06d"):format(row.number),
         }
+        above = row.step.file
       end
       return items
     end,
-    format = function(item)
-      return row_text(item.row, item.module, look)
+    -- While a filter is typed the rows between are hidden, and each names its
+    -- file.
+    format = function(item, picker)
+      local searching = picker and picker.input and not picker.input.filter:is_empty()
+      return row_text(item.row, item.same_file and not searching, look)
     end,
     matcher = { sort_empty = false, fuzzy = false },
     sort = { fields = { "sort" } },
@@ -185,6 +195,15 @@ function M.open()
       trace_notes = function()
         trace().show_all_notes(not trace().all_notes_shown())
       end,
+      trace_yank = function(picker)
+        local items = picker:selected({ fallback = true })
+        picker.list:set_selected()
+        if #items > 0 then
+          trace().yank(vim.tbl_map(function(item)
+            return item.row
+          end, items))
+        end
+      end,
       trace_reload = function()
         trace().reload()
       end,
@@ -196,10 +215,12 @@ function M.open()
       end,
     },
     win = {
+      input = { keys = { ["<c-y>"] = { "trace_yank", mode = { "n", "i" }, desc = "Copy step" } } },
       list = {
         keys = {
           ["N"] = "trace_notes",
           ["R"] = "trace_reload",
+          ["y"] = "trace_yank",
           ["t"] = "trace_pick",
           ["X"] = "trace_close",
         },
@@ -271,11 +292,11 @@ function M.lines()
   local out = {}
   for _, item in ipairs(panel.picker:items()) do
     local parts = {}
-    for _, part in ipairs(row_text(item.row, item.module, sidebar.tree_look())) do
+    for _, part in ipairs(row_text(item.row, item.same_file, sidebar.tree_look())) do
       if part[1] then
         parts[#parts + 1] = part[1]
       elseif part.virt_text then
-        parts[#parts + 1] = "  @" .. part.virt_text[2][1]
+        parts[#parts + 1] = "  @" .. part.virt_text[2][1] .. part.virt_text[3][1]
       end
     end
     out[#out + 1] = table.concat(parts)
