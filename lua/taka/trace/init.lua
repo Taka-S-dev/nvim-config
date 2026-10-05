@@ -531,7 +531,12 @@ function M.report()
   if not state.trace then
     return ""
   end
-  local out = { "# " .. state.trace.title, "" }
+  local out = {
+    "# " .. state.trace.title,
+    "",
+    ('Trace "%s"'):format(vim.fn.fnamemodify(state.path or "", ":t:r")),
+    "",
+  }
   local answers = vim.tbl_filter(function(row)
     return row.step.kind == "answer"
   end, state.rows)
@@ -742,7 +747,16 @@ function M.pick()
       return {
         { item.path == state.path and "● " or "  ", "TraceStep" },
         { item.title },
-        { ("  %d steps · %s"):format(item.steps, os.date("%m-%d %H:%M", math.floor(item.mtime))), "Comment" },
+        -- The name of a trace, its file's, is what it is asked about by: the
+        -- title says what it is, the name which file it is.
+        {
+          ("  %s · %d steps · %s"):format(
+            vim.fn.fnamemodify(item.path, ":t:r"),
+            item.steps,
+            os.date("%m-%d %H:%M", math.floor(item.mtime))
+          ),
+          "Comment",
+        },
       }
     end,
     layout = { preset = "select" },
@@ -759,6 +773,20 @@ function M.pick()
       end
     end,
     actions = {
+      -- The traces marked with Tab, or the one under the cursor, copied by
+      -- name, as a step is copied in the panel, to ask about them.
+      trace_name = function(picker)
+        local names = vim.tbl_map(function(item)
+          return ('Trace "%s"'):format(vim.fn.fnamemodify(item.path, ":t:r"))
+        end, picker:selected({ fallback = true }))
+        picker.list:set_selected()
+        if #names > 0 then
+          local text = table.concat(names, "\n")
+          vim.fn.setreg('"', text)
+          pcall(vim.fn.setreg, "+", text)
+          vim.notify("Copied: " .. table.concat(names, ", "))
+        end
+      end,
       trace_delete = function(picker)
         local items = picker:selected({ fallback = true })
         if #items == 0 then
@@ -781,8 +809,18 @@ function M.pick()
       end,
     },
     win = {
-      input = { keys = { ["<c-x>"] = { "trace_delete", mode = { "n", "i" }, desc = "Delete trace" } } },
-      list = { keys = { ["dd"] = { "trace_delete", desc = "Delete the trace (Tab marks several)" } } },
+      input = {
+        keys = {
+          ["<c-x>"] = { "trace_delete", mode = { "n", "i" }, desc = "Delete trace" },
+          ["<c-y>"] = { "trace_name", mode = { "n", "i" }, desc = "Copy the name of the trace" },
+        },
+      },
+      list = {
+        keys = {
+          ["dd"] = { "trace_delete", desc = "Delete the trace (Tab marks several)" },
+          ["y"] = { "trace_name", desc = "Copy the name of the trace (Tab marks several)" },
+        },
+      },
     },
   })
 end

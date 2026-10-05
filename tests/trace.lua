@@ -302,6 +302,12 @@ return function(T)
         "<C-X>"
       )
       local target = picker:current().title
+      -- Each row names its trace, and y copies the name to ask about it.
+      seen.named = table.concat(vim.api.nvim_buf_get_lines(picker.list.win.buf, 0, -1, false), "|")
+      vim.fn.setreg('"', "")
+      picker:action("trace_name")
+      seen.copied = vim.fn.getreg('"')
+      seen.target = target
       picker:action("trace_delete")
       vim.wait(1000, function()
         return #picker:items() == 1
@@ -317,6 +323,11 @@ return function(T)
     reset_editor()
     expect(ok, err)
     expect(seen.mapped, "<C-x> is not a key of the list")
+    expect(
+      seen.named:find("old · 0 steps", 1, true) and seen.named:find("new · 0 steps", 1, true),
+      "the rows: " .. tostring(seen.named)
+    )
+    expect(seen.copied == ('Trace "%s"'):format(seen.target), "copied: " .. tostring(seen.copied))
     expect(seen.before == 2 and seen.after == 1, ("%s traces, then %s"):format(seen.before, seen.after))
     expect(seen.gone, "the file is still there")
     expect(seen.open, "the list closed")
@@ -446,6 +457,8 @@ return function(T)
     expect(ok, err)
     local wanted = table.concat({
       "# How many times is a request retried?",
+      "",
+      'Trace "q"',
       "",
       "## Answer",
       "",
