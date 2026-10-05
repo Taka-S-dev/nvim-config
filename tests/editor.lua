@@ -129,4 +129,56 @@ return function(T)
     expect(first ~= 7, "the terminal opened at 7 rows already")
     expect(again == 7, "shown again at " .. tostring(again) .. " rows")
   end)
+
+  -- The file tree follows the file shown in the code: switched to a file in a
+  -- folder not yet open, the tree opened the folder and left its cursor rows
+  -- away. <leader>fl brings it back to the file after the tree was scrolled.
+  check("explorer: the tree's cursor follows the file, and <leader>fl finds it", function()
+    local dir = temp_dir()
+    for _, folder in ipairs({ "a", "b", "c", "d" }) do
+      for number = 1, 5 do
+        T.write(("%s/%s/f%d.c"):format(dir, folder, number), { "int x;" })
+      end
+    end
+    local seen = {}
+    local explorer
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/a/f1.c")
+      local code = vim.api.nvim_get_current_win()
+      Snacks.explorer()
+      vim.wait(2000, function()
+        explorer = Snacks.picker.get({ source = "explorer" })[1]
+        return explorer and explorer:current() ~= nil
+      end, 20)
+      -- Settled, as a tree is before a reader goes on to another file: snacks
+      -- puts the cursor on the file the tree was opened from once it has read
+      -- the folders, which a switch made at once came before.
+      vim.wait(500)
+      vim.api.nvim_set_current_win(code)
+      local function current()
+        local item = explorer:current()
+        return item and vim.fs.basename(vim.fs.dirname(item.file)) .. "/" .. vim.fs.basename(item.file)
+      end
+      vim.cmd.edit(dir .. "/d/f4.c")
+      vim.wait(2000, function()
+        return current() == "d/f4.c"
+      end, 20)
+      seen.followed = current()
+      explorer.list:view(1)
+      vim.wait(100)
+      T.key("<leader>fl")()
+      vim.wait(2000, function()
+        return current() == "d/f4.c"
+      end, 20)
+      seen.found = current()
+    end)
+    if explorer and not explorer.closed then
+      explorer:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.followed == "d/f4.c", "the tree's cursor is on " .. tostring(seen.followed))
+    expect(seen.found == "d/f4.c", "<leader>fl left the cursor on " .. tostring(seen.found))
+  end)
 end

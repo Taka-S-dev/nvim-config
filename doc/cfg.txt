@@ -88,6 +88,8 @@ SVN                                                                |cfg-svn|
   `<leader>vs` 状態    `<leader>vd` BASE と比べる    `<leader>vh` ログ
   `<leader>vb` 誰が書いたか    `<leader>vp` / `<leader>vr` 変更を見る / 戻す
   `]h` / `[h` 次 / 前の変更箇所
+ファイルツリー                                                   |cfg-files|
+  `<leader>e` 開く / 閉じる    `<leader>fl` 今のファイルをツリーに出す
 作業ディレクトリを移す                                             |cfg-cwd|
   `<leader>fd` フォルダを選ぶ    `<leader>fD` 履歴から    `<leader>fp` 過去の
   プロジェクトから
@@ -107,6 +109,10 @@ SVN                                                                |cfg-svn|
 `<leader>fg`              プロジェクト全体を grep (Find by Grep)
 `<leader>fr`              最近開いたファイル (Recent)
 `<leader>fb`              開いているバッファ一覧
+`<leader>fl`              今のファイルを左のファイルツリーに出す(ツリーをそこま
+                          で開いて、カーソルを合わせる。閉じていれば開く)。ツ
+                          リーを開いている間は、ファイルを切り替えるたびに自動
+                          でついていくので、スクロールして見失ったときに使う
 `<leader>e`               左サイドにファイルツリー表示/トグル
 `<C-Left>` / `<C-Right>` (ツリー内)
                           ツリーの幅を 5 桁ずつ狭める / 広げる
