@@ -391,6 +391,76 @@ return function(T)
       "the card: " .. vim.inspect(seen.card)
     )
   end)
+  -- A trace that answers a question about the code is copied whole with Y in
+  -- the panel, as Markdown to answer from: the answer first, then every step
+  -- with its place and note, a branch under its step, and what was not
+  -- checked marked as such.
+  check("trace: Y copies the whole trace as Markdown, the answer first", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/src/conf.c", { "int retries(void)", "{", "    return env ? atoi(env) : 3;", "}" })
+    write(
+      folder .. "/q.jsonl",
+      lines_of({
+        { title = "How many times is a request retried?", root = code },
+        {
+          id = "a",
+          file = "src/conf.c",
+          line = 3,
+          title = "Three, unless set",
+          note = "3 times by default.\nThe environment can change it.",
+          kind = "answer",
+        },
+        {
+          id = "e",
+          parent = "a",
+          file = "src/conf.c",
+          line = 3,
+          title = "Read from the environment",
+          kind = "suspect",
+        },
+        { id = "f", file = "src/conf.c", line = 1, title = "The function", note = "Called once." },
+      })
+    )
+    local seen
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/src/conf.c")
+      expect(trace.open(), "the trace was not found")
+      key("<leader>ja")()
+      vim.wait(1000, function()
+        return #require("taka.trace.panel").lines() == 3
+      end, 20)
+      local picker = Snacks.picker.get({ source = "trace" })[1]
+      vim.fn.setreg('"', "")
+      picker:action("trace_report")
+      seen = vim.fn.getreg('"')
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    local wanted = table.concat({
+      "# How many times is a request retried?",
+      "",
+      "## Answer",
+      "",
+      "3 times by default.",
+      "The environment can change it.",
+      "(step 1, `src/conf.c:3`)",
+      "",
+      "## Steps",
+      "",
+      "1. **Three, unless set** `src/conf.c:3` [answer]",
+      "   3 times by default.",
+      "   The environment can change it.",
+      "   2. **Read from the environment** `src/conf.c:3` [suspect]",
+      "3. **The function** `src/conf.c:1`",
+      "   Called once.",
+      "",
+    }, "\n")
+    expect(seen == wanted, "copied:\n" .. tostring(seen))
+  end)
 
   -- Lines added above a step move its card with them at once, and the line
   -- number the panel shows follows once the edit is made, not while typing.

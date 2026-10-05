@@ -40,16 +40,22 @@ local state = {
 }
 
 -- The colour of a step goes by its kind, from the diagnostics, which every
--- scheme sets: a cause in the colour of an error, a suspect of a warning, the
--- rest of information. The step chosen shows its note on a card: a block whose
--- background is the scheme's own, tinted with the colour of the kind, its
--- number on a label of that colour. Italic text in a colour of its own, the
--- way the note first was, read as more code at a glance, the thin bar beside it
--- too little to tell where the note ended; a background marks the whole of it
--- as something laid over the code, as a comment of a review is. The title of a
+-- scheme sets: a cause in the colour of an error, a suspect of a warning, an
+-- answer, the step a question about the code is answered at, of a check passed,
+-- the rest of information. The step chosen shows its note on a card: a block
+-- whose background is the scheme's own, tinted with the colour of the kind, its
+-- number on a label of that colour. Italic text in a colour of its own, the way
+-- the note first was, read as more code at a glance, the thin bar beside it too
+-- little to tell where the note ended; a background marks the whole of it as
+-- something laid over the code, as a comment of a review is. The title of a
 -- step not chosen is dimmed as a comment is, and the line of the step chosen
 -- last is tinted as a diagnostic's text is.
-local KINDS = { TraceStep = "DiagnosticInfo", TraceCause = "DiagnosticError", TraceSuspect = "DiagnosticWarn" }
+local KINDS = {
+  TraceStep = "DiagnosticInfo",
+  TraceCause = "DiagnosticError",
+  TraceSuspect = "DiagnosticWarn",
+  TraceAnswer = "DiagnosticOk",
+}
 
 -- `a` laid over `b` at `amount`, both colours as numbers.
 local function mix(a, b, amount)
@@ -74,7 +80,7 @@ local function colours()
   local fg = normal.fg or (light and 0x000000 or 0xffffff)
   local warn = vim.api.nvim_get_hl(0, { name = "DiagnosticWarn", link = false }).fg or fg
   -- The mark of a step the reader has edited, in a colour of its own.
-  local edited = vim.api.nvim_get_hl(0, { name = "DiagnosticOk", link = false }).fg or fg
+  local edited = vim.api.nvim_get_hl(0, { name = "DiagnosticHint", link = false }).fg or fg
   for group, diagnostic in pairs(KINDS) do
     set(group, { link = diagnostic })
     local colour = vim.api.nvim_get_hl(0, { name = diagnostic, link = false }).fg or fg
@@ -87,7 +93,7 @@ local function colours()
     set(group .. "Edited", { fg = edited, bg = card })
   end
   set("TraceTitleOther", { link = "Comment" })
-  set("TraceEdited", { link = "DiagnosticOk" })
+  set("TraceEdited", { link = "DiagnosticHint" })
   set("TraceCurrent", { link = "DiagnosticVirtualTextInfo" })
   set("TraceLost", { link = "DiagnosticWarn" })
   -- The file of a place in the panel: the text of the sidebar, unlit.
@@ -99,7 +105,7 @@ vim.api.nvim_create_autocmd("ColorScheme", {
   callback = colours,
 })
 
-local KIND_COLOUR = { cause = "TraceCause", suspect = "TraceSuspect" }
+local KIND_COLOUR = { cause = "TraceCause", suspect = "TraceSuspect", answer = "TraceAnswer" }
 
 function M.kind_colour(step)
   return KIND_COLOUR[step.kind] or "TraceStep"
@@ -479,21 +485,87 @@ end
 -- A step as it is handed to whoever wrote the trace, to ask about it: the
 -- trace, the step's number and title, and its place, under the trace's root
 -- where it is, as the trace wrote it.
-function M.reference(row)
-  local where = M.where(row.step)
-  local file = row.step.file
+-- A step's place as "file:line", the file under the trace's root where it is.
+local function place(step)
+  local file = step.file
   local root = state.trace and state.trace.root
   if root and file:lower():sub(1, #root + 1) == root:lower() .. "/" then
     file = file:sub(#root + 2)
   end
-  return ('Trace "%s" step %d/%d: %s (%s:%d)'):format(
+  return ("%s:%d"):format(file, M.where(step).line)
+end
+
+function M.reference(row)
+  return ('Trace "%s" step %d/%d: %s (%s)'):format(
     vim.fn.fnamemodify(state.path or "", ":t:r"),
     row.number,
     #state.rows,
     row.step.title,
-    file,
-    where.line
+    place(row.step)
   )
+end
+
+-- The whole trace as Markdown, to answer from or keep: its title, the answer
+-- where a step gives one, then every step in order, each with its place and
+-- note, a branch indented under the step it comes from. A step marked as a
+-- cause, a suspect or an answer says so, and one the reader has edited too, so
+-- what was not checked is not passed on as fact.
+function M.report()
+  if not state.trace then
+    return ""
+  end
+  local out = { "# " .. state.trace.title, "" }
+  local answers = vim.tbl_filter(function(row)
+    return row.step.kind == "answer"
+  end, state.rows)
+  if #answers > 0 then
+    out[#out + 1] = "## Answer"
+    out[#out + 1] = ""
+    for _, row in ipairs(answers) do
+      vim.list_extend(out, vim.split(row.step.note ~= "" and row.step.note or row.step.title, "\n"))
+      out[#out + 1] = ("(step %d, `%s`)"):format(row.number, place(row.step))
+      out[#out + 1] = ""
+    end
+  end
+  out[#out + 1] = "## Steps"
+  out[#out + 1] = ""
+  for _, row in ipairs(state.rows) do
+    local indent = string.rep("   ", row.depth)
+    local tags = {}
+    if row.step.kind ~= "" then
+      tags[#tags + 1] = "[" .. row.step.kind .. "]"
+    end
+    if row.step.edited then
+      tags[#tags + 1] = "[edited]"
+    end
+    if M.where(row.step).lost then
+      tags[#tags + 1] = "[line not found]"
+    end
+    out[#out + 1] = ("%s%d. **%s** `%s`%s"):format(
+      indent,
+      row.number,
+      row.step.title,
+      place(row.step),
+      #tags > 0 and (" " .. table.concat(tags, " ")) or ""
+    )
+    if row.step.note ~= "" then
+      for _, line in ipairs(vim.split(row.step.note, "\n")) do
+        out[#out + 1] = line ~= "" and (indent .. "   " .. line) or ""
+      end
+    end
+  end
+  return table.concat(out, "\n") .. "\n"
+end
+
+-- The whole trace copied as Markdown (Y in the panel).
+function M.yank_report()
+  if not state.trace then
+    return vim.notify("No trace shown (<leader>ja shows one)", vim.log.levels.WARN)
+  end
+  local text = M.report()
+  vim.fn.setreg('"', text)
+  pcall(vim.fn.setreg, "+", text)
+  vim.notify(("Copied the trace as Markdown (%d steps)"):format(#state.rows))
 end
 
 -- Steps copied to the clipboard and to the unnamed register, a line each.

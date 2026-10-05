@@ -11,6 +11,7 @@
 --   r                edit the title and the note of the step
 --   y, <C-y>         copy the step, or the steps marked with Tab, to ask
 --                    about them
+--   Y                copy the whole trace as Markdown, to answer from
 --   R                read the trace again
 --   t                another trace
 --   X                put the trace away
@@ -30,9 +31,10 @@ local function is_open()
   return panel.picker ~= nil and not panel.picker.closed
 end
 
--- A cause and a suspect carry a mark beside their number, so they stand out in
--- a long trace (cod-bug and cod-question of the Nerd Font).
-local MARKS = { cause = " ", suspect = " " }
+-- A cause, a suspect and an answer carry a mark beside their number, so they
+-- stand out in a long trace (cod-bug, cod-question and cod-check of the Nerd
+-- Font).
+local MARKS = { cause = " ", suspect = " ", answer = " " }
 
 -- The place of a step is at the right edge, the file named only where it is
 -- not the file of the row above: a trace stays in one file for steps on end,
@@ -212,6 +214,9 @@ function M.open()
           end, items))
         end
       end,
+      trace_report = function()
+        trace().yank_report()
+      end,
       trace_reload = function()
         trace().reload()
       end,
@@ -234,6 +239,7 @@ function M.open()
           ["N"] = { "trace_notes", desc = "Every note, or only the chosen step's" },
           ["R"] = { "trace_reload", desc = "Read the trace again" },
           ["y"] = { "trace_yank", desc = "Copy the step (Tab marks several)" },
+          ["Y"] = { "trace_report", desc = "Copy the whole trace as Markdown" },
           ["r"] = { "trace_edit", desc = "Edit the title and the note" },
           ["t"] = { "trace_pick", desc = "Another trace" },
           ["X"] = { "trace_close", desc = "Put the trace away" },
