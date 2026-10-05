@@ -318,6 +318,80 @@ return function(T)
     expect(seen.open, "the list closed")
   end)
 
+  -- The reader rewrites the title and the note of a step with <leader>jn, in a
+  -- window of its own: :w writes them to the step's line of the file, marked
+  -- as edited, and leaves the other lines as they were; q leaves without a
+  -- word written.
+  check("trace: the title and note of a step are edited in a window", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/m.c", { "int main(void)", "{", "    return f();", "}" })
+    local path = folder .. "/e.jsonl"
+    write(
+      path,
+      lines_of({
+        { title = "Editing", root = code },
+        { file = "m.c", line = 1, title = "Starts" },
+        { id = "s", file = "m.c", line = 3, title = "Calls f", note = "f decides" },
+      })
+    )
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/m.c")
+      local code_win = vim.api.nvim_get_current_win()
+      expect(trace.open(), "the trace was not found")
+      vim.api.nvim_win_set_cursor(0, { 3, 0 })
+      key("<leader>jn")()
+      local editor = vim.api.nvim_get_current_win()
+      seen.opened = editor ~= code_win and vim.api.nvim_win_get_config(editor).relative ~= ""
+      seen.shown = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+      -- q with nothing changed leaves at once.
+      vim.fn.maparg("q", "n", false, true).callback()
+      seen.closed = not vim.api.nvim_win_is_valid(editor)
+      key("<leader>jn")()
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "Calls f once", "", "f decides,", "", "and is never 0." })
+      vim.cmd("write")
+      seen.back = vim.api.nvim_get_current_win() == code_win
+      seen.file = vim.fn.readfile(path)
+      local namespace = vim.api.nvim_get_namespaces().config_trace
+      local mark = vim.api.nvim_buf_get_extmarks(0, namespace, { 2, 0 }, { 2, 0 }, { details = true })[1]
+      local card = {}
+      for _, virt in ipairs(mark[4].virt_lines) do
+        local parts = {}
+        for _, chunk in ipairs(virt) do
+          parts[#parts + 1] = chunk[1]
+        end
+        card[#card + 1] = vim.trim(table.concat(parts))
+      end
+      seen.card = card
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(seen.opened, "no window opened")
+    expect(vim.deep_equal(seen.shown, { "Calls f", "", "f decides" }), "the window held " .. vim.inspect(seen.shown))
+    expect(seen.closed, "q did not close the window")
+    expect(seen.back, ":w did not close the window")
+    local step = vim.json.decode(seen.file[3])
+    expect(
+      #seen.file == 3
+        and seen.file[2] == vim.json.encode({ file = "m.c", line = 1, title = "Starts" })
+        and step.title == "Calls f once"
+        and step.note == "f decides,\n\nand is never 0."
+        and step.edited == true
+        and step.id == "s",
+      "the file: " .. vim.inspect(seen.file)
+    )
+    expect(
+      seen.card[1]:match("^▎ 2  Calls f once ")
+        and seen.card[2] == "▎  f decides,"
+        and seen.card[4] == "▎  and is never 0.",
+      "the card: " .. vim.inspect(seen.card)
+    )
+  end)
+
   -- Lines added above a step move its card with them at once, and the line
   -- number the panel shows follows once the edit is made, not while typing.
   check("trace: an edit of the file moves the line numbers in the panel", function()

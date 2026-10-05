@@ -8,6 +8,7 @@
 --                    go to the step
 --   N                the notes of every step shown in the code, or only the
 --                    note of the step chosen
+--   r                edit the title and the note of the step
 --   y, <C-y>         copy the step, or the steps marked with Tab, to ask
 --                    about them
 --   R                read the trace again
@@ -58,6 +59,8 @@ local function row_text(row, short, look)
     { ("%2d "):format(row.number), colour },
     { MARKS[row.step.kind] or "", colour },
     { row.step.title },
+    -- A step whose title and note the reader has edited carries a mark.
+    { row.step.edited and (" " .. "") or "", "TraceEdited" },
     {
       col = 0,
       virt_text = {
@@ -195,6 +198,11 @@ function M.open()
       trace_notes = function()
         trace().show_all_notes(not trace().all_notes_shown())
       end,
+      trace_edit = function(_, item)
+        if item then
+          trace().edit(item.row)
+        end
+      end,
       trace_yank = function(picker)
         local items = picker:selected({ fallback = true })
         picker.list:set_selected()
@@ -215,12 +223,18 @@ function M.open()
       end,
     },
     win = {
-      input = { keys = { ["<c-y>"] = { "trace_yank", mode = { "n", "i" }, desc = "Copy step" } } },
+      input = {
+        keys = {
+          ["<c-y>"] = { "trace_yank", mode = { "n", "i" }, desc = "Copy step" },
+          ["<a-e>"] = { "trace_edit", mode = { "n", "i" }, desc = "Edit step" },
+        },
+      },
       list = {
         keys = {
           ["N"] = "trace_notes",
           ["R"] = "trace_reload",
           ["y"] = "trace_yank",
+          ["r"] = "trace_edit",
           ["t"] = "trace_pick",
           ["X"] = "trace_close",
         },

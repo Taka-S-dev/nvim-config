@@ -73,6 +73,8 @@ local function colours()
   local bg = normal.bg or (light and 0xffffff or 0x000000)
   local fg = normal.fg or (light and 0x000000 or 0xffffff)
   local warn = vim.api.nvim_get_hl(0, { name = "DiagnosticWarn", link = false }).fg or fg
+  -- The mark of a step the reader has edited, in a colour of its own.
+  local edited = vim.api.nvim_get_hl(0, { name = "DiagnosticOk", link = false }).fg or fg
   for group, diagnostic in pairs(KINDS) do
     set(group, { link = diagnostic })
     local colour = vim.api.nvim_get_hl(0, { name = diagnostic, link = false }).fg or fg
@@ -82,8 +84,10 @@ local function colours()
     set(group .. "Head", { fg = fg, bg = card, bold = true })
     set(group .. "Label", { fg = bg, bg = colour, bold = true })
     set(group .. "Lost", { fg = warn, bg = card })
+    set(group .. "Edited", { fg = edited, bg = card })
   end
   set("TraceTitleOther", { link = "Comment" })
+  set("TraceEdited", { link = "DiagnosticOk" })
   set("TraceCurrent", { link = "DiagnosticVirtualTextInfo" })
   set("TraceLost", { link = "DiagnosticWarn" })
   -- The file of a place in the panel: the text of the sidebar, unlit.
@@ -132,6 +136,10 @@ end
 
 local BAR = "▎"
 
+-- The mark of a step whose title and note the reader has edited (cod-edit of
+-- the Nerd Font).
+local EDITED = ""
+
 -- The lines above a step, indented as the code line is so they read as
 -- belonging to it. The step chosen, or every step while every note shows, has
 -- a card: its number on a label and its title, then its note, every line
@@ -144,6 +152,7 @@ local function note_lines(row, indent, width)
   local kind = M.kind_colour(row.step)
   local pad = { string.rep(" ", indent) }
   local lost = M.where(row.step).lost and "  (line not found)" or ""
+  local edited = row.step.edited and (" " .. EDITED) or ""
   if not (state.all_notes or row.step.id == state.current) then
     return {
       {
@@ -152,19 +161,24 @@ local function note_lines(row, indent, width)
         { tostring(row.number) .. " ", kind },
         { row.step.title, "TraceTitleOther" },
         { row.step.note ~= "" and " …" or "", "TraceTitleOther" },
+        { edited, "TraceEdited" },
         { lost, "TraceLost" },
       },
     }
   end
   local label = (" %d "):format(row.number)
   local title = " " .. row.step.title
-  local body = row.step.note ~= "" and wrap(row.step.note, width) or {}
+  local body = {}
+  for _, text in ipairs(row.step.note ~= "" and wrap(row.step.note, width) or {}) do
+    body[#body + 1] = { "  " .. text, kind .. "Card" }
+  end
   local function cells(text)
     return vim.fn.strdisplaywidth(text)
   end
-  local inner = cells(label) + cells(title) + cells(lost)
-  for _, text in ipairs(body) do
-    inner = math.max(inner, 2 + cells(text))
+  local head = cells(label) + cells(title) + cells(edited) + cells(lost)
+  local inner = head
+  for _, part in ipairs(body) do
+    inner = math.max(inner, cells(part[1]))
   end
   inner = inner + 1
   local lines = {
@@ -173,15 +187,16 @@ local function note_lines(row, indent, width)
       { BAR, kind .. "Bar" },
       { label, kind .. "Label" },
       { title, kind .. "Head" },
+      { edited, kind .. "Edited" },
       { lost, kind .. "Lost" },
-      { string.rep(" ", inner - cells(label) - cells(title) - cells(lost)), kind .. "Card" },
+      { string.rep(" ", inner - head), kind .. "Card" },
     },
   }
-  for _, text in ipairs(body) do
+  for _, part in ipairs(body) do
     lines[#lines + 1] = {
       pad,
       { BAR, kind .. "Bar" },
-      { "  " .. text .. string.rep(" ", inner - 2 - cells(text)), kind .. "Card" },
+      { part[1] .. string.rep(" ", inner - cells(part[1])), part[2] },
     }
   end
   return lines
@@ -487,6 +502,87 @@ function M.yank(rows)
   vim.fn.setreg('"', text)
   pcall(vim.fn.setreg, "+", text)
   vim.notify(#rows == 1 and ("Copied: " .. text) or ("Copied %d steps"):format(#rows))
+end
+
+-- The title and the note of a step changed by the reader, in a window of its
+-- own: the title on the first line and the note below a blank line, in a
+-- buffer edited as any other, since a note runs over lines that a prompt of
+-- one line would not hold. :w keeps the change, writing it to the trace's
+-- file, and closes the window; q closes it, asking first when there is a
+-- change to lose.
+function M.edit(row)
+  if not (row and state.path) then
+    return
+  end
+  local path, id = state.path, row.step.id
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = "acwrite"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.api.nvim_buf_set_name(buf, ("trace://%s/%s"):format(vim.fn.fnamemodify(path, ":t:r"), id))
+  local lines = { row.step.title, "" }
+  vim.list_extend(lines, vim.split(row.step.note, "\n", { plain = true }))
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modified = false
+  vim.bo[buf].filetype = "markdown"
+  local width = math.min(90, vim.o.columns - 8)
+  local height = math.min(math.max(#lines + 2, 8), math.floor(vim.o.lines * 0.6))
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+    col = math.floor((vim.o.columns - width) / 2),
+    width = width,
+    height = height,
+    border = "rounded",
+    title = (" Step %d: title, then the note  (:w keeps it, q closes) "):format(row.number),
+    title_pos = "center",
+  })
+  vim.wo[win].wrap = true
+  vim.wo[win].linebreak = true
+  vim.api.nvim_create_autocmd("BufWriteCmd", {
+    buffer = buf,
+    callback = function()
+      local text = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+      local title = vim.trim(text[1] or "")
+      local note = vim.trim(table.concat(vim.list_slice(text, 2), "\n"))
+      if not store.edit_step(path, id, title ~= "" and title or row.step.title, note) then
+        return vim.notify("The step is no longer in the trace", vim.log.levels.WARN)
+      end
+      vim.bo[buf].modified = false
+      vim.api.nvim_win_close(win, true)
+      -- The step edited is the one chosen, so its card shows what was written.
+      if state.path == path then
+        state.current = id
+        read_again()
+      end
+    end,
+  })
+  vim.keymap.set("n", "q", function()
+    if vim.bo[buf].modified and vim.fn.confirm("Leave the change?", "&Leave\n&Keep editing", 2) ~= 1 then
+      return
+    end
+    vim.api.nvim_win_close(win, true)
+  end, { buffer = buf, nowait = true, desc = "Close, the change not kept" })
+  vim.api.nvim_win_set_cursor(win, { math.min(3, #lines), 0 })
+end
+
+-- The step on the cursor's line edited, or else the step chosen (<leader>jn).
+function M.edit_here()
+  if not state.trace then
+    return vim.notify("No trace shown (<leader>ja shows one)", vim.log.levels.WARN)
+  end
+  local name = vim.api.nvim_buf_get_name(0)
+  local line = vim.api.nvim_win_get_cursor(0)[1]
+  for _, row in ipairs(state.rows) do
+    local found = state.located[row.step.id]
+    if found and found.line == line and same_file(row.step.file, name) then
+      return M.edit(row)
+    end
+  end
+  local index = index_of(state.current)
+  if not index then
+    return vim.notify("No step on this line", vim.log.levels.WARN)
+  end
+  M.edit(state.rows[index])
 end
 
 -- The stored traces, the newest first, in a list as the other lists are:

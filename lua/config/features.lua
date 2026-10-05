@@ -73,6 +73,7 @@ key("n", "<leader>ja", "taka.trace", "toggle_panel", "Trace panel")
 key("n", "<leader>jA", "taka.trace", "pick", "Choose a trace")
 key("n", "]n", "taka.trace", "step", "Next trace step", 1)
 key("n", "[n", "taka.trace", "step", "Previous trace step", -1)
+key("n", "<leader>jn", "taka.trace", "edit_here", "Edit the note of the trace step")
 Snacks.toggle({
   name = "Trace notes",
   get = function()
