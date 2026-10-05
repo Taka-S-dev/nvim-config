@@ -15,6 +15,21 @@ function M.layout(extra)
   }
 end
 
+-- Whether a panel's key closes it: only where it is in sight, in the tab page
+-- shown. A panel is a window of one tab page, and pressed in another its key
+-- closed it out of sight and opened nothing; there the panel is closed and
+-- made again in the tab page the key was pressed in.
+function M.closes(picker)
+  local win = picker and not picker.closed and picker.list and picker.list.win and picker.list.win.win
+  if not win then
+    return false
+  end
+  local here = vim.api.nvim_win_is_valid(win)
+    and vim.api.nvim_win_get_tabpage(win) == vim.api.nvim_get_current_tabpage()
+  picker:close()
+  return here
+end
+
 -- The guide characters of the file tree, read from snacks when drawn, so the
 -- panels look like it.
 function M.tree_look()

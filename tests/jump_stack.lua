@@ -241,4 +241,67 @@ return function(T)
     expect(seen.modules == "1 1 1 1 2", "the modules of the levels: " .. tostring(seen.modules))
     expect(seen.empty_open == 1, "panels open on an empty stack: " .. tostring(seen.empty_open))
   end)
+
+  -- A panel is a window of one tab page. Its key pressed in another tab page
+  -- brings it there: it closed the panel out of sight and opened nothing.
+  check("panels: the key brings a panel to the tab page it is pressed in", function()
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "int a;" })
+    local panels = {
+      { "<leader>jy", "jump_stack" },
+      { "<leader>jo", "pins" },
+      { "<leader>ja", "trace" },
+      { "<leader>ho", "words" },
+    }
+    local function tab_of(source)
+      for _, picker in ipairs(Snacks.picker.get({ source = source })) do
+        if not picker.closed then
+          return vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(picker.list.win.win))
+        end
+      end
+    end
+    local notify = vim.notify
+    vim.notify = function() end
+    local seen = {}
+    local pins = require("taka.pins")
+    local store
+    local ok, err = pcall(function()
+      -- The pins panel and the words panel close at once when empty.
+      vim.cmd.edit(dir .. "/a.c")
+      pins.add_chain({ { file = dir .. "/a.c", line = 1, text = "int a;", symbol = "", memo = "a" } })
+      store = pins.store_path(vim.fs.normalize(dir))
+      vim.api.nvim_win_set_cursor(0, { 1, 4 })
+      require("taka.words").toggle()
+      for _, panel in ipairs(panels) do
+        vim.cmd.edit(dir .. "/a.c")
+        T.key(panel[1])()
+        vim.wait(300)
+        local first = tab_of(panel[2])
+        vim.cmd("tabnew " .. vim.fn.fnameescape(dir .. "/a.c"))
+        T.key(panel[1])()
+        vim.wait(300)
+        seen[#seen + 1] = ("%s: tab %s, then tab %s"):format(panel[2], first or "none", tab_of(panel[2]) or "none")
+        T.key(panel[1])()
+        vim.wait(100)
+        vim.cmd("silent! tabonly")
+      end
+    end)
+    vim.notify = notify
+    require("taka.trace").close()
+    require("taka.words").clear()
+    if store then
+      vim.fn.delete(store)
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      vim.deep_equal(seen, {
+        "jump_stack: tab 1, then tab 2",
+        "pins: tab 1, then tab 2",
+        "trace: tab 1, then tab 2",
+        "words: tab 1, then tab 2",
+      }),
+      vim.inspect(seen)
+    )
+  end)
 end

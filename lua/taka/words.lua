@@ -283,8 +283,7 @@ local function put_out(word)
 end
 
 function M.toggle_panel()
-  if panel and not panel.closed then
-    panel:close()
+  if require("taka.lib.sidebar").closes(panel) then
     panel = nil
     return
   end
@@ -329,8 +328,10 @@ function M.toggle_panel()
     auto_close = false,
     jump = { close = false },
     layout = require("taka.lib.sidebar").layout(),
-    on_close = function()
-      panel = nil
+    on_close = function(picker)
+      if panel == picker then
+        panel = nil
+      end
     end,
     confirm = function(picker, item)
       if not item then

@@ -101,8 +101,7 @@ end
 -- The panel is a picker laid out as a sidebar, as the file tree is: a filter
 -- box on top and the list below it, staying open while files are read.
 local function toggle()
-  if panel_is_open() then
-    panel.picker:close()
+  if require("taka.lib.sidebar").closes(panel.picker) then
     panel.picker = nil
     return
   end
@@ -184,8 +183,10 @@ local function toggle()
     -- as they are, that halves the whole screen and leaves the lower half to an
     -- empty command line.
     layout = require("taka.lib.sidebar").layout(),
-    on_close = function()
-      panel.picker = nil
+    on_close = function(picker)
+      if panel.picker == picker then
+        panel.picker = nil
+      end
     end,
     confirm = function(picker, item)
       if not item then

@@ -360,8 +360,8 @@ function M.pin()
 end
 
 function M.toggle()
-  if is_open() then
-    return panel.picker:close()
+  if sidebar.closes(panel.picker) then
+    return
   end
   local win = vim.api.nvim_get_current_win()
   panel.win = is_code_window(win) and win or panel.win or win
@@ -391,8 +391,10 @@ function M.toggle()
     auto_close = false,
     jump = { close = false },
     layout = require("taka.lib.sidebar").layout(),
-    on_close = function()
-      panel.picker = nil
+    on_close = function(picker)
+      if panel.picker == picker then
+        panel.picker = nil
+      end
     end,
     confirm = function(_, item)
       if item then

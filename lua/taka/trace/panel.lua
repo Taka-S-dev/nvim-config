@@ -110,10 +110,14 @@ end
 
 function M.open()
   if is_open() then
-    if panel.path == trace().state().path then
+    local list = panel.picker.list.win.win
+    local here = vim.api.nvim_win_is_valid(list)
+      and vim.api.nvim_win_get_tabpage(list) == vim.api.nvim_get_current_tabpage()
+    if here and panel.path == trace().state().path then
       return
     end
-    -- The title is the trace's, set as the panel is made.
+    -- The title is the trace's, set as the panel is made; and a panel in
+    -- another tab page is made again in this one.
     panel.picker:close()
   end
   local look = sidebar.tree_look()
@@ -147,8 +151,10 @@ function M.open()
     auto_close = false,
     jump = { close = false },
     layout = sidebar.layout({ width = WIDTH }),
-    on_close = function()
-      panel.picker = nil
+    on_close = function(picker)
+      if panel.picker == picker then
+        panel.picker = nil
+      end
     end,
     -- The step under the cursor shown in the code, once the cursor has moved to
     -- another step than the one chosen: drawing the panel again puts the
@@ -212,8 +218,8 @@ function M.close()
 end
 
 function M.toggle()
-  if is_open() then
-    return M.close()
+  if sidebar.closes(panel.picker) then
+    return
   end
   M.open()
 end
