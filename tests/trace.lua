@@ -40,6 +40,10 @@ return function(T)
         '{"file": "d.c", "line": 4, "tit',
       })
     )
+    -- With a byte order mark, as some editors and shells write UTF-8.
+    local written = vim.fn.readfile(path)
+    written[1] = "\239\187\191" .. written[1]
+    vim.fn.writefile(written, path)
     local trace = store.read(path)
     local seen = vim.tbl_map(function(row)
       return ("%d.%d %s %s:%d"):format(

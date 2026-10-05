@@ -61,6 +61,18 @@ local function is_absolute(path)
   return path:match("^%a:[/\\]") or path:match("^[/\\]") or path:match("^~")
 end
 
+-- What a trace file holds, without the byte order mark some editors and
+-- shells write at the start of UTF-8, which hid the header from the reader.
+local function content_of(path)
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+  local content = file:read("*a")
+  file:close()
+  return (content:gsub("^\239\187\191", ""))
+end
+
 local function is_step(record)
   return tonumber(record.line) ~= nil and type(record.file) == "string"
 end
@@ -85,12 +97,10 @@ end
 -- Lines that are not JSON, half written as the file grows, are left out.
 function M.read(path)
   local trace = { path = path, title = "", steps = {} }
-  local file = io.open(path, "r")
-  if not file then
+  local content = content_of(path)
+  if not content then
     return trace
   end
-  local content = file:read("*a")
-  file:close()
   local records = {}
   local ok, whole = pcall(vim.json.decode, content)
   if ok and type(whole) == "table" and type(whole.steps) == "table" then
@@ -152,12 +162,10 @@ end
 -- a file that is one JSON object is taken apart into lines, as it is written
 -- back.
 local function records_of(path)
-  local file = io.open(path, "r")
-  if not file then
+  local content = content_of(path)
+  if not content then
     return {}
   end
-  local content = file:read("*a")
-  file:close()
   local ok, whole = pcall(vim.json.decode, content)
   if ok and type(whole) == "table" and type(whole.steps) == "table" then
     local steps = whole.steps
