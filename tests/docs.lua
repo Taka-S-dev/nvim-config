@@ -28,6 +28,16 @@ return function(T)
         end
       end
     end
+    -- Every section is in the index at the top, which a link leads from to it:
+    -- a section left out of it could only be found by paging.
+    local index = help:match("\n目次\n(.-)\n\n") or ""
+    local unlisted = {}
+    for tag in pairs(defined) do
+      if tag ~= "cfg" and not index:find("|" .. tag .. "|", 1, true) then
+        unlisted[#unlisted + 1] = tag
+      end
+    end
+    table.sort(unlisted)
     vim.cmd("help cfg")
     local opened = vim.fn.expand("%:t")
     vim.cmd("close")
@@ -35,6 +45,23 @@ return function(T)
     expect(#twice == 0, "tags defined twice: " .. table.concat(twice, ", "))
     expect(#broken == 0, "links to no tag: " .. table.concat(broken, ", "))
     expect(#missing == 0, "keys the help does not mention: " .. table.concat(missing, ", "))
+    expect(#unlisted == 0, "sections not in the index: " .. table.concat(unlisted, ", "))
+  end)
+  -- <C-]> on a link of the help follows it, as Vim's own key does there: the
+  -- key of this config, which looks a name up in GTAGS or tags, took the
+  -- link for a name and went to the top of the page. <C-t> comes back.
+  check("help: <C-]> follows a link of the cheat sheet, and <C-t> comes back", function()
+    vim.cmd("help cfg-features")
+    vim.fn.search("|cfg-trace|")
+    vim.cmd("normal! l")
+    local from = vim.fn.line(".")
+    key("<C-]>")()
+    local landed = vim.fn.getline(".")
+    vim.cmd("pop")
+    local back = vim.fn.line(".")
+    reset_editor()
+    expect(landed:find("*cfg-trace*", 1, true), "landed on: " .. landed)
+    expect(back == from, ("<C-t> came back to line %d, not %d"):format(back, from))
   end)
   check("README: every link to a heading or a file leads somewhere", function()
     local config = vim.fn.stdpath("config")

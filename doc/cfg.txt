@@ -7,22 +7,93 @@
 入れ方、マシン間の同期、困ったときの対処、設計の理由は README.md にある。
 
 目次
-  よく使うキー / コマンド早見                                 |cfg-keys|
-  ファイル・バッファを開く                                    |cfg-files|
-  作業ディレクトリを移す                                      |cfg-cwd|
-  ウィンドウ(分割)操作                                        |cfg-windows|
-  コードジャンプ(gtags / ctags / LSP 共通)                    |cfg-jump|
-  調べた道筋をコードの上でたどる                              |cfg-trace|
-  移動・編集の基本                                            |cfg-editing|
-  複数の単語を同時にハイライトする                            |cfg-words|
-  差分のどこが違うかを帯で見る                                |cfg-diff|
-  プラグイン管理・診断                                        |cfg-plugins|
-  終了・保存                                                  |cfg-quit|
-  grep / 検索のコツ                                           |cfg-grep|
-  レガシー C ナビゲーション (gtags + cscope_maps.nvim)        |cfg-c|
-  日本語を含むソース (Shift-JIS / EUC-JP)                     |cfg-encoding|
-  ctags フォールバック (gutentags)                            |cfg-ctags|
-  SVN (Subversion)                                            |cfg-svn|
+  機能ごとの早見                                                |cfg-features|
+  よく使うキー / コマンド早見                                       |cfg-keys|
+    ファイル・バッファを開く                                       |cfg-files|
+    作業ディレクトリを移す                                           |cfg-cwd|
+    ウィンドウ(分割)操作                                         |cfg-windows|
+    コードジャンプ(gtags / ctags / LSP 共通)                        |cfg-jump|
+    ジャンプスタック                                          |cfg-jump-stack|
+    調べた道筋をコードの上でたどる                                 |cfg-trace|
+    移動・編集の基本                                             |cfg-editing|
+    クリップボード(ssh 越しのコピー)                           |cfg-clipboard|
+    複数の単語を同時にハイライトする                               |cfg-words|
+    選んだ文字列と同じものを光らせる                           |cfg-selection|
+    差分のどこが違うかを帯で見る                                    |cfg-diff|
+    プラグイン管理・診断                                         |cfg-plugins|
+    終了・保存                                                      |cfg-quit|
+  grep / 検索のコツ                                                 |cfg-grep|
+    よく使うエントリポイント                                   |cfg-grep-keys|
+    picker 内で使える操作                                    |cfg-grep-picker|
+    クエリの書き方(ripgrep 構文)                              |cfg-grep-query|
+    絞り込みテクニック                                       |cfg-grep-narrow|
+    直接コマンドで使う                                      |cfg-grep-command|
+  レガシー C ナビゲーション (gtags + cscope_maps.nvim)                 |cfg-c|
+    初回セットアップ(プロジェクトごと)                           |cfg-c-setup|
+    キーマップ早見                                                |cfg-c-keys|
+    色分け                                                     |cfg-c-colours|
+    値を入れている所                                              |cfg-writes|
+    入力補完                                                    |cfg-complete|
+    言語サーバー(GTAGS の無いファイル)                               |cfg-lsp|
+    ピン                                                            |cfg-pins|
+    コールツリー                                               |cfg-call-tree|
+  日本語を含むソース (Shift-JIS / EUC-JP)                       |cfg-encoding|
+  ctags フォールバック (gutentags)                                 |cfg-ctags|
+    動き方                                                     |cfg-ctags-how|
+    注意点                                                   |cfg-ctags-notes|
+  SVN (Subversion)                                                   |cfg-svn|
+
+==============================================================================
+機能ごとの早見                                                  *cfg-features*
+
+この設定で足した機能と、その主なキーの一覧。右端のリンクの上で `<C-]>` を押す
+かダブルクリックすると、その機能の説明へ飛ぶ(戻るのは `<C-t>`)。パネルの中の
+キーは、パネルで `?` を押すと出る。
+
+定義へ飛ぶ・のぞく                                                |cfg-jump|
+  `<C-]>` / Ctrl+クリック 定義へ飛ぶ    `<C-t>` 飛ぶ前へ戻る
+  `<leader>jp` ピーク(小窓で読む。窓の中の `m` で横へ寄せる)
+  右クリック → Peek definition / Jump to definition
+参照・呼び出し元を探す(gtags)                                   |cfg-c-keys|
+  `<leader>js` 参照    `<leader>jc` 呼び出し元    `<leader>jg` 定義
+  `<leader>jt` 文字列    `<leader>jf` ファイル    `<leader>ji` #include 元
+値を入れている所                                                |cfg-writes|
+  `<leader>jw` 代入の一覧
+索引(GTAGS / tags)を作る                                       |cfg-c-setup|
+  `<leader>jb` 作り直す    `<leader>ju` 差分更新    `<leader>jB` ctags
+呼び出しツリー                                               |cfg-call-tree|
+  `<leader>jh` 呼び出し元    `<leader>jH` 呼んでいる先
+ジャンプスタック                                            |cfg-jump-stack|
+  `<leader>jy` パネル(潜っている途中の段の一覧)
+ピン                                                              |cfg-pins|
+  `<leader>jm` 留める    `<leader>jM` 探す    `<leader>jo` パネル
+  `<leader>uN` メモを出す / しまう
+調べた道筋(トレース)                                             |cfg-trace|
+  `<leader>ja` パネル    `<leader>jA` 選ぶ    `]n` / `[n` 次 / 前の手順
+  `<leader>jn` 見出しと解説を書き換える    `<leader>uR` 解説を出す / 隠す
+ブロックの縦線を固定                                            |cfg-c-keys|
+  `<leader>jl` 固定する / 外す
+複数の単語を光らせる                                             |cfg-words|
+  `<leader>hh` 光らせる / 消す    `<leader>hn` / `<leader>hp` 次 / 前
+  `<leader>hc` 全部消す    `<leader>ho` パネル
+選んだ文字列と同じものを光らせる                             |cfg-selection|
+  範囲を選ぶだけ(キーは無い)
+入力補完                                                      |cfg-complete|
+  `->` / `.` を打つとメンバーが出る
+言語サーバー(Go など)                                              |cfg-lsp|
+  GTAGS の無いファイルでは、上の gtags のキーが言語サーバーに聞く
+差分の帯                                                          |cfg-diff|
+  帯をクリック    `]c` / `[c` 次 / 前の変更    `<leader>uP` 下のペイン
+SVN                                                                |cfg-svn|
+  `<leader>vs` 状態    `<leader>vd` BASE と比べる    `<leader>vh` ログ
+  `<leader>vb` 誰が書いたか    `<leader>vp` / `<leader>vr` 変更を見る / 戻す
+  `]h` / `[h` 次 / 前の変更箇所
+作業ディレクトリを移す                                             |cfg-cwd|
+  `<leader>fd` フォルダを選ぶ    `<leader>fD` 履歴から    `<leader>fp` 過去の
+  プロジェクトから
+編集の小物                                                     |cfg-editing|
+  `<leader>yp` `path:line` をコピー    `<leader>ut` 外側のブロックの先頭を固定
+  `<leader>uW` タブ文字の印    `<leader>um` Markdown の整形表示
 
 ==============================================================================
 よく使うキー / コマンド早見                                         *cfg-keys*
