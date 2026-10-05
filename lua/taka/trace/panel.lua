@@ -9,6 +9,7 @@
 --   N                the notes of every step shown in the code, or only the
 --                    note of the step chosen
 --   r                edit the title and the note of the step
+--   K                the step's note in a small window, as a hover
 --   y, <C-y>         copy the step, or the steps marked with Tab, to ask
 --                    about them
 --   Y                copy the whole trace as Markdown, to answer from
@@ -205,6 +206,11 @@ function M.open()
           trace().edit(item.row)
         end
       end,
+      trace_hover = function(_, item)
+        if item then
+          trace().hover(item.row)
+        end
+      end,
       trace_yank = function(picker)
         local items = picker:selected({ fallback = true })
         picker.list:set_selected()
@@ -240,6 +246,7 @@ function M.open()
           ["R"] = { "trace_reload", desc = "Read the trace again" },
           ["y"] = { "trace_yank", desc = "Copy the step (Tab marks several)" },
           ["Y"] = { "trace_report", desc = "Copy the whole trace as Markdown" },
+          ["K"] = { "trace_hover", desc = "Show the note of the step" },
           ["r"] = { "trace_edit", desc = "Edit the title and the note" },
           ["t"] = { "trace_pick", desc = "Another trace" },
           ["X"] = { "trace_close", desc = "Put the trace away" },

@@ -505,4 +505,47 @@ return function(T)
     expect(seen.before == " 1 Runs  @e.c:3", "before: " .. tostring(seen.before))
     expect(seen.after == " 1 Runs  @e.c:5", "after the edit: " .. tostring(seen.after))
   end)
+
+  -- K in the panel shows the step's note in a small window, read without the
+  -- notes in the code, which <leader>uR may have put away.
+  check("trace: K in the panel shows the note of the step", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/k.c", { "int main(void)", "{", "    return 0;", "}" })
+    write(
+      folder .. "/k.jsonl",
+      lines_of({
+        { title = "Hover", root = code },
+        { file = "k.c", line = 3, title = "Returns", note = "Always zero.", kind = "suspect" },
+      })
+    )
+    local seen
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/k.c")
+      key("<leader>ja")()
+      vim.wait(1000, function()
+        return #require("taka.trace.panel").lines() == 1
+      end, 20)
+      trace.show_notes(false)
+      local picker = Snacks.picker.get({ source = "trace" })[1]
+      vim.api.nvim_set_current_win(picker.list.win.win)
+      picker:action("trace_hover")
+      for _, win in ipairs(T.floats()) do
+        local text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false), "|")
+        if text:find("Always zero.", 1, true) then
+          seen = text
+        end
+      end
+    end)
+    trace.show_notes(true)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(
+      seen and seen:find("1. Returns", 1, true) and seen:find("[suspect]", 1, true) and seen:find("k.c:3", 1, true),
+      "the window held: " .. tostring(seen)
+    )
+  end)
 end

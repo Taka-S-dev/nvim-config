@@ -557,6 +557,44 @@ function M.report()
   return table.concat(out, "\n") .. "\n"
 end
 
+-- A step's note in a small window by the cursor, as K shows the documentation
+-- of a name: read from the panel without the notes in the code, which may be
+-- put away (<leader>uR). It closes once the cursor moves, as a hover does.
+-- The note is shown as it was written, not as Markdown: a note on C is full of
+-- `*p` and `a_b`, which Markdown took for emphasis and dropped.
+function M.hover(row)
+  local lines = { ("%d. %s"):format(row.number, row.step.title) }
+  local tags = {}
+  if row.step.kind ~= "" then
+    tags[#tags + 1] = "[" .. row.step.kind .. "]"
+  end
+  if row.step.edited then
+    tags[#tags + 1] = "[edited]"
+  end
+  if M.where(row.step).lost then
+    tags[#tags + 1] = "[line not found]"
+  end
+  if #tags > 0 then
+    lines[1] = lines[1] .. " " .. table.concat(tags, " ")
+  end
+  if row.step.note ~= "" then
+    lines[#lines + 1] = ""
+    vim.list_extend(lines, vim.split(row.step.note, "\n"))
+  end
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = place(row.step)
+  local buf, win = vim.lsp.util.open_floating_preview(lines, "", {
+    border = "rounded",
+    focus_id = "trace_note",
+    max_width = 80,
+    close_events = { "CursorMoved", "BufLeave", "WinLeave" },
+  })
+  -- The title in the colour of the step's kind, the place dimmed.
+  vim.api.nvim_buf_set_extmark(buf, namespace, 0, 0, { end_col = #lines[1], hl_group = M.kind_colour(row.step) })
+  vim.api.nvim_buf_set_extmark(buf, namespace, #lines - 1, 0, { end_col = #lines[#lines], hl_group = "Comment" })
+  return buf, win
+end
+
 -- The whole trace copied as Markdown (Y in the panel).
 function M.yank_report()
   if not state.trace then
