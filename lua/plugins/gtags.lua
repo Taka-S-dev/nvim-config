@@ -39,10 +39,24 @@ local function query_key(lhs, kind, desc)
   }
 end
 
+-- In a help page <C-]> and Ctrl+click follow the link under the cursor, as
+-- Vim's own keys do there: a link such as |cfg-trace| was taken for a name to
+-- look up in GTAGS or tags, and the jump went to the top of the page.
+local function in_help()
+  return vim.bo.buftype == "help"
+end
+
+local function follow_link()
+  vim.cmd.normal({ vim.keycode("<C-]>"), bang = true })
+end
+
 local keys = {
   {
     "<C-]>",
     function()
+      if in_help() then
+        return follow_link()
+      end
       gtags().jump(vim.fn.expand("<cword>"))
     end,
     desc = "Jump to definition",
@@ -58,6 +72,12 @@ local keys = {
   {
     "<C-LeftMouse>",
     function()
+      local mouse = vim.fn.getmousepos()
+      if mouse.winid ~= 0 and vim.bo[vim.api.nvim_win_get_buf(mouse.winid)].buftype == "help" then
+        vim.api.nvim_set_current_win(mouse.winid)
+        vim.api.nvim_win_set_cursor(mouse.winid, { mouse.line, math.max(mouse.column - 1, 0) })
+        return follow_link()
+      end
       gtags().jump_at_mouse()
     end,
     desc = "Jump to definition (Ctrl+click)",
