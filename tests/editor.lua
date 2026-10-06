@@ -19,6 +19,17 @@ return function(T)
     end
     expect(#failed == 0, "failed to load: " .. table.concat(failed, ", "))
   end)
+  -- An installed copilot-language-server was started for every file, as
+  -- mason-lspconfig starts whatever mason holds (lua/plugins/lsp.lua).
+  check("lsp: copilot is not started though it is installed, lua_ls is", function()
+    if not vim.uv.fs_stat(vim.fn.stdpath("data") .. "/mason/packages/copilot-language-server") then
+      T.skip("copilot-language-server is not installed through mason")
+    end
+    require("lazy").load({ plugins = { "nvim-lspconfig" } })
+    local copilot, lua_ls = vim.lsp.is_enabled("copilot"), vim.lsp.is_enabled("lua_ls")
+    expect(not copilot, "copilot is enabled")
+    expect(lua_ls, "lua_ls is not enabled")
+  end)
   -- core.autocrlf=true leaves CRLF on disk and LF in git, and git calls the file
   -- unchanged. It takes an .editorconfig asking for LF as well, as the Linux
   -- tree has: Neovim then switches the buffer to unix line endings after reading
