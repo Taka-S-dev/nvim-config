@@ -283,6 +283,7 @@ local function open_tree(session, direction, top)
   end
   panel.session, panel.direction, panel.top = session, direction, top
   local look = tree_look()
+  require("taka.lib.sidebar").make_room()
   panel.picker = Snacks.picker({
     source = "call_tree",
     title = (direction == "callers" and "Callers of " or "Callees of ") .. top.name,

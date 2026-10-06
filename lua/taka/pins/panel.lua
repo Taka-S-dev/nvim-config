@@ -123,6 +123,7 @@ local function toggle()
     end
   end
 
+  require("taka.lib.sidebar").make_room()
   panel.picker = Snacks.picker({
     source = "pins",
     title = "Pins",

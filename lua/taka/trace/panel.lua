@@ -137,6 +137,7 @@ function M.open()
   local look = sidebar.tree_look()
   local state = trace().state()
   panel.path, panel.opening = state.path, true
+  require("taka.lib.sidebar").make_room()
   panel.picker = Snacks.picker({
     source = "trace",
     title = title(),

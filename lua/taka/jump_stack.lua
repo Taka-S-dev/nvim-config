@@ -369,6 +369,7 @@ function M.toggle()
     local item = is_open() and panel.picker:current()
     return item and item.row
   end
+  require("taka.lib.sidebar").make_room()
   panel.picker = Snacks.picker({
     source = "jump_stack",
     title = "Jump Stack",

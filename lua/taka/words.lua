@@ -302,6 +302,7 @@ function M.toggle_panel()
       picker:find()
     end
   end
+  require("taka.lib.sidebar").make_room()
   panel = Snacks.picker({
     source = "words",
     title = "Lit words",

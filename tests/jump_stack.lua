@@ -375,4 +375,69 @@ return function(T)
     expect(ok, tostring(err))
     expect(#bare == 0, "keys listed by their action's name: " .. table.concat(bare, ", "))
   end)
+
+  -- One panel on the right at a time: opening one closes the one open there.
+  -- Two side by side, snacks stacked them and set each to half the height, and
+  -- the file tree, the code and both panels kept to the top half of the screen.
+  check("panels: opening a panel on the right closes the one open there", function()
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "int a;" })
+    local pins = require("taka.pins")
+    local notify = vim.notify
+    vim.notify = function() end
+    local trace_store = require("taka.trace.store")
+    local traces = temp_dir()
+    local real_dir = trace_store.dir
+    trace_store.dir = function()
+      return traces
+    end
+    local store
+    local seen = {}
+    local function open_panels()
+      local out = {}
+      for _, source in ipairs({ "jump_stack", "pins", "trace", "words" }) do
+        for _, picker in ipairs(Snacks.picker.get({ source = source })) do
+          if not picker.closed then
+            out[#out + 1] = source
+          end
+        end
+      end
+      return table.concat(out, ",")
+    end
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      pins.add_chain({ { file = dir .. "/a.c", line = 1, text = "int a;", symbol = "", memo = "a" } })
+      store = pins.store_path(vim.fs.normalize(dir))
+      vim.api.nvim_win_set_cursor(0, { 1, 4 })
+      require("taka.words").toggle()
+      local code = vim.api.nvim_get_current_win()
+      local full = vim.api.nvim_win_get_height(code)
+      for _, key_lhs in ipairs({ "<leader>jy", "<leader>jo", "<leader>ja", "<leader>ho" }) do
+        vim.api.nvim_set_current_win(code)
+        T.key(key_lhs)()
+        vim.wait(300)
+        seen[#seen + 1] = open_panels()
+      end
+      seen.height = vim.api.nvim_win_get_height(code) == full
+    end)
+    for _, source in ipairs({ "jump_stack", "pins", "trace", "words" }) do
+      for _, picker in ipairs(Snacks.picker.get({ source = source })) do
+        picker:close()
+      end
+    end
+    vim.notify = notify
+    trace_store.dir = real_dir
+    require("taka.trace").close()
+    require("taka.words").clear()
+    if store then
+      vim.fn.delete(store)
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      vim.deep_equal({ seen[1], seen[2], seen[3], seen[4] }, { "jump_stack", "pins", "trace", "words" }),
+      "panels open after each key: " .. vim.inspect(seen)
+    )
+    expect(seen.height, "the code window lost its height")
+  end)
 end

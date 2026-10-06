@@ -15,6 +15,26 @@ function M.layout(extra)
   }
 end
 
+-- The panels that are laid out on the right, by the source their picker has.
+local PANELS = { "jump_stack", "pins", "trace", "words", "call_tree" }
+
+-- One panel on the right at a time: the others in the tab page shown are
+-- closed before one is opened. snacks takes two of its windows on the same side
+-- for a stack and sets each to half the height, and side by side as these are,
+-- that halved the whole screen: the file tree, the code and both panels kept
+-- to the top half, over an empty lower half. The file tree on the left stays.
+function M.make_room()
+  local tab = vim.api.nvim_get_current_tabpage()
+  for _, source in ipairs(PANELS) do
+    for _, picker in ipairs(Snacks.picker.get({ source = source })) do
+      local win = not picker.closed and picker.list and picker.list.win and picker.list.win.win
+      if win and vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_tabpage(win) == tab then
+        picker:close()
+      end
+    end
+  end
+end
+
 -- Whether a panel's key closes it: only where it is in sight, in the tab page
 -- shown. A panel is a window of one tab page, and pressed in another its key
 -- closed it out of sight and opened nothing; there the panel is closed and
