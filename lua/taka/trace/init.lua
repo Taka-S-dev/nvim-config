@@ -351,7 +351,7 @@ local watcher, settle_timer
 
 local function on_change()
   if state.follow then
-    local newest = store.files()[1]
+    local newest = store.files(state.project)[1]
     if newest and newest.path ~= state.path then
       state.path, state.current = newest.path, nil
       read_again()
@@ -360,6 +360,29 @@ local function on_change()
     end
   end
   read_again()
+end
+
+-- The project being read: the folder over the current file that holds GTAGS,
+-- .git or .svn; else the cwd, for a file under it; else the file's own folder,
+-- as the pins find a file's project. Traces are kept together under Neovim's
+-- data directory, out of the projects they are about, and are sorted out by
+-- the root each gives: the newest shown, the one followed and those listed are
+-- the current project's.
+function M.project()
+  local cwd = vim.fs.normalize(vim.fn.getcwd())
+  local name = vim.bo.buftype == "" and vim.api.nvim_buf_get_name(0) or ""
+  if name == "" then
+    return cwd
+  end
+  local marked = require("taka.lib.gtags_global").root(name, { ".git", ".svn" })
+  if marked then
+    return vim.fs.normalize(marked)
+  end
+  local file = vim.fs.normalize(name)
+  if file:lower():sub(1, #cwd + 1) == cwd:lower() .. "/" then
+    return cwd
+  end
+  return vim.fs.dirname(file)
 end
 
 local function watch()
@@ -377,8 +400,9 @@ end
 -- Shows the trace in `path`, or the newest; `follow` keeps to the newest as
 -- new ones are written. False when there is no trace to show.
 function M.open(path, follow)
+  state.project = M.project()
   if not path then
-    local newest = store.files()[1]
+    local newest = store.files(state.project)[1]
     path = newest and newest.path
     follow = true
   end
@@ -722,16 +746,25 @@ end
 -- written; <C-x>, or dd in the list, deletes the one under the cursor or the
 -- ones marked with Tab. A trace is a file and gone once deleted, unlike a pin
 -- or a buffer, so the list asks first.
+--
+-- The list holds the current project's traces; <A-a> shows those of every
+-- project, and again those of this one. With none in this project it starts
+-- on every project's.
 function M.pick()
   if #store.files() == 0 then
     return vim.notify("No traces yet: they are read from " .. store.dir(), vim.log.levels.WARN)
   end
+  local project = M.project()
+  local everywhere = #store.files(project) == 0
+  local function title()
+    return everywhere and "Traces (every project)" or ("Traces (%s)"):format(vim.fs.basename(project))
+  end
   Snacks.picker({
     source = "trace_files",
-    title = "Traces",
+    title = title(),
     finder = function()
       local items = {}
-      for _, file in ipairs(store.files()) do
+      for _, file in ipairs(store.files(not everywhere and project or nil)) do
         local trace = store.read(file.path)
         items[#items + 1] = {
           text = trace.title .. " " .. vim.fs.basename(file.path),
@@ -787,6 +820,13 @@ function M.pick()
           vim.notify("Copied: " .. table.concat(names, ", "))
         end
       end,
+      trace_everywhere = function(picker)
+        everywhere = not everywhere
+        picker.title = title()
+        picker:update_titles()
+        picker.list:set_target()
+        picker:find()
+      end,
       trace_delete = function(picker)
         local items = picker:selected({ fallback = true })
         if #items == 0 then
@@ -813,12 +853,14 @@ function M.pick()
         keys = {
           ["<c-x>"] = { "trace_delete", mode = { "n", "i" }, desc = "Delete trace" },
           ["<c-y>"] = { "trace_name", mode = { "n", "i" }, desc = "Copy the name of the trace" },
+          ["<a-a>"] = { "trace_everywhere", mode = { "n", "i" }, desc = "Traces of every project, or this one" },
         },
       },
       list = {
         keys = {
           ["dd"] = { "trace_delete", desc = "Delete the trace (Tab marks several)" },
           ["y"] = { "trace_name", desc = "Copy the name of the trace (Tab marks several)" },
+          ["<a-a>"] = { "trace_everywhere", desc = "Traces of every project, or this one" },
         },
       },
     },

@@ -613,4 +613,73 @@ return function(T)
     }) and count == 6, "report: " .. vim.inspect(report))
     expect(#notices == 1 and notices[1]:find("3 lines could not be read", 1, true), "notices: " .. vim.inspect(notices))
   end)
+
+  -- Traces are kept together but shown by project: the newest of the current
+  -- project opens, the list holds its traces until <A-a> shows every one, and
+  -- a new trace of another project does not replace the one shown.
+  check("trace: traces are shown by the project they are about", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local here, there = temp_dir(), temp_dir()
+    write(here .. "/.git/HEAD", { "ref: refs/heads/main" })
+    write(there .. "/.git/HEAD", { "ref: refs/heads/main" })
+    write(here .. "/h.c", { "int h;" })
+    write(there .. "/t.c", { "int t;" })
+    local function trace_file(name, root, file)
+      write(folder .. "/" .. name .. ".jsonl", lines_of({ { title = name, root = root }, { file = file, line = 1 } }))
+      -- Apart in time, so the newest is the newest.
+      vim.uv.fs_utime(folder .. "/" .. name .. ".jsonl", os.time() + #name, os.time() + #name)
+    end
+    trace_file("mine", here, "h.c")
+    trace_file("theirs", there, "t.c")
+    local seen = {}
+    local picker
+    local ok, err = pcall(function()
+      vim.cmd.edit(here .. "/h.c")
+      trace.open()
+      seen.opened = vim.fn.fnamemodify(trace.state().path, ":t:r")
+      key("<leader>jA")()
+      picker = Snacks.picker.get({ source = "trace_files" })[1]
+      vim.wait(1000, function()
+        return #picker:items() > 0
+      end, 20)
+      local function names()
+        return table.concat(
+          vim.tbl_map(function(item)
+            return vim.fn.fnamemodify(item.path, ":t:r")
+          end, picker:items()),
+          ","
+        )
+      end
+      seen.listed = names()
+      picker:action("trace_everywhere")
+      vim.wait(1000, function()
+        return #picker:items() == 2
+      end, 20)
+      seen.everywhere = names()
+      picker:close()
+      -- A newer trace of the other project is not followed.
+      trace_file("theirs-newer", there, "t.c")
+      vim.wait(800)
+      seen.followed = vim.fn.fnamemodify(trace.state().path, ":t:r")
+      -- A newer one of this project is.
+      trace_file("mine-newer-still", here, "h.c")
+      vim.wait(2000, function()
+        return trace.state().path:find("mine%-newer%-still") ~= nil
+      end, 20)
+      seen.followed_here = vim.fn.fnamemodify(trace.state().path, ":t:r")
+    end)
+    if picker and not picker.closed then
+      picker:close()
+    end
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(seen.opened == "mine", "opened " .. tostring(seen.opened))
+    expect(seen.listed == "mine", "listed " .. tostring(seen.listed))
+    expect(seen.everywhere == "theirs,mine", "every project: " .. tostring(seen.everywhere))
+    expect(seen.followed == "mine", "followed " .. tostring(seen.followed))
+    expect(seen.followed_here == "mine-newer-still", "followed in this project " .. tostring(seen.followed_here))
+  end)
 end

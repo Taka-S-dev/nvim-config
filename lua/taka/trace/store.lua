@@ -27,14 +27,51 @@ function M.dir()
   return vim.fs.joinpath(vim.fn.stdpath("data"), "traces")
 end
 
--- The trace files, the newest first.
-function M.files()
+-- The root a trace gives in its header, read from the first lines of the file
+-- only; nil when it gives none.
+function M.root_of(path)
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+  for _ = 1, 5 do
+    local line = file:read("*l")
+    if not line then
+      break
+    end
+    line = line:gsub("^\239\187\191", ""):gsub("\r$", "")
+    local ok, record = pcall(vim.json.decode, line)
+    if ok and type(record) == "table" and record.line == nil and type(record.root) == "string" then
+      file:close()
+      return vim.fs.normalize(record.root)
+    end
+  end
+  file:close()
+  return nil
+end
+
+-- Whether a trace of the root `root` is one of the project at `project`: the
+-- one is the other or a folder in it, as a trace of a library inside a project
+-- is. A trace with no root, or no project to tell, belongs anywhere.
+function M.belongs(root, project)
+  if not root or not project then
+    return true
+  end
+  local a = (root:lower():gsub("/+$", ""))
+  local b = (project:lower():gsub("/+$", ""))
+  return a == b or a:sub(1, #b + 1) == b .. "/" or b:sub(1, #a + 1) == a .. "/"
+end
+
+-- The trace files, the newest first; with `project`, those of that project.
+function M.files(project)
   local out = {}
   for name, kind in vim.fs.dir(M.dir()) do
     if kind == "file" and (name:match("%.jsonl$") or name:match("%.json$")) then
       local path = vim.fs.normalize(vim.fs.joinpath(M.dir(), name))
       local stat = vim.uv.fs_stat(path)
-      out[#out + 1] = { path = path, mtime = stat and stat.mtime.sec + stat.mtime.nsec / 1e9 or 0 }
+      if not project or M.belongs(M.root_of(path), project) then
+        out[#out + 1] = { path = path, mtime = stat and stat.mtime.sec + stat.mtime.nsec / 1e9 or 0 }
+      end
     end
   end
   table.sort(out, function(a, b)
