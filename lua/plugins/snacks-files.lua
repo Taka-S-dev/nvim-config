@@ -19,8 +19,31 @@ return {
       sources = {
         files = {
           filter = {
-            transform = function(_, filter)
+            transform = function(picker, filter)
               filter.pattern = as_listed(filter.pattern)
+              -- The preview follows a line typed after the file, as in
+              -- `ssl_lib.c:45`, when only the line changes: snacks shows an
+              -- item again only when its position is another table, and it
+              -- changes the line inside the same one, so the preview stayed
+              -- on the first line typed. Once the match is done, a line not
+              -- yet shown is shown.
+              local tries = 0
+              local function settle()
+                tries = tries + 1
+                if picker.closed or tries > 100 then
+                  return
+                end
+                if picker:is_active() then
+                  return vim.defer_fn(settle, 20)
+                end
+                local item = picker:current()
+                local line = item and item.pos and item.pos[1]
+                if line and line ~= picker.config_shown_line and picker.preview then
+                  picker.config_shown_line = line
+                  picker.preview:show(picker, { force = true })
+                end
+              end
+              vim.defer_fn(settle, 20)
             end,
           },
         },

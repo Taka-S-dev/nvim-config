@@ -283,4 +283,42 @@ return function(T)
     expect(ok, tostring(err))
     expect(vim.deep_equal(seen, { 1, "b.h:7", 1, "b.h:7" }), "found and opened: " .. vim.inspect(seen))
   end)
+
+  -- The line typed after the file in the list of files moves the preview when
+  -- only the line changes: snacks kept the preview on the first line typed.
+  check("files: changing the line typed after the file moves the preview", function()
+    local dir = temp_dir()
+    local lines = {}
+    for i = 1, 60 do
+      lines[i] = ("int p%d;"):format(i)
+    end
+    T.write(dir .. "/c.c", lines)
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      local picker = Snacks.picker.files({ pattern = "c.c:13" })
+      local function preview_line()
+        local win = picker.preview and picker.preview.win and picker.preview.win.win
+        return win and vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_cursor(win)[1]
+      end
+      vim.wait(3000, function()
+        return preview_line() == 13
+      end, 20)
+      seen[#seen + 1] = preview_line()
+      -- Typed as the panel checks do: a headless run has no keys to type.
+      local input = picker.input.win.buf
+      vim.api.nvim_buf_set_lines(input, 0, -1, false, { "c.c:45" })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
+      vim.wait(3000, function()
+        return preview_line() == 45
+      end, 20)
+      seen[#seen + 1] = preview_line()
+    end)
+    for _, picker in ipairs(Snacks.picker.get({ source = "files" })) do
+      picker:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(vim.deep_equal(seen, { 13, 45 }), "the preview was on lines " .. vim.inspect(seen))
+  end)
 end
