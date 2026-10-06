@@ -321,4 +321,114 @@ return function(T)
     expect(ok, tostring(err))
     expect(vim.deep_equal(seen, { 13, 45 }), "the preview was on lines " .. vim.inspect(seen))
   end)
+
+  -- The find bar of <leader>sf: what is typed is found as it is, counted, and
+  -- gone through with the keys or the buttons; closed, n goes on with it.
+  check("find: the bar finds what is typed, counts it and steps through it", function()
+    local find = require("taka.find")
+    local dir = temp_dir()
+    T.write(dir .. "/f.c", { "int a.b;", "int x;", "int A.B;", "int y;", "int a.b2;" })
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/f.c")
+      local code = vim.api.nvim_get_current_win()
+      T.key("<leader>sf")()
+      local function type_in(text)
+        local shown = find.shown()
+        vim.api.nvim_buf_set_lines(vim.api.nvim_win_get_buf(shown.win), 0, -1, false, { text })
+        vim.api.nvim_exec_autocmds("TextChangedI", { buffer = vim.api.nvim_win_get_buf(shown.win) })
+      end
+      local function state()
+        local shown = find.shown()
+        return vim.trim(shown.right:match("^[^%s]+") or "") .. "@" .. vim.api.nvim_win_get_cursor(code)[1]
+      end
+      -- a.b is the text, not a pattern: a.b2 matches, aXb would not; lower case
+      -- matches A.B too.
+      type_in("a.b")
+      seen[#seen + 1] = state()
+      find.go(1)
+      seen[#seen + 1] = state()
+      find.go(-1)
+      seen[#seen + 1] = state()
+      -- A capital matches the case typed.
+      type_in("A.B")
+      seen[#seen + 1] = state()
+      -- The bar emptied puts the matches out; they were left lit.
+      vim.wait(50)
+      local lit = vim.v.hlsearch
+      type_in("")
+      vim.wait(50)
+      seen[#seen + 1] = lit .. "->" .. vim.v.hlsearch
+      type_in("A.B")
+      local width = vim.api.nvim_win_get_width(find.shown().win)
+      seen[#seen + 1] = table.concat({
+        (find.button_at(width) or "nil"),
+        (find.button_at(width - 3) or "nil"),
+        (find.button_at(width - 6) or "nil"),
+        (find.button_at(width - 10) or "nil"),
+        (find.button_at(width - 14) or "nil"),
+        (find.button_at(2) or "nil"),
+      }, ",")
+      -- The two ways of matching, by their keys: whole words leave a.b2 out,
+      -- and the case typed then leaves A.B out too.
+      local bar_keys = {}
+      for _, map in ipairs(vim.api.nvim_buf_get_keymap(vim.api.nvim_win_get_buf(find.shown().win), "i")) do
+        bar_keys[map.lhsraw] = map.callback
+      end
+      local function count()
+        return vim.trim(find.shown().right:match("^[^%s]+") or "")
+      end
+      type_in("a.b")
+      local counts = { count() }
+      bar_keys[vim.keycode("<A-w>")]()
+      counts[#counts + 1] = count()
+      bar_keys[vim.keycode("<A-c>")]()
+      counts[#counts + 1] = count()
+      bar_keys[vim.keycode("<A-c>")]()
+      bar_keys[vim.keycode("<A-w>")]()
+      counts[#counts + 1] = count()
+      seen[#seen + 1] = table.concat(counts, ",")
+      type_in("A.B")
+      -- While the bar is open the file does not scroll smoothly, which carried
+      -- the cursor to a match a line at a time under quick clicks; quick
+      -- clicks on the bar are its own, each a press.
+      local bar_buf = vim.api.nvim_win_get_buf(find.shown().win)
+      local quick = {}
+      for _, map in ipairs(vim.api.nvim_buf_get_keymap(bar_buf, "i")) do
+        quick[map.lhs] = map.callback ~= nil
+      end
+      seen[#seen + 1] = tostring(vim.b[vim.api.nvim_win_get_buf(code)].snacks_scroll)
+        .. ":"
+        .. tostring(quick["<2-LeftMouse>"] and quick["<4-LeftMouse>"])
+      find.close()
+      seen[#seen + 1] = tostring(find.shown())
+        .. ":"
+        .. vim.v.hlsearch
+        .. ":"
+        .. tostring(vim.b[vim.api.nvim_win_get_buf(code)].snacks_scroll)
+      vim.api.nvim_win_set_cursor(code, { 1, 0 })
+      vim.cmd("normal! n")
+      seen[#seen + 1] = vim.api.nvim_win_get_cursor(code)[1]
+    end)
+    pcall(find.close)
+    find.options.case, find.options.word = false, false
+    vim.cmd("stopinsert")
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      vim.deep_equal(seen, {
+        "1/3@1",
+        "2/3@3",
+        "1/3@1",
+        "1/1@3",
+        "1->0",
+        "close,next,previous,word,case,nil",
+        "1/3,1/2,1/1,1/3",
+        "false:true",
+        "nil:0:nil",
+        3,
+      }),
+      "the bar: " .. vim.inspect(seen)
+    )
+  end)
 end

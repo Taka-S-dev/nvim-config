@@ -88,6 +88,10 @@ Snacks.toggle({
 require("taka.writes")
 key("n", "<leader>jw", "taka.writes", "show", "Where this name is written to")
 
+-- A bar to find text in the file, buttons and all, <leader>sf
+-- (lua/taka/find.lua).
+key({ "n", "x" }, "<leader>sf", "taka.find", "open", "Find in this file (a bar)")
+
 -- A path:line copied from somewhere, opened at the line, <leader>fo
 -- (lua/taka/open_path.lua).
 require("taka.open_path")
