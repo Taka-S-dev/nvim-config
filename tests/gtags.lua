@@ -437,6 +437,32 @@ return function(T)
     expect(not leftover, "tags.temp was left behind")
     expect(found, "the definition is not in the index")
   end)
+  -- A save keeps a tags file up to date, and makes none where there is none:
+  -- the first save in a folder under version control indexed all of it.
+  check("ctags: a save updates the tags file there is, and makes none", function()
+    need(vim.g.gutentags_ctags_executable or "ctags")
+    local dir = temp_dir()
+    vim.fn.mkdir(dir .. "/.git")
+    write(dir .. "/a.c", { "int first_fn(void)", "{", "    return 1;", "}" })
+    vim.api.nvim_set_current_dir(dir)
+    vim.cmd.edit(dir .. "/a.c")
+    vim.cmd("silent write")
+    local started = #vim.fn["gutentags#inprogress"]() > 0
+    vim.wait(1000)
+    local made = vim.uv.fs_stat(dir .. "/tags") ~= nil
+    write(dir .. "/tags", { "!_TAG_FILE_SORTED\t1\t//", 'first_fn\ta.c\t/^int first_fn(void)$/;"\tf' })
+    vim.api.nvim_buf_set_lines(0, -1, -1, false, { "int added_fn(void)", "{", "    return 2;", "}" })
+    vim.cmd("silent write")
+    local added = vim.wait(30000, function()
+      return #vim.fn["gutentags#inprogress"]() == 0
+        and vim.iter(vim.fn.readfile(dir .. "/tags")):any(function(line)
+          return line:find("^added_fn\t") ~= nil
+        end)
+    end, 50)
+    reset_editor()
+    expect(not started and not made, "a save with no tags file made one")
+    expect(added, "a save did not bring the tags file up to date")
+  end)
   -- With no GTAGS the jump falls back to ctags. Several matches used to bring up
   -- Vim's numbered prompt; they belong in the same list the gtags results use.
   check("ctags fallback: one match is jumped to, several are listed", function()
