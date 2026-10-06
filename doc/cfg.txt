@@ -545,7 +545,7 @@ LazyVim は内部で ripgrep + snacks picker を使う。
 `<leader>sw` (Normal)  カーソル下の単語をプロジェクト全体から検索
 `<leader>sw` (Visual)  選択範囲の文字列をプロジェクト全体から検索
 `<leader>sb`           現在のバッファ内で grep
-`<leader>/`            同上(別ショートカット)
+`<leader>/`            プロジェクト全体を grep(`<leader>sg` と同じ)
 
 ------------------------------------------------------------------------------
 picker 内で使える操作                                        *cfg-grep-picker*
