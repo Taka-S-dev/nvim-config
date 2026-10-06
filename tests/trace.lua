@@ -139,7 +139,7 @@ return function(T)
     store.dir = real_dir
     reset_editor()
     expect(ok, err)
-    expect(vim.deep_equal(seen.main, { "3 [1] ▎ 1 Takes len …" }), "main.c: " .. vim.inspect(seen.main))
+    expect(vim.deep_equal(seen.main, { "3 [1] ▎ 1  Takes len …" }), "main.c: " .. vim.inspect(seen.main))
     expect(
       seen.first == "main.c:3" and seen.second == "parse.c:3",
       ("]n went to %s, then %s"):format(seen.first, seen.second)
@@ -149,7 +149,7 @@ return function(T)
       "parse.c: " .. vim.inspect(seen.parse)
     )
     expect(
-      vim.deep_equal(seen.added, { "1 [3] ▎ 3 Declared here …", "3 [2] ▎ 2  Returns -1 | ▎  on every input" }),
+      vim.deep_equal(seen.added, { "1 [3] ▎ 3  Declared here …", "3 [2] ▎ 2  Returns -1 | ▎  on every input" }),
       "added: " .. vim.inspect(seen.added)
     )
     expect(
@@ -268,9 +268,9 @@ return function(T)
     table.sort(seen)
     expect(
       vim.deep_equal({ seen[1], seen[2], seen[3] }, {
-        "1 TraceStep ▎ 3 No text",
-        "4 TraceLost ▎ 2 Gone  (line not found)",
-        "5 TraceStep ▎ 1 Parses",
+        "1 TraceStep ▎ 3  No text",
+        "4 TraceLost ▎ 2  Gone   (line not found)",
+        "5 TraceStep ▎ 1  Parses",
       }),
       "marks: " .. vim.inspect(seen)
     )

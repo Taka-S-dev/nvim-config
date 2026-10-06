@@ -47,9 +47,9 @@ local state = {
 -- number on a label of that colour. Italic text in a colour of its own, the way
 -- the note first was, read as more code at a glance, the thin bar beside it too
 -- little to tell where the note ended; a background marks the whole of it as
--- something laid over the code, as a comment of a review is. The title of a
--- step not chosen is dimmed as a comment is, and the line of the step chosen
--- last is tinted as a diagnostic's text is.
+-- something laid over the code, as a comment of a review is. A step not chosen
+-- has its title on the same background in dimmer text, and the line of the
+-- step chosen last is tinted as a diagnostic's text is.
 local KINDS = {
   TraceStep = "DiagnosticInfo",
   TraceCause = "DiagnosticError",
@@ -91,8 +91,11 @@ local function colours()
     set(group .. "Label", { fg = bg, bg = colour, bold = true })
     set(group .. "Lost", { fg = warn, bg = card })
     set(group .. "Edited", { fg = edited, bg = card })
+    -- The line of a step not chosen: on the card's background, its text
+    -- between the card's and the background's, so it is not taken for a
+    -- comment of the code, as dim italics were, and gives way to the card.
+    set(group .. "Line", { fg = mix(fg, bg, 0.7), bg = card })
   end
-  set("TraceTitleOther", { link = "Comment" })
   set("TraceEdited", { link = "DiagnosticHint" })
   set("TraceCurrent", { link = "DiagnosticVirtualTextInfo" })
   set("TraceLost", { link = "DiagnosticWarn" })
@@ -150,10 +153,12 @@ local EDITED = ""
 -- belonging to it. The step chosen, or every step while every note shows, has
 -- a card: its number on a label and its title, then its note, every line
 -- filled out to one width so the background makes a block. A step other than
--- the one chosen keeps to a line with its number and its title, dimmed and
--- with no background: cards on every step of a function pushed its lines
--- apart until the code was hard to read, while a line each still says where
--- the other steps are. Its note, left out, is marked with an ellipsis.
+-- the one chosen keeps to a line: its number on the same label and its title
+-- on the card's background, as wide as the title, in dimmer text. Cards on
+-- every step of a function pushed its lines apart until the code was hard to
+-- read, while a line each still says where the other steps are; drawn dim and
+-- in italics with no background, that line was taken for a comment of the
+-- code. Its note, left out, is marked with an ellipsis.
 local function note_lines(row, indent, width)
   local kind = M.kind_colour(row.step)
   local pad = { string.rep(" ", indent) }
@@ -163,12 +168,11 @@ local function note_lines(row, indent, width)
     return {
       {
         pad,
-        { BAR .. " ", kind },
-        { tostring(row.number) .. " ", kind },
-        { row.step.title, "TraceTitleOther" },
-        { row.step.note ~= "" and " …" or "", "TraceTitleOther" },
-        { edited, "TraceEdited" },
-        { lost, "TraceLost" },
+        { BAR, kind .. "Bar" },
+        { (" %d "):format(row.number), kind .. "Label" },
+        { " " .. row.step.title .. (row.step.note ~= "" and " …" or "") .. " ", kind .. "Line" },
+        { edited, kind .. "Edited" },
+        { lost, kind .. "Lost" },
       },
     }
   end
