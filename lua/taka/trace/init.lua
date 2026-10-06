@@ -42,14 +42,14 @@ local state = {
 -- The colour of a step goes by its kind, from the diagnostics, which every
 -- scheme sets: a cause in the colour of an error, a suspect of a warning, an
 -- answer, the step a question about the code is answered at, of a check passed,
--- the rest of information. The step chosen shows its note on a card: a block
--- whose background is the scheme's own, tinted with the colour of the kind, its
--- number on a label of that colour. Italic text in a colour of its own, the way
--- the note first was, read as more code at a glance, the thin bar beside it too
--- little to tell where the note ended; a background marks the whole of it as
--- something laid over the code, as a comment of a review is. A step not chosen
--- has its title on the same background in dimmer text, and the line of the
--- step chosen last is tinted as a diagnostic's text is.
+-- the rest of information. The step chosen shows its note on a card: a block on
+-- the colour of paper, its number on a label of the kind's colour. Italic text
+-- in a colour of its own, the way the note first was, read as more code at a
+-- glance, the thin bar beside it too little to tell where the note ended; a
+-- background marks the whole of it as something laid over the code, as a
+-- comment of a review is. A step not chosen has its title on the same
+-- background in dimmer text, and the line of the step chosen last is tinted as
+-- a diagnostic's text is.
 local KINDS = {
   TraceStep = "DiagnosticInfo",
   TraceCause = "DiagnosticError",
@@ -81,12 +81,20 @@ local function colours()
   local warn = vim.api.nvim_get_hl(0, { name = "DiagnosticWarn", link = false }).fg or fg
   -- The mark of a step the reader has edited, in a colour of its own.
   local edited = vim.api.nvim_get_hl(0, { name = "DiagnosticHint", link = false }).fg or fg
+  -- One colour for every note, of paper, the colour of a note stuck on a page,
+  -- laid over the scheme's background so it sits in a dark scheme or a light
+  -- one; the kind of a step is the colour of its label alone. Each card took
+  -- the colour of its kind before, which made blue the colour of a note, the
+  -- colour of the code's own names. The bar at its left edge is the paper's
+  -- colour, deeper: where the note begins, nothing more.
+  local paper = 0xd9bf86
+  local card = mix(paper, bg, light and 0.35 or 0.2)
+  local edge = mix(paper, bg, 0.7)
   for group, diagnostic in pairs(KINDS) do
     set(group, { link = diagnostic })
     local colour = vim.api.nvim_get_hl(0, { name = diagnostic, link = false }).fg or fg
-    local card = mix(colour, bg, 0.18)
     set(group .. "Card", { fg = fg, bg = card })
-    set(group .. "Bar", { fg = colour, bg = card })
+    set(group .. "Bar", { fg = edge, bg = card })
     set(group .. "Head", { fg = fg, bg = card, bold = true })
     set(group .. "Label", { fg = bg, bg = colour, bold = true })
     set(group .. "Lost", { fg = warn, bg = card })
