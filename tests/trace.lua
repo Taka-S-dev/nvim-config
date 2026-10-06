@@ -682,4 +682,47 @@ return function(T)
     expect(seen.followed == "mine", "followed " .. tostring(seen.followed))
     expect(seen.followed_here == "mine-newer-still", "followed in this project " .. tostring(seen.followed_here))
   end)
+
+  -- A click on the line of a step not chosen opens its card, and a click on
+  -- the card open closes it; a click on the code line itself does neither.
+  -- The lines of a note are no lines of the buffer: the click is told by the
+  -- row it was on, above the line's own row.
+  check("trace: a click on a note opens its card, and on the card closes it", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    local lines = {}
+    for i = 1, 12 do
+      lines[i] = ("int q%d;"):format(i)
+    end
+    write(code .. "/k.c", lines)
+    write(
+      folder .. "/k.jsonl",
+      lines_of({
+        { title = "Clicks", root = code },
+        { id = "a", file = "k.c", line = 3, text = "int q3;", title = "First", note = "one" },
+        { id = "b", file = "k.c", line = 8, text = "int q8;", title = "Second", note = "two" },
+      })
+    )
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/k.c")
+      local win = vim.api.nvim_get_current_win()
+      trace.open()
+      vim.cmd("redraw")
+      local function click(line, above)
+        local own = vim.fn.screenpos(win, line, 1).row
+        return trace.clicked({ winid = win, line = line, screenrow = above and own - 1 or own })
+      end
+      seen[#seen + 1] = tostring(click(8, true)) .. ":" .. tostring(trace.state().current)
+      vim.cmd("redraw")
+      seen[#seen + 1] = tostring(click(8, false)) .. ":" .. tostring(trace.state().current)
+      seen[#seen + 1] = tostring(click(8, true)) .. ":" .. tostring(trace.state().current)
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(vim.deep_equal(seen, { "true:b", "false:b", "true:nil" }), "clicks: " .. vim.inspect(seen))
+  end)
 end

@@ -972,6 +972,52 @@ vim.api.nvim_create_autocmd("BufReadPost", {
     end
   end,
 })
+-- A step made the one chosen, its card opened where it is, or with nil none:
+-- what a click on a note does, which leaves the cursor and the view alone,
+-- where showing a step from the panel moves the window to it.
+function M.choose(row)
+  state.current = row and row.step.id or nil
+  decorate_all()
+  if row then
+    panel().focus(row.step.id)
+  end
+end
+
+-- A click on the lines of a note opens its card, or closes the card open. The
+-- lines are no lines of the buffer and take no click of their own: Neovim puts
+-- the cursor on the line under them and tells of that line, but of the row
+-- clicked too, which is above the line's own row. `mouse` is what
+-- getmousepos() tells. True when the click was on a note.
+function M.clicked(mouse)
+  if not state.trace or mouse.winid == 0 or mouse.line == 0 then
+    return false
+  end
+  local own = vim.fn.screenpos(mouse.winid, mouse.line, 1).row
+  if own == 0 or mouse.screenrow >= own then
+    return false
+  end
+  local name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(mouse.winid))
+  for _, row in ipairs(state.rows) do
+    local found = state.located[row.step.id]
+    if found and found.line == mouse.line and same_file(row.step.file, name) then
+      M.choose(row.step.id ~= state.current and row or nil)
+      return true
+    end
+  end
+  return false
+end
+
+-- Clicks are watched, not mapped, so the left button keeps what is mapped to it
+-- (the strip of a comparison, the panels) and nothing is held up.
+local left_mouse = vim.keycode("<LeftMouse>")
+vim.on_key(function(key, typed)
+  if (typed ~= "" and typed or key) == left_mouse and state.trace then
+    vim.schedule(function()
+      M.clicked(vim.fn.getmousepos())
+    end)
+  end
+end, namespace)
+
 -- The notes are wrapped to the windows they show in, so again when one of
 -- them changes its width, as it does when the panel opens beside it.
 vim.api.nvim_create_autocmd({ "WinResized", "BufWinEnter" }, {
