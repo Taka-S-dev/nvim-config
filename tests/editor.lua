@@ -247,4 +247,40 @@ return function(T)
     expect(seen.opened == "a.c:12", "opened at " .. tostring(seen.opened))
     expect(seen.query == "elsewhere/a.c:20", "the list was given " .. tostring(seen.query))
   end)
+
+  -- A path pasted into the list of files as Windows writes it, with back
+  -- slashes or from the drive, finds the file and opens it at its line: it
+  -- matched nothing.
+  check("files: a path with back slashes, pasted with its line, is found and opened there", function()
+    local dir = temp_dir()
+    local lines = {}
+    for i = 1, 20 do
+      lines[i] = ("int w%d;"):format(i)
+    end
+    T.write(dir .. "/inc/deep/b.h", lines)
+    T.write(dir .. "/other.c", { "int x;" })
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      for _, pattern in ipairs({ [[deep\b.h:7]], (dir:gsub("/", "\\")) .. [[\inc\deep\b.h:7]] }) do
+        local picker = Snacks.picker.files({ pattern = pattern })
+        vim.wait(3000, function()
+          return #picker:items() == 1
+        end, 20)
+        seen[#seen + 1] = #picker:items()
+        picker:action("confirm")
+        vim.wait(1000, function()
+          return vim.fn.expand("%:t") == "b.h"
+        end, 20)
+        seen[#seen + 1] = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+        vim.cmd("enew")
+      end
+    end)
+    for _, picker in ipairs(Snacks.picker.get({ source = "files" })) do
+      picker:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(vim.deep_equal(seen, { 1, "b.h:7", 1, "b.h:7" }), "found and opened: " .. vim.inspect(seen))
+  end)
 end

@@ -107,6 +107,9 @@ SVN                                                                |cfg-svn|
 ファイル・バッファを開く                                           *cfg-files*
 
 `<leader>ff`              ファイル名で検索 (Find File)
+                          パスをそのまま貼ってもよい。`\` 区切り、先頭の `/`、
+                          `C:\…` の絶対パスも、`/` 区切りの相対パスに直して探
+                          す。末尾に `:行番号` があれば、その行で開く
 `<leader>fg`              プロジェクト全体を grep (Find by Grep)
 `<leader>fr`              最近開いたファイル (Recent)
 `<leader>fb`              開いているバッファ一覧
