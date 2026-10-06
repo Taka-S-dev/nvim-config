@@ -88,6 +88,11 @@ Snacks.toggle({
 require("taka.writes")
 key("n", "<leader>jw", "taka.writes", "show", "Where this name is written to")
 
+-- A path:line copied from somewhere, opened at the line, <leader>fo
+-- (lua/taka/open_path.lua).
+require("taka.open_path")
+key("n", "<leader>fo", "taka.open_path", "open", "Open the path:line in the clipboard")
+
 -- Optional :C, :Cf and :Zi; defines nothing where the picker is not installed.
 require("taka.cd_picker")
 

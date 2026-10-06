@@ -181,4 +181,70 @@ return function(T)
     expect(seen.followed == "d/f4.c", "the tree's cursor is on " .. tostring(seen.followed))
     expect(seen.found == "d/f4.c", "<leader>fl left the cursor on " .. tostring(seen.found))
   end)
+
+  -- A path with a line number, written the ways a person or a tool writes it,
+  -- is opened at that line with <leader>fo from the clipboard; one not found
+  -- is looked for by the end of its path in the list of files.
+  check("open path: a path:line copied from anywhere opens at its line", function()
+    local open_path = require("taka.open_path")
+    local forms = {}
+    for _, text in ipairs({
+      "src/a.c l12",
+      "src/a.c:12",
+      "src/a.c:12:5",
+      "`src/a.c(12)`",
+      "src/a.c#L12",
+      "src/a.c line 12",
+      "src/a.c 12",
+      "C:/x/a.c:12",
+    }) do
+      local path, line = open_path.parse(text)
+      forms[#forms + 1] = path .. "|" .. tostring(line)
+    end
+    local dir = temp_dir()
+    local lines = {}
+    for i = 1, 30 do
+      lines[i] = ("int v%d;"):format(i)
+    end
+    T.write(dir .. "/src/a.c", lines)
+    local seen = {}
+    local register = vim.fn.getreg("+")
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.fn.setreg("+", "src/a.c l12")
+      T.key("<leader>fo")()
+      seen.opened = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+      vim.fn.setreg("+", "elsewhere/a.c:20")
+      T.key("<leader>fo")()
+      local picker
+      vim.wait(2000, function()
+        picker = Snacks.picker.get({ source = "files" })[1]
+        return picker ~= nil
+      end, 20)
+      seen.query = picker and picker.input:get()
+    end)
+    -- The list is closed whatever happened, so it is left over the checks
+    -- that come after.
+    for _, picker in ipairs(Snacks.picker.get({ source = "files" })) do
+      picker:close()
+    end
+    pcall(vim.fn.setreg, "+", register)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      vim.deep_equal(forms, {
+        "src/a.c|12",
+        "src/a.c|12",
+        "src/a.c|12",
+        "src/a.c|12",
+        "src/a.c|12",
+        "src/a.c|12",
+        "src/a.c|12",
+        "C:/x/a.c|12",
+      }),
+      "read as: " .. vim.inspect(forms)
+    )
+    expect(seen.opened == "a.c:12", "opened at " .. tostring(seen.opened))
+    expect(seen.query == "elsewhere/a.c:20", "the list was given " .. tostring(seen.query))
+  end)
 end
