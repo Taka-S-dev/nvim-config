@@ -106,3 +106,7 @@ require("taka.c_macros")
 
 -- The text selected, lit where else it stands (lua/taka/selection_matches.lua).
 require("taka.selection_matches")
+
+-- The Japanese input method off on leaving Insert mode or the command line, so
+-- Space in Normal mode reaches <leader> (lua/taka/ime.lua).
+require("taka.ime")

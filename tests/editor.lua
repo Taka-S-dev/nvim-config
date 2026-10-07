@@ -30,6 +30,28 @@ return function(T)
     expect(not copilot, "copilot is enabled")
     expect(lua_ls, "lua_ls is not enabled")
   end)
+  -- Space typed in Normal mode with the Japanese input method on came in as a
+  -- full-width space, and <leader> did nothing. The input method is turned off
+  -- on leaving Insert mode or the command line (lua/taka/ime.lua); with no
+  -- screen, as here, nothing is sent to the window in front.
+  check("ime: turned off on leaving Insert mode and the command line", function()
+    if vim.fn.has("win32") == 0 then
+      T.skip("the input method is turned off on Windows only")
+    end
+    local ime = require("taka.ime")
+    local off, calls = ime.off, 0
+    ime.off = function()
+      calls = calls + 1
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_exec_autocmds("InsertLeave", {})
+      vim.api.nvim_exec_autocmds("CmdlineLeave", {})
+    end)
+    ime.off = off
+    expect(ok, tostring(err))
+    expect(ime.available(), "the Windows API could not be loaded")
+    expect(calls == 2, "turned off " .. calls .. " times, not 2")
+  end)
   -- core.autocrlf=true leaves CRLF on disk and LF in git, and git calls the file
   -- unchanged. It takes an .editorconfig asking for LF as well, as the Linux
   -- tree has: Neovim then switches the buffer to unix line endings after reading
