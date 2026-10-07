@@ -48,7 +48,9 @@ local function function_name(node, source)
   end
   if name and name:type() == "identifier" then
     local text = vim.treesitter.get_node_text(name, source)
-    return not NOT_NAMES[text] and text or nil
+    if not NOT_NAMES[text] then
+      return text, name:start() + 1
+    end
   end
 end
 
@@ -85,7 +87,7 @@ local function bodies_by_layout(source)
       while last < #lines and not lines[last]:match("^}") do
         last = last + 1
       end
-      table.insert(bodies, { kind = "function", name = name, first = header, last = last, calls = {} })
+      table.insert(bodies, { kind = "function", name = name, first = header, line = header, last = last, calls = {} })
       at = last
     end
     at = at + 1
@@ -93,23 +95,47 @@ local function bodies_by_layout(source)
   return bodies
 end
 
+-- The buffer `file` is open in with changes not yet written, or nil.
+local function changed_buffer(file)
+  local want = vim.fs.normalize(file):lower()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if
+      vim.api.nvim_buf_is_loaded(buf)
+      and vim.bo[buf].modified
+      and vim.fs.normalize(vim.api.nvim_buf_get_name(buf)):lower() == want
+    then
+      return buf
+    end
+  end
+end
+
+-- A file open with changes not yet written is read from its buffer, so its
+-- lines are the ones on the screen: read from the disk, a line added above a
+-- function put the cursor in the function before it, or in none.
 function M.read(file)
-  local stat = vim.uv.fs_stat(file)
-  if not stat then
+  local buf = changed_buffer(file)
+  local stat = not buf and vim.uv.fs_stat(file)
+  if not buf and not stat then
     return nil
   end
-  local key = ("%d.%d:%d"):format(stat.mtime.sec, stat.mtime.nsec, stat.size)
+  local key = buf and ("buffer %d:%d"):format(buf, vim.api.nvim_buf_get_changedtick(buf))
+    or ("%d.%d:%d"):format(stat.mtime.sec, stat.mtime.nsec, stat.size)
   if outlines[file] and outlines[file].key == key then
     return outlines[file]
   end
   local result = { key = key, functions = {}, macros = {}, prototypes = {} }
   outlines[file] = result
-  local handle = io.open(file, "rb")
-  if not handle then
-    return result
+  local source
+  if buf then
+    source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  else
+    local handle = io.open(file, "rb")
+    if not handle then
+      return result
+    end
+    source = handle:read("*a")
+    handle:close()
   end
-  local source = handle:read("*a")
-  handle:close()
   local ok, parser = pcall(vim.treesitter.get_string_parser, source, "c")
   if not ok then
     return result
@@ -122,9 +148,9 @@ function M.read(file)
     local row = node:start() + 1
     local text = capture ~= "function" and vim.treesitter.get_node_text(node, source)
     if capture == "function" then
-      local name = function_name(node, source)
+      local name, line = function_name(node, source)
       if name then
-        local fn = { kind = "function", name = name, first = row, last = last_line(node), calls = {} }
+        local fn = { kind = "function", name = name, first = row, line = line, last = last_line(node), calls = {} }
         table.insert(result.functions, fn)
       end
     elseif capture == "call" then

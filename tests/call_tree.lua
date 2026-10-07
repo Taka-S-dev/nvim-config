@@ -197,6 +197,62 @@ return function(T)
     end, seen.many)
     expect(#seen.many == 46 and #unknown == 0, ("callees of many: %d rows, %d not found"):format(#seen.many, #unknown))
   end)
+  -- GTAGS is not brought up to date by an edit. After lines were added above a
+  -- function, its line in GTAGS was no longer in it: the tree of a call to it
+  -- was taken for the function the cursor was in, and its callees came out
+  -- empty. A file with changes not yet written was read from the disk, and the
+  -- cursor's line was looked for in the lines before the change.
+  check("call tree: callees of a function moved by an edit GTAGS has not seen", function()
+    need("gtags", "global")
+    local tree = require("taka.call_tree")
+    local dir = temp_dir()
+    write(
+      dir .. "/a.c",
+      { "static int leaf(int x) { return x + 1; }", "int mid(int x)", "{", "    return leaf(x);", "}" }
+    )
+    write(dir .. "/c.c", { "int mid(int x);", "int top(void) { return mid(1); }" })
+    run({ "gtags" }, dir)
+    write(dir .. "/a.c", {
+      "/* one */",
+      "/* two */",
+      "/* three */",
+      "static int leaf(int x) { return x + 1; }",
+      "int mid(int x)",
+      "{",
+      "    return leaf(x);",
+      "}",
+    })
+    local seen = {}
+    local function settled()
+      vim.wait(10000, function()
+        local lines = tree.lines()
+        return #lines > 0 and not table.concat(lines, "\n"):find("…")
+      end, 20)
+      return table.concat(tree.lines(), "\n")
+    end
+    local ok, err = pcall(function()
+      -- From a call to it in another file.
+      vim.cmd.edit(dir .. "/c.c")
+      vim.api.nvim_win_set_cursor(0, { 2, 24 })
+      key("<leader>jH")()
+      seen[#seen + 1] = settled()
+      tree.close()
+      -- From inside it, with two more lines added and not written.
+      vim.cmd.edit(dir .. "/a.c")
+      vim.api.nvim_buf_set_lines(0, 0, 0, false, { "/* four */", "/* five */" })
+      vim.api.nvim_win_set_cursor(0, { 9, 5 })
+      key("<leader>jH")()
+      seen[#seen + 1] = settled()
+      tree.close()
+    end)
+    vim.cmd("silent! %bwipeout!")
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      vim.deep_equal(seen, { "▾ mid  @a.c:5\n└╴▸ leaf  @a.c:7", "▾ mid  @a.c:7\n└╴▸ leaf  @a.c:9" }),
+      "callees:\n" .. table.concat(seen, "\n--\n")
+    )
+  end)
   -- The panel knows a source only by the interface at the top of
   -- lua/taka/call_tree/init.lua. One that answers from a graph in memory, after
   -- a turn of the event loop as a language server would, is drawn and opened as

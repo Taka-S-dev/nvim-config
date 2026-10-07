@@ -59,26 +59,57 @@ local function each_file(files, fn, done, progress)
   step()
 end
 
--- What a definition found by global is: a function the file defines on that
--- line, a macro, or something else, such as a function declared by a macro.
+-- The function or macro named `name` in `list` that line `lnum` of GTAGS
+-- points at: the one the line stands in, else the nearest of that name. GTAGS
+-- is not brought up to date by an edit, so after lines are added above a
+-- function its line is no longer in it; looked for by its line alone, the
+-- function was not found, and its callees came out empty.
+-- The second value is true when the line stands in it.
+local function named(list, name, lnum)
+  local nearest, distance
+  for _, body in ipairs(list) do
+    if body.name == name then
+      if body.first <= lnum and lnum <= body.last then
+        return body, true
+      end
+      local away = math.abs((body.line or body.first) - lnum)
+      if not distance or away < distance then
+        nearest, distance = body, away
+      end
+    end
+  end
+  return nearest, false
+end
+
+-- What a definition found by global is, and the line it is on now: a function
+-- the file defines, a macro, or something else, such as a function declared by
+-- a macro, left on the line global gives. The one the line stands in comes
+-- first, a macro before a function, then the nearer of the two.
 local function kind_at(file, lnum, name)
   local file_outline = outline(file)
   if not file_outline then
-    return "other"
+    return "other", lnum
   end
-  for _, macro in ipairs(file_outline.macros) do
-    if macro.first == lnum and macro.name == name then
-      return "macro"
-    end
+  local macro, in_macro = named(file_outline.macros, name, lnum)
+  local fn, in_fn = named(file_outline.functions, name, lnum)
+  if in_macro then
+    return "macro", lnum
   end
   -- gtags gives the line of the name, which is not the first line of the
   -- function where the type before it has a line of its own.
-  for _, fn in ipairs(file_outline.functions) do
-    if fn.name == name and fn.first <= lnum and lnum <= fn.last then
-      return "function"
-    end
+  if in_fn then
+    return "function", lnum
   end
-  return "other"
+  local function away(body)
+    return body and math.abs((body.line or body.first) - lnum) or math.huge
+  end
+  if macro and away(macro) <= away(fn) then
+    return "macro", macro.first
+  end
+  if fn then
+    return "function", fn.line or fn.first
+  end
+  return "other", lnum
 end
 
 -- Where each of `nodes` is defined, filled in: in the file of the function
@@ -120,7 +151,11 @@ local function define(root, nodes, near, done, progress)
     end
     each_file(files, outline, function()
       for _, node in ipairs(nodes) do
-        node.kind = node.file and kind_at(node.file, node.lnum, node.name) or "unknown"
+        if node.file then
+          node.kind, node.lnum = kind_at(node.file, node.lnum, node.name)
+        else
+          node.kind = "unknown"
+        end
       end
       done()
     end, progress)
@@ -173,13 +208,8 @@ end
 
 -- The functions `node` calls, each once, in the order of their first call.
 local function callees(root, node, done, progress)
-  local fn
   local file_outline = node.file and outline(node.file)
-  for _, candidate in ipairs(file_outline and file_outline.functions or {}) do
-    if candidate.name == node.name and candidate.first <= node.lnum and node.lnum <= candidate.last then
-      fn = candidate
-    end
-  end
+  local fn = file_outline and named(file_outline.functions, node.name, node.lnum)
   if not fn then
     return done({})
   end
