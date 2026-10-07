@@ -702,6 +702,7 @@ return function(T)
         { title = "Clicks", root = code },
         { id = "a", file = "k.c", line = 3, text = "int q3;", title = "First", note = "one" },
         { id = "b", file = "k.c", line = 8, text = "int q8;", title = "Second", note = "two" },
+        { id = "c", file = "k.c", line = 8, text = "int q8;", title = "Third", note = "three" },
       })
     )
     local seen = {}
@@ -709,20 +710,40 @@ return function(T)
       vim.cmd.edit(code .. "/k.c")
       local win = vim.api.nvim_get_current_win()
       trace.open()
-      vim.cmd("redraw")
-      local function click(line, above)
-        local own = vim.fn.screenpos(win, line, 1).row
-        return trace.clicked({ winid = win, line = line, screenrow = above and own - 1 or own })
+      -- The screen row a text stands on in the window, as it is drawn now.
+      local function row_of(text)
+        vim.cmd("redraw")
+        local top = vim.fn.win_screenpos(win)[1]
+        for row = top, top + vim.api.nvim_win_get_height(win) - 1 do
+          local cells = {}
+          for col = 1, vim.o.columns do
+            cells[#cells + 1] = vim.fn.screenstring(row, col)
+          end
+          if table.concat(cells):find(text, 1, true) then
+            return row
+          end
+        end
       end
-      seen[#seen + 1] = tostring(click(8, true)) .. ":" .. tostring(trace.state().current)
-      vim.cmd("redraw")
-      seen[#seen + 1] = tostring(click(8, false)) .. ":" .. tostring(trace.state().current)
-      seen[#seen + 1] = tostring(click(8, true)) .. ":" .. tostring(trace.state().current)
+      local function click(row)
+        local clicked = trace.clicked({ winid = win, line = 8, screenrow = row or 0 })
+        return tostring(clicked) .. ":" .. tostring(trace.state().current)
+      end
+      seen[#seen + 1] = click(row_of("Second"))
+      seen[#seen + 1] = click(vim.fn.screenpos(win, 8, 1).row)
+      -- Two steps on line 8: the lower note is the third step's, the card of
+      -- the second open above it or not.
+      seen[#seen + 1] = click(row_of("Third"))
+      seen[#seen + 1] = click(row_of("Third"))
+      seen[#seen + 1] = click(row_of("Second"))
+      seen[#seen + 1] = click(row_of("two"))
     end)
     trace.close()
     store.dir = real_dir
     reset_editor()
     expect(ok, err)
-    expect(vim.deep_equal(seen, { "true:b", "false:b", "true:nil" }), "clicks: " .. vim.inspect(seen))
+    expect(
+      vim.deep_equal(seen, { "true:b", "false:b", "true:c", "true:nil", "true:b", "true:nil" }),
+      "clicks: " .. vim.inspect(seen)
+    )
   end)
 end

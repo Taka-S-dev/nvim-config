@@ -37,6 +37,8 @@ local state = {
   notes = true,
   all_notes = false,
   located = {},
+  -- By buffer, the notes stacked over each line (see M.decorate).
+  stacks = {},
 }
 
 -- The colour of a step goes by its kind, from the diagnostics, which every
@@ -291,6 +293,11 @@ function M.decorate(buf)
     room = math.min(room or math.huge, info.width - info.textoff)
   end
   room = room or vim.o.columns
+  -- The notes over each line, top to bottom, as Neovim stacks the marks of one
+  -- line in the order they are made: which step each is and how many rows it
+  -- takes, for a click to be told apart where two steps share a line.
+  local stacks = {}
+  state.stacks[buf] = stacks
   for _, row in ipairs(state.rows) do
     if same_file(row.step.file, name) then
       local line, found = M.locate(buf, row.step)
@@ -302,15 +309,18 @@ function M.decorate(buf)
       local indent = vim.api.nvim_buf_call(buf, function()
         return vim.fn.indent(line)
       end)
+      -- Past a hundred columns a line is hard to follow back to its start.
+      local note = state.notes and note_lines(row, indent, math.max(20, math.min(100, room - indent - 6))) or nil
       vim.api.nvim_buf_set_extmark(buf, namespace, line - 1, 0, {
         sign_text = row.number < 100 and ("%2d"):format(row.number) or "··",
         sign_hl_group = found and M.kind_colour(row.step) or "TraceLost",
         line_hl_group = state.notes and row.step.id == state.current and "TraceCurrent" or nil,
-        -- Past a hundred columns a line is hard to follow back to its start.
-        virt_lines = state.notes and note_lines(row, indent, math.max(20, math.min(100, room - indent - 6))) or nil,
+        virt_lines = note,
         virt_lines_above = true,
         priority = 20,
       })
+      stacks[line] = stacks[line] or {}
+      table.insert(stacks[line], { row = row, height = note and #note or 0 })
     end
   end
   return moved
@@ -996,13 +1006,23 @@ function M.clicked(mouse)
   if own == 0 or mouse.screenrow >= own then
     return false
   end
-  local name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(mouse.winid))
-  for _, row in ipairs(state.rows) do
-    local found = state.located[row.step.id]
-    if found and found.line == mouse.line and same_file(row.step.file, name) then
-      M.choose(row.step.id ~= state.current and row or nil)
+  -- Two steps on one line stack their notes over it, the first made on top:
+  -- the row clicked, counted from the top of the stack, says whose note it is.
+  local stack = (state.stacks[vim.api.nvim_win_get_buf(mouse.winid)] or {})[mouse.line] or {}
+  local total = 0
+  for _, note in ipairs(stack) do
+    total = total + note.height
+  end
+  local from = own - total
+  if mouse.screenrow < from then
+    return false
+  end
+  for _, note in ipairs(stack) do
+    if mouse.screenrow < from + note.height then
+      M.choose(note.row.step.id ~= state.current and note.row or nil)
       return true
     end
+    from = from + note.height
   end
   return false
 end
