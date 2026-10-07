@@ -79,6 +79,46 @@ return function(T)
     expect(reported:find("(global, 1 found)", 1, true), "the statusline said: " .. reported)
     expect(asked == 2 and second == "main.c:3", ("global asked %d times, the second jump on %s"):format(asked, second))
   end)
+  -- GTAGS is not brought up to date by an edit, and lines added above a
+  -- definition carried the jump that many lines off. The line GTAGS keeps is
+  -- looked for: in the buffer for an edit not saved, in the file for one made
+  -- outside, and the number GTAGS gives is kept where the line stands twice.
+  check("gtags: <C-]> finds a definition moved by an edit GTAGS has not seen", function()
+    need("gtags", "global")
+    local dir = c_project()
+    run({ "gtags" }, dir)
+    local function jump()
+      vim.cmd.edit(dir .. "/main.c")
+      vim.fn.cursor(5, 12)
+      local from = vim.api.nvim_get_current_buf()
+      key("<C-]>")()
+      vim.wait(15000, function()
+        return vim.api.nvim_get_current_buf() ~= from
+      end, 20)
+      return vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+    end
+    local landed = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/lib.c")
+      vim.api.nvim_buf_set_lines(0, 0, 0, false, { "/* one */", "/* two */", "/* three */" })
+      landed[#landed + 1] = jump()
+      vim.api.nvim_buf_set_lines(
+        vim.fn.bufnr(dir .. "/lib.c"),
+        -1,
+        -1,
+        false,
+        { "#if 0", "int target_fn(void)", "#endif" }
+      )
+      landed[#landed + 1] = jump()
+      vim.cmd("silent! %bwipeout!")
+      write(dir .. "/lib.c", { "/* one */", "/* two */", "int target_fn(void)", "{", "    return 42;", "}" })
+      landed[#landed + 1] = jump()
+    end)
+    vim.cmd("silent! %bwipeout!")
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(vim.deep_equal(landed, { "lib.c:4", "lib.c:1", "lib.c:3" }), "landed on " .. vim.inspect(landed))
+  end)
   -- A session opened over ssh will not pass through scoop's `current`
   -- junctions, the shims' included, so the tools this config runs are found in
   -- the folder of their version, down a path with no junction in it. Only where
@@ -462,6 +502,30 @@ return function(T)
     reset_editor()
     expect(not started and not made, "a save with no tags file made one")
     expect(added, "a save did not bring the tags file up to date")
+  end)
+  -- A tags file left behind by an edit still leads the jump to the line: its
+  -- line number is kept only while that line has the text the tag recorded,
+  -- and the nearest line with that text is taken otherwise, in the buffer for
+  -- an edit not saved.
+  check("ctags: the jump finds a definition moved by an edit the tags file has not seen", function()
+    need(vim.g.gutentags_ctags_executable or "ctags")
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "/* one */", "/* two */", "int first_fn(void)", "{", "    return 1;", "}" })
+    write(dir .. "/b.c", { "int first_fn(void);", "int user(void) { return first_fn(); }" })
+    write(dir .. "/tags", { "!_TAG_FILE_SORTED	1	//", 'first_fn	a.c	/^int first_fn(void)$/;"	f	line:1' })
+    vim.api.nvim_set_current_dir(dir)
+    vim.cmd.edit(dir .. "/a.c")
+    vim.api.nvim_buf_set_lines(0, 0, 0, false, { "/* three */" })
+    vim.cmd.edit(dir .. "/b.c")
+    vim.fn.cursor(2, 28)
+    key("<C-]>")()
+    vim.wait(5000, function()
+      return vim.fn.expand("%:t") == "a.c"
+    end, 20)
+    local landed = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+    vim.cmd("silent! %bwipeout!")
+    reset_editor()
+    expect(landed == "a.c:4", "the jump landed on " .. landed)
   end)
   -- With no GTAGS the jump falls back to ctags. Several matches used to bring up
   -- Vim's numbered prompt; they belong in the same list the gtags results use.

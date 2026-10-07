@@ -59,6 +59,60 @@ local function parse(output)
   return items
 end
 
+-- The lines of `filename` as they are now: from its buffer when it is open, an
+-- edit not yet saved included, else from the disk. GTAGS and the tags file hold
+-- the bytes of the file, so a buffer read from another encoding, Shift-JIS
+-- say, is read from the disk instead, where those bytes are.
+local function current_lines(filename)
+  local want = vim.fs.normalize(filename):lower()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if
+      vim.api.nvim_buf_is_loaded(buf)
+      and vim.fs.normalize(vim.api.nvim_buf_get_name(buf)):lower() == want
+      and vim.tbl_contains({ "", "utf-8" }, vim.bo[buf].fileencoding)
+    then
+      return vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    end
+  end
+  local ok, read = pcall(vim.fn.readfile, filename)
+  return ok and read or {}
+end
+
+-- The whitespace of a line made one space, as lines are compared below: the
+-- line GTAGS holds and the line in the file may be laid out apart.
+local function anchor_key(line)
+  return vim.trim(line:gsub("%s+", " "))
+end
+
+-- The line a definition is on now. GTAGS is not brought up to date by an edit,
+-- so its line number goes on pointing where the definition was; lines added
+-- above it carried a jump and a peek that many lines off. The text of the line
+-- that GTAGS keeps with each definition is looked for in the file, the buffer
+-- when it is open, so an edit not yet saved counts too. The line moves only
+-- when that text stands on exactly one line: on none or on several, the number
+-- GTAGS gives is kept, rather than a place that looks right and is not. A text
+-- of the name alone, or of no more than a word, says too little to look for.
+local function heal(item)
+  local key = anchor_key(item.text or "")
+  if not key:find("[^%w_]") then
+    return item
+  end
+  local lines = current_lines(item.filename)
+  if lines[item.lnum] and anchor_key(lines[item.lnum]) == key then
+    return item
+  end
+  local found
+  for i, line in ipairs(lines) do
+    if anchor_key(line) == key then
+      if found then
+        return item
+      end
+      found = i
+    end
+  end
+  return found and vim.tbl_extend("force", item, { lnum = found }) or item
+end
+
 -- How many a lookup found, for the statusline: "gtags: name  40 ms (global,
 -- 2 found)". Without the count a lookup that found nothing, and so went on to
 -- the tags, read the same as one that found the definition.
@@ -122,21 +176,31 @@ end
 -- asked to, a bare number for some kinds, and otherwise the text of the line as
 -- a search pattern, cut short when the line is long. The file is compared as
 -- bytes, the way the tags file holds it, so a Shift-JIS source matches too.
+--
+-- The tags file is not brought up to date by an edit either, so its line
+-- number is kept only while the line there still starts with the text it
+-- recorded; else the line with that text nearest to it is taken, as the jump
+-- through GTAGS is placed. A file open is read from its buffer, an edit not
+-- yet saved included.
 local function tag_line(tag, filename)
   local number = tonumber(tag.line) or tonumber(tag.cmd)
-  if number then
+  local text = not tonumber(tag.cmd) and tag.cmd:gsub("^[/?]%^?", ""):gsub("%$?[/?]$", ""):gsub("\\([/\\?])", "%1")
+  if not text or text == "" then
+    return number or 1
+  end
+  local lines = current_lines(filename)
+  if number and lines[number] and lines[number]:sub(1, #text) == text then
     return number
   end
-  local text = tag.cmd:gsub("^[/?]%^?", ""):gsub("%$?[/?]$", ""):gsub("\\([/\\?])", "%1")
-  local ok, lines = pcall(vim.fn.readfile, filename)
-  if ok then
-    for i, line in ipairs(lines) do
-      if line:sub(1, #text) == text then
-        return i
-      end
+  local nearest
+  for i, line in ipairs(lines) do
+    if
+      line:sub(1, #text) == text and (not nearest or math.abs(i - (number or 1)) < math.abs(nearest - (number or 1)))
+    then
+      nearest = i
     end
   end
-  return 1
+  return nearest or number or 1
 end
 
 -- The ctags fallback. :tjump would do for one match, but with several it
@@ -270,7 +334,9 @@ local function lookup_definition(symbol, done, no_database)
     if #items > 0 then
       symbols[symbol] = items
     end
-    done(items, source)
+    -- Placed where the definitions are now each time, the ones kept included:
+    -- the file may have changed since they were looked up.
+    done(vim.tbl_map(heal, items), source)
   end
   if symbols[symbol] then
     -- No global to wait for, but the statusline still says the key was heard.
