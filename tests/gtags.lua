@@ -477,9 +477,10 @@ return function(T)
     expect(not leftover, "tags.temp was left behind")
     expect(found, "the definition is not in the index")
   end)
-  -- A save keeps a tags file up to date, and makes none where there is none:
-  -- the first save in a folder under version control indexed all of it.
-  check("ctags: a save updates the tags file there is, and makes none", function()
+  -- A save leaves the tags file alone: where there was none it made one, the
+  -- first save in a folder under version control indexing all of it, and
+  -- where there was one it read and wrote all of it again.
+  check("ctags: a save neither makes nor updates the tags file", function()
     need(vim.g.gutentags_ctags_executable or "ctags")
     local dir = temp_dir()
     vim.fn.mkdir(dir .. "/.git")
@@ -490,18 +491,17 @@ return function(T)
     local started = #vim.fn["gutentags#inprogress"]() > 0
     vim.wait(1000)
     local made = vim.uv.fs_stat(dir .. "/tags") ~= nil
-    write(dir .. "/tags", { "!_TAG_FILE_SORTED\t1\t//", 'first_fn\ta.c\t/^int first_fn(void)$/;"\tf' })
-    vim.api.nvim_buf_set_lines(0, -1, -1, false, { "int added_fn(void)", "{", "    return 2;", "}" })
+    local tags = { "!_TAG_FILE_SORTED	1	//", 'first_fn	a.c	/^int first_fn(void)$/;"	f	line:1' }
+    write(dir .. "/tags", tags)
+    vim.api.nvim_buf_set_lines(0, 0, 0, false, { "/* one */" })
     vim.cmd("silent write")
-    local added = vim.wait(30000, function()
-      return #vim.fn["gutentags#inprogress"]() == 0
-        and vim.iter(vim.fn.readfile(dir .. "/tags")):any(function(line)
-          return line:find("^added_fn\t") ~= nil
-        end)
-    end, 50)
+    local updated = #vim.fn["gutentags#inprogress"]() > 0
+    vim.wait(1000)
+    local kept = vim.deep_equal(vim.fn.readfile(dir .. "/tags"), tags)
+    vim.cmd("silent! %bwipeout!")
     reset_editor()
     expect(not started and not made, "a save with no tags file made one")
-    expect(added, "a save did not bring the tags file up to date")
+    expect(not updated and kept, "a save updated the tags file")
   end)
   -- A tags file left behind by an edit still leads the jump to the line: its
   -- line number is kept only while that line has the text the tag recorded,

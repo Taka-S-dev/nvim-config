@@ -37,11 +37,16 @@ return {
     -- (git-ignored) if set there.
     vim.g.gutentags_project_root = { ".gutctags-root" }
     vim.g.gutentags_exclude_project_root = vim.g.gutentags_exclude_project_root or {}
-    -- Only index when a tags file already exists or was explicitly requested
-    -- (:GutentagsUpdate, <leader>jB); no silent full scans on first open, and
-    -- none on a save either (see config below).
+    -- The tags file is made and brought up to date only when asked for
+    -- (<leader>jB, :GutentagsUpdate), never by opening or saving a file. A
+    -- save made the whole tags file where there was none, the first save in
+    -- any folder with .git or .svn indexed all of it, and where there was one
+    -- read and wrote all of it again, ten megabytes on openssl. A tags file
+    -- left behind by edits still names the files a definition is in, and the
+    -- jump finds the line in them again (lua/taka/gtags/lookup.lua).
     vim.g.gutentags_generate_on_missing = 0
     vim.g.gutentags_generate_on_new = 0
+    vim.g.gutentags_generate_on_write = 0
 
     -- The ctags fallback lands on the first match, so a stale copy in the index
     -- is a wrong landing, not just noise. Editors that keep local history (.history/) and
@@ -74,22 +79,6 @@ return {
       vim.g.gutentags_plat_dir = wrapper_dir
       vim.cmd("runtime! autoload/gutentags/ctags.vim")
     end
-
-    -- A save brings the tags file up to date, but only where there is one. On
-    -- a save gutentags updates the tags file if it exists and makes it
-    -- otherwise, so the first save in any folder with .git or .svn indexed the
-    -- whole project and left a tags file in it; the settings above stop that
-    -- on opening a file only. Where the tags file exists, an update parses only
-    -- the file saved, though the whole tags file is read and written again.
-    -- The setting is read when the save is done, so it is set before each one.
-    vim.api.nvim_create_autocmd("BufWritePre", {
-      group = vim.api.nvim_create_augroup("gutentags_existing_only", { clear = true }),
-      callback = function(args)
-        local files = vim.b[args.buf].gutentags_files
-        local tags = type(files) == "table" and files.ctags
-        vim.g.gutentags_generate_on_write = (tags and vim.uv.fs_stat(tags)) and 1 or 0
-      end,
-    })
 
     -- With its output gone a ctags run shows nothing at all, so its start and
     -- end go to the statusline (lua/taka/lib/activity.lua). Updating is fired
