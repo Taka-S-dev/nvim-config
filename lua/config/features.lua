@@ -108,11 +108,16 @@ require("taka.c_macros")
 require("taka.selection_matches")
 
 -- A number in every base: the literal under the cursor, the expression
--- selected, or one typed to :Radix (lua/taka/radix.lua).
-key({ "n", "x" }, "<leader>cb", "taka.radix", "show", "Number in dec, hex and binary")
+-- selected, or one typed to :Radix (lua/taka/radix.lua). A macro's name, or
+-- an expression with names in it, is worked out from GTAGS
+-- (lua/taka/macro_value.lua), which the arithmetic itself knows nothing of.
+local function macro_value(text)
+  require("taka.macro_value").show(text)
+end
+key({ "n", "x" }, "<leader>cb", "taka.radix", "show", "Number or macro in dec, hex and binary", macro_value)
 vim.api.nvim_create_user_command("Radix", function(command)
-  require("taka.radix").command(command.args)
-end, { nargs = "+", desc = "An expression of numbers in dec, hex and binary" })
+  require("taka.radix").command(command.args, macro_value)
+end, { nargs = "+", desc = "An expression of numbers or macros in dec, hex and binary" })
 
 -- The Japanese input method off on leaving Insert mode or the command line, so
 -- Space in Normal mode reaches <leader> (lua/taka/ime.lua).

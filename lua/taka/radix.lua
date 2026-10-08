@@ -336,10 +336,10 @@ function binary_op(state, loosest)
   return left
 end
 
--- An expression of literals and C's integer operators, worked out as lines,
--- or nil when it is none: a name in it, a division by zero, a shift past 63.
--- A comparison answers true or false; a result below zero is shown signed.
-function M.calculate(source)
+-- An expression of literals and C's integer operators worked out: its value
+-- and what it was worked out from, whether it compared or went below zero, or
+-- nil when it is none: a name in it, a division by zero, a shift past 63.
+function M.evaluate(source)
   local list = tokens(source or "")
   if not list or #list == 0 then
     return nil
@@ -349,49 +349,82 @@ function M.calculate(source)
   if not v or state.at <= #list then
     return nil
   end
-  if state.compared and (v == 0ULL or v == 1ULL) then
-    return { vim.trim(source), v == 1ULL and "true" or "false" }
+  return v, { compared = state.compared, negative = state.negative }
+end
+
+-- A value in a few characters, for a list of them: hex, as bits overlap
+-- plainly in it, or the signed decimal below zero.
+function M.brief(v, how)
+  if how and how.negative and top_bit(v) == 63 then
+    return "-" .. decimal(0ULL - v)
   end
-  -- Below zero, the binary of 64 bits and the bits set say nothing to read.
-  if state.negative and top_bit(v) == 63 then
-    return { vim.trim(source), "dec  -" .. group(decimal(0ULL - v), 3, ","), "hex  " .. hex(v) .. "  (64-bit)" }
+  return hex(v)
+end
+
+-- The lines that show a value worked out by M.evaluate. A comparison answers
+-- true or false; a result below zero is shown signed, as the binary of 64
+-- bits and the bits set say nothing to read.
+function M.format(v, how)
+  how = how or {}
+  if how.compared and (v == 0ULL or v == 1ULL) then
+    return { v == 1ULL and "true" or "false" }
+  end
+  if how.negative and top_bit(v) == 63 then
+    return { "dec  -" .. group(decimal(0ULL - v), 3, ","), "hex  " .. hex(v) .. "  (64-bit)" }
+  end
+  return rows(v)
+end
+
+-- An expression worked out as lines, under the expression, or nil.
+function M.calculate(source)
+  local v, how = M.evaluate(source)
+  if not v then
+    return nil
   end
   local out = { vim.trim(source) }
-  vim.list_extend(out, rows(v))
+  vim.list_extend(out, M.format(v, how))
   return out
 end
 
-local function show(lines)
+-- The lines in a small window by the cursor, gone once it moves.
+function M.show_lines(lines)
   vim.lsp.util.open_floating_preview(lines, "", { border = "rounded", focus_id = "taka_radix" })
 end
 
--- An expression typed, as :Radix 1 << 6 | 2, in every base.
-function M.command(text)
+-- An expression typed, as :Radix 1 << 6 | 2, in every base; one with names in
+-- it goes to `names`, as M.show's does.
+function M.command(text, names)
   local lines = M.calculate(text)
-  if not lines then
-    return vim.notify("Not an expression of numbers: " .. text, vim.log.levels.WARN)
+  if lines then
+    return M.show_lines(lines)
   end
-  show(lines)
+  if names and text:find("[%a_]") then
+    return names(text)
+  end
+  vim.notify("Not an expression of numbers: " .. text, vim.log.levels.WARN)
 end
 
 -- The literal under the cursor, or the expression selected, in every base.
-function M.show()
+-- What is no number, a name under the cursor or an expression with names in
+-- it, goes to `names`, a function given the text, when there is one: the
+-- value of a name is the business of whatever knows where it is defined.
+function M.show(names)
   local mode = vim.fn.mode()
   if mode == "v" or mode == "V" or mode == "\22" then
     local text = table.concat(vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = mode }), " ")
     vim.cmd("normal! \27")
-    local lines = M.calculate(text)
-    if not lines then
-      return vim.notify("Not an expression of numbers: " .. vim.trim(text), vim.log.levels.WARN)
-    end
-    return show(lines)
+    return M.command(vim.trim(text), names)
   end
   local text = M.literal_at(vim.api.nvim_get_current_line(), vim.fn.col("."))
   local lines = text and M.describe(text)
-  if not lines then
-    return vim.notify("No number under the cursor", vim.log.levels.WARN)
+  if lines then
+    return M.show_lines(lines)
   end
-  show(lines)
+  local word = vim.fn.expand("<cword>")
+  if names and word:match("^[%a_][%w_]*$") then
+    return names(word)
+  end
+  vim.notify("No number under the cursor", vim.log.levels.WARN)
 end
 
 return M

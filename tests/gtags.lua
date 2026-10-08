@@ -455,6 +455,97 @@ return function(T)
     )
   end)
 
+  -- <leader>cb on a macro: its value worked out from the #define and those of
+  -- the macros in it, as found in GTAGS. What is no number at heart is said
+  -- to be so, and a name defined twice under #ifdef shows each value, none
+  -- picked for the build.
+  check("macro value: <leader>cb works a macro out from GTAGS, each definition shown", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    write(dir .. "/a.h", {
+      "#define BIT_A 0x1",
+      "#define BIT_B (1 << 4)",
+      "#define MASK (BIT_A | BIT_B | \\",
+      "              0x100)  /* three bits */",
+      "#define CAST ((unsigned long)1 << 3)",
+      "#define FN(x) ((x) << 1)",
+      "#ifdef BIG",
+      "#define SIZE 64",
+      "#else",
+      "#define SIZE 32",
+      "#endif",
+      "#define SAME 7",
+      "#define USES_FN FN(2)",
+      "#define LOOP LOOP2",
+      "#define LOOP2 LOOP",
+      "#define NEG -1",
+      "#define MASK_X 99",
+      "#define WITH_NEG (NEG + BIT_B)",
+      "#define TYPE_X (21|BIT_B|BIT_A)",
+      "#define SHIFTED ((1 << 4) | BIT_A)",
+    })
+    -- Past a dozen names, the rest are counted.
+    local many, bits = {}, {}
+    for i = 1, 14 do
+      many[#many + 1] = ("#define B%02d (1 << %d)"):format(i, i)
+      bits[#bits + 1] = ("B%02d"):format(i)
+    end
+    many[#many + 1] = "#define MANY (" .. table.concat(bits, "|") .. ")"
+    write(dir .. "/many.h", many)
+    write(dir .. "/b.h", { "#define SAME 7" })
+    write(dir .. "/a.c", { "int f(void) { return MASK; }" })
+    run({ "gtags" }, dir)
+    local macro_value = require("taka.macro_value")
+    local want = {
+      MASK = "MASK | = (BIT_A | BIT_B | 0x100) |   BIT_A  0x0001 |   BIT_B  0x0010 |   0x100  0x0100 | dec  273 | hex  0x111 | bin  0b0000_0001_0001_0001 | bit  8, 4, 0 set (0=LSB)",
+      CAST = "CAST | = ((unsigned long)1 << 3) | dec  8 | hex  0x8 | bin  0b0000_1000 | bit  3 set (0=LSB)",
+      FN = "FN | FN takes arguments",
+      SIZE = "SIZE  (2 definitions) | a.h:8  dec  64  hex  0x40 | a.h:10  dec  32  hex  0x20",
+      SAME = "SAME | = 7 | dec  7 | hex  0x7 | bin  0b0000_0111 | bit  2, 1, 0 set (0=LSB)",
+      USES_FN = "USES_FN | = FN(2) |   FN  takes arguments",
+      LOOP = "LOOP | = LOOP2 |   LOOP2  refers to itself",
+      WITH_NEG = "WITH_NEG | = (NEG + BIT_B) |   NEG    -1 |   BIT_B  0x10 | dec  15 | hex  0xf | bin  0b0000_1111 | bit  3, 2, 1, 0 set (0=LSB)",
+      NEG = "NEG | = -1 | dec  -1 | hex  0xffffffffffffffff  (64-bit)",
+      NOPE = "NOPE | NOPE is not defined in GTAGS (an enum value or a variable?)",
+      TYPE_X = "TYPE_X | = (21|BIT_B|BIT_A) |   21     0x15 |   BIT_B  0x10 |   BIT_A  0x01 | dec  21 | hex  0x15 | bin  0b0001_0101 | bit  4, 2, 0 set (0=LSB)",
+      SHIFTED = "SHIFTED | = ((1 << 4) | BIT_A) |   (1 << 4)  0x10 |   BIT_A     0x01 | dec  17 | hex  0x11 | bin  0b0001_0001 | bit  4, 0 set (0=LSB)",
+      ["MASK & BIT_B"] = "MASK & BIT_B |   MASK   0x0111 |   BIT_B  0x0010 | dec  16 | hex  0x10 | bin  0b0001_0000 | bit  4 set (0=LSB)",
+      ["SIZE + 1"] = "SIZE + 1 |   SIZE  has 2 definitions that differ",
+    }
+    local got, left = {}, vim.tbl_count(want) + 1
+    for _, text in ipairs(vim.list_extend(vim.tbl_keys(want), { "MANY" })) do
+      macro_value.work_out(text, dir, function(lines)
+        got[text] = table.concat(lines, " | ")
+        left = left - 1
+      end)
+    end
+    vim.wait(20000, function()
+      return left == 0
+    end, 20)
+    for text, lines in pairs(want) do
+      expect(got[text] == lines, text .. " came to " .. tostring(got[text]))
+    end
+    expect(
+      got.MANY and got.MANY:find("  B12  0x1000 |   … and 2 more | dec  32,766", 1, true),
+      "MANY came to " .. tostring(got.MANY)
+    )
+    -- By the key, on the name in the code.
+    local shown
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      vim.api.nvim_win_set_cursor(0, { 1, 23 })
+      key("<leader>cb")()
+      vim.wait(10000, function()
+        for _, win in ipairs(floats()) do
+          shown = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false), " | ")
+        end
+        return shown ~= nil
+      end, 20)
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(shown == want.MASK, "the key showed " .. tostring(shown))
+  end)
   check("ctags: <leader>jB writes tags to the root of a tree that is not under version control", function()
     need(vim.g.gutentags_ctags_executable or "ctags")
     local dir = c_project()
