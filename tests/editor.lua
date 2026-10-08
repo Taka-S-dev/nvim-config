@@ -254,6 +254,79 @@ return function(T)
   -- A path with a line number, written the ways a person or a tool writes it,
   -- is opened at that line with <leader>fo from the clipboard; one not found
   -- is looked for by the end of its path in the list of files.
+  -- <leader>cb: a number of C in every base, as flags and masks are read. The
+  -- literal is told from a name or a float it is part of; an expression is
+  -- worked out as C binds it; 64-bit values hold.
+  check("radix: the number under the cursor or selected, in every base", function()
+    local radix = require("taka.radix")
+    local line = "if (flags & 0x0C) x = var2 + 1.5 + 0x1p3 + 42UL + 'A';"
+    local found = {}
+    for _, col in ipairs({ 14, 25, 32, 40, 45, 51 }) do
+      found[#found + 1] = tostring((radix.literal_at(line, col)))
+    end
+    expect(
+      table.concat(found, " ") == "0x0C nil nil nil 42UL 'A'",
+      "literals at the columns: " .. table.concat(found, " ")
+    )
+    local function shown(lines)
+      return lines and table.concat(lines, " | ") or "nil"
+    end
+    local want = {
+      ["0x20000000U"] = "0x20000000U | dec  536,870,912 | hex  0x20000000 | bin  0b0010_0000_0000_0000_0000_0000_0000_0000 | bit  29 set (0=LSB)",
+      ["010"] = "010  (octal) | dec  8 | hex  0x8 | bin  0b0000_1000 | bit  3 set (0=LSB)",
+      ["089"] = "nil",
+      ["'\\n'"] = "'\\n' | dec  10 | hex  0xa",
+      ["18446744073709551615"] = "18446744073709551615 | dec  18,446,744,073,709,551,615 | hex  0xffffffffffffffff | bin  0b"
+        .. ("1111_"):rep(15)
+        .. "1111 | bit  64 bits set",
+    }
+    for text, lines in pairs(want) do
+      local got = shown(radix.describe(text))
+      expect(got == lines, text .. " was shown as " .. got)
+    end
+    local sums = {
+      ["1 << 6 | 2"] = "1 << 6 | 2 | dec  66 | hex  0x42 | bin  0b0100_0010 | bit  6, 1 set (0=LSB)",
+      ["1 & 2 == 2"] = "1 & 2 == 2 | true",
+      ["3 - 5"] = "3 - 5 | dec  -2 | hex  0xfffffffffffffffe  (64-bit)",
+      ["10 / 0"] = "nil",
+      ["FOO | 1"] = "nil",
+    }
+    for source, lines in pairs(sums) do
+      local got = shown(radix.calculate(source))
+      expect(got == lines, source .. " was worked out as " .. got)
+    end
+    -- By the key: on a literal, and on an expression selected.
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd("enew")
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "if (flags & 0x0C) {", "m = (1 << 4) | 1;" })
+      local function float_text()
+        for _, win in ipairs(T.floats()) do
+          local text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false), " | ")
+          pcall(vim.api.nvim_win_close, win, true)
+          return text
+        end
+      end
+      vim.api.nvim_win_set_cursor(0, { 1, 14 })
+      T.key("<leader>cb")()
+      seen[#seen + 1] = float_text()
+      vim.api.nvim_win_set_cursor(0, { 2, 4 })
+      T.press("vf;h")
+      vim.fn.maparg("<leader>cb", "x", false, true).callback()
+      seen[#seen + 1] = float_text()
+      seen[#seen + 1] = vim.fn.mode()
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      vim.deep_equal(seen, {
+        "0x0C | dec  12 | hex  0xc | bin  0b0000_1100 | bit  3, 2 set (0=LSB)",
+        "(1 << 4) | 1 | dec  17 | hex  0x11 | bin  0b0001_0001 | bit  4, 0 set (0=LSB)",
+        "n",
+      }),
+      "by the key: " .. vim.inspect(seen)
+    )
+  end)
   check("open path: a path:line copied from anywhere opens at its line", function()
     local open_path = require("taka.open_path")
     local forms = {}
