@@ -34,14 +34,15 @@ function M.parse(text)
 end
 
 -- The file `path` names: as it is, under the cwd, or under the root of the
--- project the current file is in, the first that is there.
+-- project the current file is in, the folder over it with GTAGS, .git or .svn,
+-- the first that is there. A file opened from another project is looked for
+-- in its own, which LazyVim's root, kept to the cwd (lua/config/options.lua),
+-- does not give.
 local function find(path)
   path = path:gsub("\\", "/")
   local tried = { path, vim.fs.joinpath(vim.fn.getcwd(), path) }
-  local ok, root = pcall(function()
-    return LazyVim.root()
-  end)
-  if ok and root then
+  local root = require("taka.lib.gtags_global").root(vim.api.nvim_buf_get_name(0), { ".git", ".svn" })
+  if root then
     tried[#tried + 1] = vim.fs.joinpath(root, path)
   end
   for _, candidate in ipairs(tried) do

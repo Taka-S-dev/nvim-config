@@ -52,6 +52,30 @@ return function(T)
     expect(ime.available(), "the Windows API could not be loaded")
     expect(calls == 2, "turned off " .. calls .. " times, not 2")
   end)
+  -- <leader>ff and <leader>sg search the folder opened, the one the file tree
+  -- shows. LazyVim looked up from the file for a .git, and a project with none
+  -- of its own, in a folder of checkouts under one .git, searched them all.
+  check("root: the files and the grep search the folder opened", function()
+    local dir = temp_dir()
+    vim.fn.mkdir(dir .. "/.git")
+    write(dir .. "/openssl/GTAGS", { "" })
+    write(dir .. "/openssl/ssl/a.c", { "int a;" })
+    write(dir .. "/linux/b.c", { "int b;" })
+    local cwd = vim.fn.getcwd()
+    local root
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir .. "/openssl")
+      vim.cmd.edit(dir .. "/openssl/ssl/a.c")
+      root = LazyVim.root()
+    end)
+    vim.cmd("silent! %bwipeout!")
+    vim.api.nvim_set_current_dir(cwd)
+    expect(ok, tostring(err))
+    expect(
+      root and vim.fs.normalize(root):lower() == vim.fs.normalize(dir .. "/openssl"):lower(),
+      "the root was " .. tostring(root)
+    )
+  end)
   -- core.autocrlf=true leaves CRLF on disk and LF in git, and git calls the file
   -- unchanged. It takes an .editorconfig asking for LF as well, as the Linux
   -- tree has: Neovim then switches the buffer to unix line endings after reading
@@ -247,6 +271,15 @@ return function(T)
       vim.fn.setreg("+", "src/a.c l12")
       T.key("<leader>fo")()
       seen.opened = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+      -- A path written from the root of the project the current file is in,
+      -- one outside the cwd.
+      local other = temp_dir()
+      T.write(other .. "/GTAGS", { "" })
+      T.write(other .. "/lib/b.c", lines)
+      vim.cmd.edit(other .. "/lib/b.c")
+      vim.fn.setreg("+", "lib/b.c:7")
+      T.key("<leader>fo")()
+      seen.other = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
       vim.fn.setreg("+", "elsewhere/a.c:20")
       T.key("<leader>fo")()
       local picker
@@ -278,6 +311,7 @@ return function(T)
       "read as: " .. vim.inspect(forms)
     )
     expect(seen.opened == "a.c:12", "opened at " .. tostring(seen.opened))
+    expect(seen.other == "b.c:7", "from the project of the file, opened at " .. tostring(seen.other))
     expect(seen.query == "elsewhere/a.c:20", "the list was given " .. tostring(seen.query))
   end)
 

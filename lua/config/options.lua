@@ -11,6 +11,14 @@ if require("config.clipboard").over_ssh() then
   vim.g.clipboard = require("config.clipboard").provider()
 end
 
+-- What LazyVim takes for the root of the project, where <leader>ff,
+-- <leader><space> and <leader>sg search: the working directory, the folder the
+-- file tree shows, as an editor searches the folder it opened. LazyVim looks
+-- up from the file for a .git instead, and openssl, unpacked with no .git of
+-- its own in a folder of checkouts under one .git, searched every checkout
+-- beside it, Linux and postgres with it.
+vim.g.root_spec = { "cwd" }
+
 -- Use `zig cc` for nvim-treesitter parser compilation on Windows.
 -- MinGW ld.exe chokes on `\\?\` extended-length paths and tree-sitter CLI
 -- passes a clang-style 4-component target triple that zig can't parse.
