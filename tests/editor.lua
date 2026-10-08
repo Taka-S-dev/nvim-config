@@ -34,7 +34,7 @@ return function(T)
   -- full-width space, and <leader> did nothing. The input method is turned off
   -- on leaving Insert mode or the command line (lua/taka/ime.lua); with no
   -- screen, as here, nothing is sent to the window in front.
-  check("ime: turned off on leaving Insert mode and the command line", function()
+  check("ime: turned off on every way out of Insert mode and the command line", function()
     if vim.fn.has("win32") == 0 then
       T.skip("the input method is turned off on Windows only")
     end
@@ -43,14 +43,26 @@ return function(T)
     ime.off = function()
       calls = calls + 1
     end
+    -- Each change of mode, and whether the input method is turned off: out of
+    -- Insert mode, by Esc or by Ctrl-C, which sends no InsertLeave; out of the
+    -- command line and Replace mode; not into the completion menu, Ctrl-O's
+    -- one command, or the command line from Insert mode.
+    local changes = { "i:n", "c:n", "R:n", "i:ic", "i:niI", "ic:i", "n:i", "i:c" }
+    local seen = {}
     local ok, err = pcall(function()
-      vim.api.nvim_exec_autocmds("InsertLeave", {})
-      vim.api.nvim_exec_autocmds("CmdlineLeave", {})
+      for _, change in ipairs(changes) do
+        local before = calls
+        vim.api.nvim_exec_autocmds("ModeChanged", { pattern = change })
+        seen[#seen + 1] = change .. "=" .. (calls > before and "off" or "-")
+      end
     end)
     ime.off = off
     expect(ok, tostring(err))
     expect(ime.available(), "the Windows API could not be loaded")
-    expect(calls == 2, "turned off " .. calls .. " times, not 2")
+    expect(
+      table.concat(seen, " ") == "i:n=off c:n=off R:n=off i:ic=- i:niI=- ic:i=- n:i=- i:c=-",
+      "turned off on: " .. table.concat(seen, " ")
+    )
   end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
   -- shows. LazyVim looked up from the file for a .git, and a project with none

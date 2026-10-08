@@ -76,10 +76,18 @@ function M.off()
 end
 
 local group = vim.api.nvim_create_augroup("taka_ime", { clear = true })
-vim.api.nvim_create_autocmd({ "InsertLeave", "CmdlineLeave" }, {
+-- On every way out of Insert, Replace or Command-line mode into another, told
+-- by the change of mode: Ctrl-C leaves Insert mode without InsertLeave, and
+-- left the input method on. A move between those modes, as to the completion
+-- menu, is no way out, nor is Ctrl-O, one command in Normal mode (niI) before
+-- the text goes on.
+vim.api.nvim_create_autocmd("ModeChanged", {
   group = group,
-  callback = function()
-    M.off()
+  callback = function(args)
+    local old, new = args.match:match("^(.-):(.*)$")
+    if old and old:match("^[icR]") and not new:match("^[icR]") and not new:match("^ni") then
+      M.off()
+    end
   end,
 })
 vim.api.nvim_create_autocmd({ "FocusGained", "FocusLost" }, {
