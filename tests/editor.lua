@@ -82,6 +82,33 @@ return function(T)
       "the full-width space: " .. vim.inspect(fed)
     )
   end)
+  -- The indent is taken from the file: LazyVim's two drew two guides to a
+  -- level of openssl's four, and laid tabs out two wide.
+  check("indent: taken from each file, tabs eight wide", function()
+    local dir = temp_dir()
+    write(dir .. "/four.c", { "int f(void)", "{", "    if (a) {", "        b();", "    }", "}" })
+    write(dir .. "/tabs.c", { "int f(void)", "{", "\tif (a) {", "\t\tb();", "\t}", "}" })
+    write(dir .. "/two.lua", { "local t = {", "  a = {", "    b = 1,", "  },", "}" })
+    local seen = {}
+    local ok, err = pcall(function()
+      for _, name in ipairs({ "four.c", "tabs.c", "two.lua" }) do
+        vim.cmd.edit(dir .. "/" .. name)
+        seen[#seen + 1] = ("%s sw=%d ts=%d et=%s"):format(
+          name,
+          vim.fn.shiftwidth(),
+          vim.bo.tabstop,
+          tostring(vim.bo.expandtab)
+        )
+      end
+    end)
+    vim.cmd("silent! %bwipeout!")
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      table.concat(seen, " | ") == "four.c sw=4 ts=4 et=true | tabs.c sw=8 ts=8 et=false | two.lua sw=2 ts=2 et=true",
+      "indents: " .. table.concat(seen, " | ")
+    )
+  end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
   -- shows. LazyVim looked up from the file for a .git, and a project with none
   -- of its own, in a folder of checkouts under one .git, searched them all.
