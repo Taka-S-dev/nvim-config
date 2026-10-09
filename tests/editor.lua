@@ -49,19 +49,37 @@ return function(T)
     -- one command, or the command line from Insert mode.
     local changes = { "i:n", "c:n", "R:n", "i:ic", "i:niI", "ic:i", "n:i", "i:c" }
     local seen = {}
+    -- Space pressed in Normal mode with the input method on comes as a
+    -- full-width space: it turns the input method off and goes on as Space.
+    -- In Insert mode it is text.
+    local fed, notify, feedkeys = {}, vim.notify, vim.api.nvim_feedkeys
     local ok, err = pcall(function()
       for _, change in ipairs(changes) do
         local before = calls
         vim.api.nvim_exec_autocmds("ModeChanged", { pattern = change })
         seen[#seen + 1] = change .. "=" .. (calls > before and "off" or "-")
       end
+      vim.notify = function() end
+      vim.api.nvim_feedkeys = function(keys)
+        fed[#fed + 1] = keys
+      end
+      local before = calls
+      for _, mode in ipairs({ "n", "x" }) do
+        vim.fn.maparg("\u{3000}", mode, false, true).callback()
+      end
+      fed.off = calls - before
+      fed.insert = vim.fn.maparg("\u{3000}", "i") == ""
     end)
-    ime.off = off
+    ime.off, vim.notify, vim.api.nvim_feedkeys = off, notify, feedkeys
     expect(ok, tostring(err))
     expect(ime.available(), "the Windows API could not be loaded")
     expect(
       table.concat(seen, " ") == "i:n=off c:n=off R:n=off i:ic=- i:niI=- ic:i=- n:i=- i:c=-",
       "turned off on: " .. table.concat(seen, " ")
+    )
+    expect(
+      fed.off == 2 and fed[1] == " " and fed[2] == " " and fed.insert,
+      "the full-width space: " .. vim.inspect(fed)
     )
   end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree

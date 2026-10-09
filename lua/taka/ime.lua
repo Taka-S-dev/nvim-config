@@ -97,4 +97,20 @@ vim.api.nvim_create_autocmd({ "FocusGained", "FocusLost" }, {
   end,
 })
 
+-- Space pressed with the input method on, which reaches Normal mode as the
+-- full-width space it types: the input method turned off, a word that it
+-- was, and the Space it was meant to be, <leader> and what follows it. It did
+-- nothing at all and looked like a key not heard; turned on in Normal mode,
+-- the input method is not turned off by leaving a mode. A full-width space
+-- typed in Insert mode is text, and left alone.
+function M.full_width_space()
+  M.off()
+  vim.notify("The input method was on: turned off, and Space taken as Space")
+  vim.api.nvim_feedkeys(vim.keycode("<Space>"), "m", false)
+end
+
+vim.keymap.set({ "n", "x" }, "\u{3000}", function()
+  M.full_width_space()
+end, { desc = "Space typed with the input method on: turn it off, take it as Space" })
+
 return M
