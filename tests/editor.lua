@@ -84,7 +84,7 @@ return function(T)
   end)
   -- The indent is taken from the file: LazyVim's two drew two guides to a
   -- level of openssl's four, and laid tabs out two wide.
-  check("indent: taken from each file, tabs eight wide", function()
+  check("indent: taken from each file, tabs eight wide, the guides thin", function()
     local dir = temp_dir()
     write(dir .. "/four.c", { "int f(void)", "{", "    if (a) {", "        b();", "    }", "}" })
     write(dir .. "/tabs.c", { "int f(void)", "{", "\tif (a) {", "\t\tb();", "\t}", "}" })
@@ -107,6 +107,11 @@ return function(T)
     expect(
       table.concat(seen, " | ") == "four.c sw=4 ts=4 et=true | tabs.c sw=8 ts=8 et=false | two.lua sw=2 ts=2 et=true",
       "indents: " .. table.concat(seen, " | ")
+    )
+    -- The guides thin: a box-drawing line, drawn by the terminal, read heavy.
+    expect(
+      Snacks.config.indent.indent.char == "▏" and Snacks.config.indent.scope.char == "▏",
+      "guides: " .. Snacks.config.indent.indent.char .. " " .. Snacks.config.indent.scope.char
     )
   end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
