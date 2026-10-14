@@ -193,7 +193,11 @@ local function look_up(buf)
     vim.bo.tagcase = "match"
     for name in pairs(names) do
       local kind = false
-      for _, tag in ipairs(vim.fn.taglist("^" .. name .. "$")) do
+      -- A tags file Vim cannot read, E431, is passed over as one that knows
+      -- nothing: raised here it stopped the lookup in an error window, with
+      -- 'tagcase' left as it was set above, on every redraw that met a name.
+      local ok, tags = pcall(vim.fn.taglist, "^" .. name .. "$")
+      for _, tag in ipairs(ok and tags or {}) do
         if tag.name == name then
           if tag.kind == "d" or tag.kind == "macro" then
             kind = "macro"

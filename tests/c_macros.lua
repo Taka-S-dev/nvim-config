@@ -68,6 +68,40 @@ return function(T)
     local header = vim.filetype.match({ filename = dir .. "/b.h" })
     expect(header == "c", "a header opens as " .. tostring(header))
   end)
+  -- A tags file Vim cannot read, as one ctags wrote over a whole folder of
+  -- checkouts: the lookup raised E431 in an error window at every redraw, and
+  -- left 'tagcase' at "match". Now it knows nothing, and the file's own
+  -- macros are still marked.
+  check("c macros: a tags file Vim cannot read is passed over", function()
+    local names = require("taka.c_macros")
+    local dir = temp_dir()
+    write(dir .. "/tags", { "!_TAG_FILE_SORTED\t1\t//", "A_LINE_WITH_NO_TABS", 'ZZZ\tx.c\t1;"\td' })
+    write(dir .. "/a.c", { "#define LOCAL_MAX 10", "int f(void)", "{", "    return LOCAL_MAX + MISSING_NAME;", "}" })
+    local errors, seen, case = {}, nil, nil
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      case = vim.bo.tagcase
+      vim.treesitter.get_parser(0):parse(true)
+      local function marked()
+        local out = {}
+        for _, mark in ipairs((names.marks(0, 0, 4) or {})[3] or {}) do
+          out[#out + 1] = vim.api.nvim_buf_get_text(0, 3, mark[1], 3, mark[2], {})[1] .. "=" .. mark[3]:sub(2)
+        end
+        return table.concat(out, " ")
+      end
+      vim.v.errmsg = ""
+      vim.wait(2000, function()
+        seen = marked()
+        return seen == "LOCAL_MAX=Macro" and vim.v.errmsg ~= "" or false
+      end, 20)
+      errors[#errors + 1] = vim.v.errmsg
+      seen = seen .. " tagcase=" .. vim.bo.tagcase
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen == "LOCAL_MAX=Macro tagcase=" .. tostring(case), "marked: " .. tostring(seen))
+    expect(errors[1] == "", "an error was raised: " .. tostring(errors[1]))
+  end)
   -- A project indexed by gtags alone, with no tags file: a macro in a header
   -- is known from the #define global finds it on, and an enum value, which
   -- its line does not tell, is left to the grammar. Until the way to start
