@@ -114,6 +114,54 @@ return function(T)
       "guides: " .. Snacks.config.indent.indent.char .. " " .. Snacks.config.indent.scope.char
     )
   end)
+  -- The results of grug-far are searched again when a file is saved: a line
+  -- deleted from a file stayed in the list until searched again by hand.
+  check("grug-far: the results follow a file saved", function()
+    need("rg")
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "int keepme;", "int dropme_one;", "int dropme_two;" })
+    write(dir .. "/b.c", { "int dropme_three;" })
+    local cwd = vim.fn.getcwd()
+    local seen = {}
+    local function results()
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        if vim.bo[buf].filetype == "grug-far" then
+          return #vim.tbl_filter(function(line)
+            return line:find("dropme_") ~= nil
+          end, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+        end
+      end
+      return -1
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/a.c")
+      local code = vim.api.nvim_get_current_win()
+      require("grug-far").open({ prefills = { search = "dropme" } })
+      vim.wait(10000, function()
+        return results() == 3
+      end, 50)
+      seen[#seen + 1] = results()
+      vim.api.nvim_set_current_win(code)
+      vim.cmd("2delete")
+      vim.cmd("silent write")
+      vim.wait(10000, function()
+        return results() == 2
+      end, 50)
+      seen[#seen + 1] = results()
+    end)
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "grug-far" then
+        pcall(vim.api.nvim_win_close, win, true)
+      end
+    end
+    vim.cmd("silent! %bwipeout!")
+    vim.api.nvim_set_current_dir(cwd)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(vim.deep_equal(seen, { 3, 2 }), "matches before and after the save: " .. vim.inspect(seen))
+  end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
   -- shows. LazyVim looked up from the file for a .git, and a project with none
   -- of its own, in a folder of checkouts under one .git, searched them all.
