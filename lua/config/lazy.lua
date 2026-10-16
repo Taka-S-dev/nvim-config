@@ -41,10 +41,12 @@ require("lazy").setup({
     -- version = "*", -- try installing the latest stable version for plugins that support semver
   },
   install = { colorscheme = { "tokyonight", "habamax" } },
-  checker = {
-    enabled = true, -- check for plugin updates periodically
-    notify = false, -- notify on update
-  }, -- automatically check for plugin updates
+  -- Updates are looked for by :Lazy check, not at every start. The checker
+  -- started git once for each plugin as the editor came up, 46 processes in
+  -- all, and where every process start is inspected by security software
+  -- that is most of what a start costs; the count it kept for the statusline
+  -- is the only thing lost.
+  checker = { enabled = false },
   performance = {
     rtp = {
       -- disable some rtp plugins

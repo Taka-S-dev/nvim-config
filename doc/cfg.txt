@@ -566,6 +566,10 @@ ssh で入っているときは、`y` でコピーしたものが、接続先で
 
 `:Lazy`                   プラグイン管理 UI
 `:Lazy sync`              プラグインのインストール/更新/削除を一括反映
+`:Lazy check`             更新があるか調べる。起動のたびに調べることはしない
+                          (プラグインごとに git を 1 回ずつ、46 プロセスを起
+                          動していて、プロセスの起動を毎回検査するセキュリテ
+                          ィソフトのある PC では、起動時間の大半がこれだった)
 `:Lazy restore`           `lazy-lock.json` のバージョンに固定
 `:LazyExtras`             LazyVim の追加機能(言語別 LSP 等)管理
 `:Mason`                  LSP / formatter / linter のインストーラ

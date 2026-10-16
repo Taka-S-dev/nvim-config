@@ -114,6 +114,13 @@ return function(T)
       "guides: " .. Snacks.config.indent.indent.char .. " " .. Snacks.config.indent.scope.char
     )
   end)
+  -- Updates to plugins are not looked for as the editor starts: the checker
+  -- started git once for each plugin, 46 processes, and where every process
+  -- start is inspected that was most of what a start cost.
+  check("startup: no checking for plugin updates", function()
+    local config = require("lazy.core.config").options
+    expect(config.checker.enabled == false, "the update checker is on")
+  end)
   -- The results of grug-far are searched again when a file is saved: a line
   -- deleted from a file stayed in the list until searched again by hand.
   check("grug-far: the results follow a file saved", function()
