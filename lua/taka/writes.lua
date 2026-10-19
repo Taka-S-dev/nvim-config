@@ -125,24 +125,31 @@ function M.find(name, root, done)
 end
 
 -- The writes to the word under the cursor, in a list with a preview.
-function M.show()
+-- The writes to `name`, or to the name under the cursor; on none there, the
+-- names of the project are listed to type one (lua/taka/gtags/names.lua).
+-- `root` is the project to look in, taken from the file before the list
+-- opens: chosen from the list, the name arrives with the list's own buffer
+-- current, which is in no project.
+function M.show(name, root)
   -- The grammar read is C's. Elsewhere a language server's references, gr in
   -- LazyVim, are the nearest thing.
-  if vim.bo.filetype ~= "c" and vim.bo.filetype ~= "cpp" then
+  if not root and vim.bo.filetype ~= "c" and vim.bo.filetype ~= "cpp" then
     vim.notify("The writes list reads C only; gr lists the references", vim.log.levels.WARN)
     return
   end
-  local name = vim.fn.expand("<cword>")
+  root = root or root_of(0)
+  name = name or vim.fn.expand("<cword>")
   if not name:match("^[%a_][%w_]*$") then
-    vim.notify("No name under the cursor", vim.log.levels.WARN)
-    return
+    return require("taka.gtags.names").pick("w", "Where this name is written to", function(chosen)
+      M.show(chosen, root)
+    end)
   end
   if vim.fn.executable("rg") == 0 then
     vim.notify("rg is not on PATH", vim.log.levels.ERROR)
     return
   end
   local answered = require("taka.lib.activity").begin("writes: " .. name)
-  M.find(name, root_of(0), function(items)
+  M.find(name, root, function(items)
     answered(#items == 0 and "nothing found" or ("%d found"):format(#items))
     if #items == 0 then
       vim.notify("No writes to " .. name .. " found", vim.log.levels.WARN)

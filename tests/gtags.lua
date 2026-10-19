@@ -119,6 +119,92 @@ return function(T)
     expect(ok, tostring(err))
     expect(vim.deep_equal(landed, { "lib.c:4", "lib.c:1", "lib.c:3" }), "landed on " .. vim.inspect(landed))
   end)
+  -- <C-]>, <leader>jp and <leader>jw open the list of names on a blank line,
+  -- and on the bare " *" of a block comment, too, each doing with the name
+  -- what it does on a word: jump, peek, and the writes list. <C-]> did
+  -- nothing on a blank line, jw warned.
+  check("gtags: <C-]>, jp and jw list names on a blank line, each to its own end", function()
+    need("gtags", "global", "rg")
+    local dir = c_project()
+    -- The name written to has two letters: the list of names asks global
+    -- for two at least.
+    write(
+      dir .. "/lib.c",
+      { "", "int target_fn(void)", "{", "    return 42;", "}", "int vv; void w(void) { vv = 1; }", "/*", " *", " */" }
+    )
+    run({ "gtags" }, dir)
+    vim.api.nvim_set_current_dir(dir)
+    local function choose(lhs, name)
+      vim.cmd.edit(dir .. "/lib.c")
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+      key(lhs)()
+      local picker
+      vim.wait(3000, function()
+        picker = Snacks.picker.get({ source = "gtags_names" })[1]
+        return picker ~= nil
+      end, 20)
+      if not picker then
+        return "no list"
+      end
+      local input = picker.input.win.buf
+      vim.api.nvim_buf_set_lines(input, 0, -1, false, { name })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
+      vim.wait(5000, function()
+        return #picker:items() > 0
+      end, 20)
+      picker:action("confirm")
+      return "chosen"
+    end
+    local seen = {}
+    local ok, err = pcall(function()
+      seen.jump = choose("<C-]>", "target_fn")
+      vim.wait(5000, function()
+        return vim.fn.line(".") == 2
+      end, 20)
+      seen.jump = seen.jump .. ":" .. vim.fn.line(".")
+      seen.peek = choose("<leader>jp", "target_fn")
+      -- The peek's window alone, told by its statuscolumn: the windows of the
+      -- list just closed are still up as well.
+      local function peeks()
+        return #vim.tbl_filter(function(win)
+          return vim.wo[win].statuscolumn:find("v:lnum +", 1, true) ~= nil
+        end, floats())
+      end
+      vim.wait(5000, function()
+        return peeks() > 0
+      end, 20)
+      seen.peek = seen.peek .. ":" .. peeks()
+      reset_editor()
+      seen.writes = choose("<leader>jw", "vv")
+      -- The list of writes is a picker of its own; the quickfix list it is
+      -- made from is what is checked.
+      vim.wait(5000, function()
+        return vim.fn.getqflist({ title = 1 }).title == "Writes to vv"
+      end, 20)
+      seen.writes = seen.writes .. ":" .. vim.fn.getqflist({ title = 1 }).title
+      -- <C-]> on the bare " *" of a block comment, line 8: the list, not a
+      -- jump looked for the star.
+      for _, picker in ipairs(Snacks.picker.get()) do
+        picker:close()
+      end
+      vim.cmd.edit(dir .. "/lib.c")
+      vim.api.nvim_win_set_cursor(0, { 8, 0 })
+      key("<C-]>")()
+      vim.wait(3000, function()
+        return Snacks.picker.get({ source = "gtags_names" })[1] ~= nil
+      end, 20)
+      seen.star = Snacks.picker.get({ source = "gtags_names" })[1] ~= nil
+    end)
+    for _, picker in ipairs(Snacks.picker.get()) do
+      picker:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.jump == "chosen:2", "<C-]> from the list: " .. tostring(seen.jump))
+    expect(seen.peek == "chosen:1", "jp from the list: " .. tostring(seen.peek))
+    expect(seen.writes == "chosen:Writes to vv", "jw from the list: " .. tostring(seen.writes))
+    expect(seen.star, "<C-]> on a bare ' *' did not open the list of names")
+  end)
   -- <leader>jb and <leader>jB ask before every rebuild, the folder named,
   -- and No is what Enter gives. They asked only where no index was yet, so a
   -- key pressed by mistake started a rebuild unasked.
@@ -231,9 +317,12 @@ return function(T)
       seen.items = vim.tbl_map(function(item)
         return item.text
       end, picker:items())
+      -- The quickfix list a test before may have left is told from this one
+      -- by the title show() gives it.
+      vim.fn.setqflist({}, " ", { title = "" })
       picker:action("confirm")
       vim.wait(5000, function()
-        return Snacks.picker.get({ source = "gtags_names" })[1] == nil and #vim.fn.getqflist() > 0
+        return vim.fn.getqflist({ title = 1 }).title == "Occurrences of target_fn"
       end, 20)
       seen.results = #vim.fn.getqflist()
       -- <leader>jg from the list goes to the definition, no second list.

@@ -70,7 +70,11 @@ local keys = {
       if in_help() then
         return follow_link()
       end
-      gtags().jump(vim.fn.expand("<cword>"))
+      local symbol = vim.fn.expand("<cword>")
+      if not is_name(symbol) then
+        return require("taka.gtags.names").pick("g", "Jump to definition")
+      end
+      gtags().jump(symbol)
     end,
     desc = "Jump to definition",
   },
@@ -99,7 +103,13 @@ local keys = {
   {
     "<leader>jp",
     function()
-      gtags().peek(vim.fn.expand("<cword>"))
+      local symbol = vim.fn.expand("<cword>")
+      if not is_name(symbol) then
+        return require("taka.gtags.names").pick("g", "Peek definition", function(name)
+          gtags().peek(name)
+        end)
+      end
+      gtags().peek(symbol)
     end,
     desc = "Peek definition",
   },

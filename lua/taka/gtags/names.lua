@@ -52,8 +52,10 @@ M.names = names
 -- Opens the list for the query `kind` (s, c, t and the rest of
 -- lua/taka/gtags/lookup.lua), `title` naming it; a name chosen runs it. For
 -- "g" the name chosen is jumped to, as <leader>jg does on a word: a
--- definition is found by its name alone, so no second list is needed.
-function M.pick(kind, title)
+-- definition is found by its name alone, so no second list is needed. A key
+-- that is no query of lookup.lua, the peek or the writes list, hands what to
+-- do with the name as `on_name` instead.
+function M.pick(kind, title, on_name)
   local file = vim.api.nvim_buf_get_name(0)
   local root = require("taka.lib.gtags_global").root(file)
   if not root then
@@ -95,7 +97,9 @@ function M.pick(kind, title)
       if not item then
         return
       end
-      if kind == "g" then
+      if on_name then
+        on_name(item.text)
+      elseif kind == "g" then
         require("taka.gtags").jump(item.text)
       else
         require("taka.gtags").query(kind, item.text)
