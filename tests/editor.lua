@@ -579,6 +579,87 @@ return function(T)
     expect(vim.deep_equal(seen, { 13, 45 }), "the preview was on lines " .. vim.inspect(seen))
   end)
 
+  -- The preview of a picker takes six tenths of the width, the list four, and
+  -- <C-l> / <C-h> scroll it sideways by a quarter of its width: the halves it had cut
+  -- a long line of C off in both, and snacks scrolled a column a press.
+  check("picker: a wide preview, scrolled sideways by a quarter of its width", function()
+    local dir = temp_dir()
+    T.write(dir .. "/w.c", { "int a;", "    int a_rather_long_name = " .. ("0x1234, "):rep(30) .. "0;", "int b;" })
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      local picker = Snacks.picker.files({ pattern = "w.c:2" })
+      local function preview_win()
+        local win = picker.preview and picker.preview.win and picker.preview.win.win
+        return win and vim.api.nvim_win_is_valid(win) and win or nil
+      end
+      vim.wait(3000, function()
+        return preview_win() ~= nil and vim.api.nvim_win_get_cursor(preview_win())[1] == 2
+      end, 20)
+      local list, preview = picker.list.win.win, preview_win()
+      -- Side by side only on a screen wide enough for it; a headless run is
+      -- 80 columns, where the preview goes below the list instead.
+      seen.widths = vim.o.columns < 120 or vim.api.nvim_win_get_width(list) < vim.api.nvim_win_get_width(preview)
+      seen.preset = Snacks.config.picker.layout.preset()
+      local function leftcol()
+        return vim.api.nvim_win_call(preview, function()
+          return vim.fn.winsaveview().leftcol
+        end)
+      end
+      seen.before = leftcol()
+      picker:action("preview_scroll_right")
+      seen.right = leftcol()
+      picker:action("preview_scroll_left")
+      seen.back = leftcol()
+      seen.step = math.floor(vim.api.nvim_win_get_width(preview) / 4)
+      -- <C-Right> / <C-Left> give the preview more or less of the width,
+      -- and a picker opened after starts at the share they left. On a narrow
+      -- screen the preview stands below the list and has no width to give,
+      -- so the share itself is what is checked, not the columns.
+      local shares = _G.taka_picker_preview
+      seen.share = { shares.share }
+      picker:action("preview_wider")
+      seen.share[#seen.share + 1] = shares.share
+      picker:action("preview_narrower")
+      picker:action("preview_narrower")
+      seen.share[#seen.share + 1] = shares.share
+      for _ = 1, 30 do
+        picker:action("preview_narrower")
+      end
+      seen.share[#seen.share + 1] = shares.share
+      for _ = 1, 30 do
+        picker:action("preview_wider")
+      end
+      seen.share[#seen.share + 1] = shares.share
+      -- Back to the share the config starts at, for the checks after.
+      for _ = 1, 6 do
+        picker:action("preview_narrower")
+      end
+      seen.share[#seen.share + 1] = shares.share
+    end)
+    for _, picker in ipairs(Snacks.picker.get({ source = "files" })) do
+      picker:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.widths, "the preview is not wider than the list")
+    expect(
+      seen.preset == (vim.o.columns >= 120 and "wide_preview" or "vertical"),
+      "the layout chosen is " .. tostring(seen.preset)
+    )
+    expect(
+      seen.before == 0 and seen.right == seen.step and seen.back == 0,
+      ("scrolled %s -> %s -> %s, a step being %s"):format(seen.before, seen.right, seen.back, seen.step)
+    )
+    local shares = vim.tbl_map(function(v)
+      return v and ("%.2f"):format(v) or "nil"
+    end, seen.share or {})
+    expect(
+      table.concat(shares, " ") == "0.60 0.65 0.55 0.20 0.90 0.60",
+      "the preview's share went " .. table.concat(shares, " ")
+    )
+  end)
+
   -- The find bar of <leader>sf: what is typed is found as it is, counted, and
   -- gone through with the keys or the buttons; closed, n goes on with it.
   check("find: the bar finds what is typed, counts it and steps through it", function()
