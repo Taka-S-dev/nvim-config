@@ -146,6 +146,105 @@ return function(T)
   -- press added a level to the jump stack. It adds none. Nor does a name with
   -- several definitions until one is chosen from the list: closed without a
   -- choice, the list left a level that went nowhere.
+  -- <leader>js on a line with no name, a blank one or the bare " *" of a
+  -- block comment, lists the names the project defines as they are typed,
+  -- and Enter runs the query on the one chosen. The key did nothing on the
+  -- blank line, and on " *" looked for the star.
+  check("gtags: <leader>js with no name under the cursor lists names to type", function()
+    need("gtags", "global")
+    local dir = c_project()
+    write(dir .. "/lib.c", {
+      "/* a comment */",
+      "",
+      "int target_fn(void)",
+      "{",
+      "    return 42;",
+      "}",
+      "int target_fn_extra(void) { return 1; }",
+      "/*",
+      " *",
+      " */",
+    })
+    run({ "gtags" }, dir)
+    local names = require("taka.gtags.names")
+    -- The name typed whole comes first, whatever order global lists them in.
+    local listed
+    names.names(dir, "target_fn", function(list)
+      listed = list
+    end)
+    vim.wait(5000, function()
+      return listed ~= nil
+    end, 20)
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/lib.c")
+      vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      key("<leader>js")()
+      local picker
+      vim.wait(3000, function()
+        picker = Snacks.picker.get({ source = "gtags_names" })[1]
+        return picker ~= nil
+      end, 20)
+      seen.opened = picker ~= nil
+      local input = picker.input.win.buf
+      vim.api.nvim_buf_set_lines(input, 0, -1, false, { "target" })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
+      vim.wait(5000, function()
+        return #picker:items() > 0
+      end, 20)
+      seen.items = vim.tbl_map(function(item)
+        return item.text
+      end, picker:items())
+      picker:action("confirm")
+      vim.wait(5000, function()
+        return Snacks.picker.get({ source = "gtags_names" })[1] == nil and #vim.fn.getqflist() > 0
+      end, 20)
+      seen.results = #vim.fn.getqflist()
+      -- <leader>jg from the list goes to the definition, no second list.
+      -- From the blank line 2 of lib.c, with the cursor off the name.
+      vim.cmd.edit(dir .. "/lib.c")
+      vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      key("<leader>jg")()
+      vim.wait(3000, function()
+        picker = Snacks.picker.get({ source = "gtags_names" })[1]
+        return picker ~= nil
+      end, 20)
+      input = picker.input.win.buf
+      vim.api.nvim_buf_set_lines(input, 0, -1, false, { "target_fn" })
+      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
+      vim.wait(5000, function()
+        return #picker:items() > 0
+      end, 20)
+      picker:action("confirm")
+      vim.wait(5000, function()
+        return vim.fn.line(".") == 3
+      end, 20)
+      seen.jumped = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+      seen.lists_left = #Snacks.picker.get()
+      -- The bare " *" of a block comment, line 9, whose <cword> is the star.
+      vim.cmd.edit(dir .. "/lib.c")
+      vim.api.nvim_win_set_cursor(0, { 9, 0 })
+      seen.star_word = vim.fn.expand("<cword>")
+      key("<leader>js")()
+      vim.wait(3000, function()
+        return Snacks.picker.get({ source = "gtags_names" })[1] ~= nil
+      end, 20)
+      seen.star_list = Snacks.picker.get({ source = "gtags_names" })[1] ~= nil
+    end)
+    for _, picker in ipairs(Snacks.picker.get()) do
+      picker:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(vim.deep_equal(listed, { "target_fn", "target_fn_extra" }), "names for target_fn: " .. vim.inspect(listed))
+    expect(seen.opened, "the list of names did not open")
+    expect(vim.deep_equal(seen.items, { "target_fn", "target_fn_extra" }), "listed: " .. vim.inspect(seen.items))
+    expect((seen.results or 0) >= 2, "occurrences found: " .. tostring(seen.results))
+    expect(seen.jumped == "lib.c:3", "<leader>jg from the list landed on " .. tostring(seen.jumped))
+    expect(seen.lists_left == 0, "lists still open after the jump: " .. tostring(seen.lists_left))
+    expect(seen.star_word == "*", "the word on the comment's star: " .. tostring(seen.star_word))
+    expect(seen.star_list, "<leader>js on a bare ' *' did not open the list of names")
+  end)
   check("gtags: <C-]> puts no jump on the tag stack until it moves", function()
     need("gtags", "global")
     local dir = c_project()

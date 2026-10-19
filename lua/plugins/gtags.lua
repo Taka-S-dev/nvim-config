@@ -19,12 +19,25 @@ local function gtags()
   return require("taka.gtags")
 end
 
+-- Whether `word`, the <cword> of a key, is a name to look up. On a blank line
+-- it is empty, and on the bare " *" of a block comment it is the star, which
+-- was looked up and not found; the word of a comment is a name like any.
+local function is_name(word)
+  return word:match("^[%a_][%w_]*$") ~= nil
+end
+
+-- On no name under the cursor, the names of the project are listed to type
+-- one (lua/taka/gtags/names.lua).
 local function query_key(lhs, kind, desc)
   return {
     {
       lhs,
       function()
-        gtags().query(kind, gtags().under_cursor(kind))
+        local symbol = gtags().under_cursor(kind)
+        if kind ~= "f" and kind ~= "i" and not is_name(symbol) then
+          return require("taka.gtags.names").pick(kind, desc)
+        end
+        gtags().query(kind, symbol)
       end,
       desc = desc,
     },
@@ -122,7 +135,11 @@ local keys = {
   {
     "<leader>jg",
     function()
-      gtags().jump(vim.fn.expand("<cword>"))
+      local symbol = vim.fn.expand("<cword>")
+      if not is_name(symbol) then
+        return require("taka.gtags.names").pick("g", "Find global definition")
+      end
+      gtags().jump(symbol)
     end,
     desc = "Find global definition",
   },
