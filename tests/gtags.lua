@@ -119,6 +119,42 @@ return function(T)
     expect(ok, tostring(err))
     expect(vim.deep_equal(landed, { "lib.c:4", "lib.c:1", "lib.c:3" }), "landed on " .. vim.inspect(landed))
   end)
+  -- <leader>jb and <leader>jB ask before every rebuild, the folder named,
+  -- and No is what Enter gives. They asked only where no index was yet, so a
+  -- key pressed by mistake started a rebuild unasked.
+  check("gtags: <leader>jb and jB ask before rebuilding an index that exists", function()
+    need("gtags", "global")
+    local dir = c_project()
+    run({ "gtags" }, dir)
+    local before = vim.uv.fs_stat(dir .. "/GTAGS").mtime.sec
+    local asked, confirm = {}, vim.fn.confirm
+    vim.fn.confirm = function(prompt, _, default)
+      asked[#asked + 1] = { prompt = prompt, default = default }
+      return 2 -- No
+    end
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/main.c")
+      key("<leader>jb")()
+      vim.wait(300)
+      key("<leader>jB")()
+      vim.wait(300)
+    end)
+    vim.fn.confirm = confirm
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(#asked == 2, ("asked %d times, not 2"):format(#asked))
+    expect(
+      asked[1] and asked[1].prompt:find("Rebuild the GTAGS in", 1, true) and asked[1].prompt:find(dir, 1, true),
+      "jb asked: " .. tostring(asked[1] and asked[1].prompt)
+    )
+    expect(asked[1] and asked[1].default == 2, "jb's default answer is not No")
+    expect(
+      asked[2] and asked[2].prompt:find("ctags", 1, true) and asked[2].default == 2,
+      "jB asked: " .. tostring(asked[2] and asked[2].prompt)
+    )
+    expect(vim.uv.fs_stat(dir .. "/GTAGS").mtime.sec == before, "GTAGS was rebuilt after No")
+    expect(vim.uv.fs_stat(dir .. "/tags") == nil, "a tags file was made after No")
+  end)
   -- A session opened over ssh will not pass through scoop's `current`
   -- junctions, the shims' included, so the tools this config runs are found in
   -- the folder of their version, down a path with no junction in it. Only where

@@ -48,18 +48,27 @@ end
 -- A database that exists is rebuilt where it is. A first build has nothing to
 -- go by but the cwd, and a GTAGS left in the wrong directory is found again by
 -- every file below it, so the directory is shown before anything is written.
+-- Every build is asked about, the folder named, with No as the answer Enter
+-- gives: a key pressed by mistake started a rebuild with nothing to stop it.
+-- A second press while one runs goes straight to the notice that it is
+-- running.
+local function confirmed(what, root, label)
+  if is_indexing(label, root) then
+    return true
+  end
+  local prompt = ("%s\n%s ?"):format(what, root)
+  return vim.fn.confirm(prompt, "&Yes\n&No", 2) == 1
+end
+
 local function build_gtags()
   local root = gtags_root()
+  local what = "Rebuild the GTAGS in"
   if not root then
     root = vim.fn.getcwd()
-    -- Asked only when there is something to decide: a second press while the
-    -- first build runs goes straight to the notice that it is running.
-    if not is_indexing("Building GTAGS", root) then
-      local prompt = ("No GTAGS covers this file. Build one in\n%s ?"):format(root)
-      if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
-        return
-      end
-    end
+    what = "No GTAGS covers this file. Build one in"
+  end
+  if not confirmed(what, root, "Building GTAGS") then
+    return
   end
   run_indexer(root, { "gtags" }, "Building GTAGS")
 end
@@ -86,6 +95,10 @@ end
 -- the key rebuilds it.
 local function build_ctags()
   if vim.fn.exists(":GutentagsUpdate") == 2 then
+    local project = vim.b.gutentags_root or vim.fn.getcwd()
+    if not confirmed("Rebuild the ctags index of", project, "Building ctags") then
+      return
+    end
     -- Runs in the background; lua/plugins/gutentags.lua reports its start and
     -- end to the statusline.
     vim.cmd("GutentagsUpdate!")
@@ -93,14 +106,13 @@ local function build_ctags()
   end
 
   local root = gtags_root()
+  local what = "Rebuild the ctags index of"
   if not root then
     root = vim.fn.getcwd()
-    if not is_indexing("Building ctags", root) then
-      local prompt = ("Build a ctags index of everything under\n%s ?"):format(root)
-      if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
-        return
-      end
-    end
+    what = "Build a ctags index of everything under"
+  end
+  if not confirmed(what, root, "Building ctags") then
+    return
   end
 
   -- Written under another name and moved into place, so a reader never sees a
