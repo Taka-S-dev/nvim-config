@@ -45,10 +45,21 @@ local function resize_preview(delta)
   end
 end
 
+-- With no preview, in a picker that stands in a window of its own as the file
+-- tree does, the keys move to the window beside, as LazyVim's <C-h> and <C-l>
+-- do everywhere else: taken for the preview in every picker, they had left
+-- the tree with no key to go to the file beside it. A floating picker whose
+-- preview is hidden is left as it is: moving out of it closes it. Which of
+-- the two a picker is, its layout's outer window tells: the list of the tree
+-- floats too, within the split of the sidebar.
 local function scroll_preview(left)
   return function(picker)
     local win = picker.preview.win
     if not win:valid() then
+      local root = picker.layout.root
+      if root and root:valid() and not root:is_floating() then
+        vim.cmd.wincmd(left and "h" or "l")
+      end
       return
     end
     local step = math.max(1, math.floor(vim.api.nvim_win_get_width(win.win) / 4))

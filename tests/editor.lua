@@ -304,6 +304,54 @@ return function(T)
     expect(again == 7, "shown again at " .. tostring(again) .. " rows")
   end)
 
+  -- <C-l> in the file tree goes to the code beside it. The picker keys that
+  -- scroll a preview sideways took <C-l> in every picker, the tree among
+  -- them, and there, with no preview, it did nothing.
+  check("explorer: <C-l> in the tree goes to the code beside it", function()
+    local dir = temp_dir()
+    T.write(dir .. "/a.c", { "int x;" })
+    local seen = {}
+    local explorer
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/a.c")
+      local code = vim.api.nvim_get_current_win()
+      Snacks.explorer()
+      vim.wait(2000, function()
+        explorer = Snacks.picker.get({ source = "explorer" })[1]
+        return explorer and explorer:current() ~= nil
+      end, 20)
+      vim.wait(300)
+      vim.api.nvim_set_current_win(explorer.list.win.win)
+      vim.cmd.stopinsert()
+      seen.from = vim.bo.filetype
+      vim.api.nvim_feedkeys(vim.keycode("<C-l>"), "x", false)
+      seen.to = vim.api.nvim_get_current_win() == code and "code" or vim.bo.filetype
+      -- A floating picker with its preview hidden stays open where it is:
+      -- moving out of it would close it.
+      explorer:close()
+      local files = Snacks.picker.files({ cwd = dir })
+      vim.wait(2000, function()
+        return files:count() > 0 and not files:is_active()
+      end, 20)
+      files:action("toggle_preview")
+      vim.wait(200)
+      local at = vim.api.nvim_get_current_win()
+      files:action("preview_scroll_right")
+      vim.wait(200)
+      seen.float_stayed = not files.closed and vim.api.nvim_get_current_win() == at
+      files:close()
+    end)
+    if explorer and not explorer.closed then
+      explorer:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.from == "snacks_picker_list", "pressed in " .. tostring(seen.from))
+    expect(seen.to == "code", "<C-l> in the tree went to " .. tostring(seen.to))
+    expect(seen.float_stayed, "<C-l> in a floating picker with no preview left it")
+  end)
+
   -- The file tree follows the file shown in the code: switched to a file in a
   -- folder not yet open, the tree opened the folder and left its cursor rows
   -- away. <leader>fl brings it back to the file after the tree was scrolled.
