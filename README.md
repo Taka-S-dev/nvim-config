@@ -4,7 +4,7 @@ LazyVim ベースの個人 Neovim 設定。複数の Windows マシンで共通�
 
 - treesitter パーサのビルド問題を `zig cc` ラッパーで回避
 - レガシー C コードを gtags (GNU Global) でナビ(clangd を当てづらいコードベース向け)
-- gtags が指標化できないソース(Shift-JIS、特殊拡張子等)向けに ctags フォールバック
+- gtags が指標化できないソース(Shift-JIS など)向けに ctags フォールバック。読むのは C と C++ だけで、特殊な拡張子は `lua/config/local.lua` で C に対応付ける(`:h cfg-ctags`)
 
 ## セットアップ手順 (新しい Windows マシン)
 

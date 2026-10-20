@@ -64,6 +64,16 @@ return {
       "cscope.out",
       "tags",
     }
+
+    -- C and C++ only, as gtags reads. ctags otherwise reads every language it
+    -- knows: on openssl, whose html folder holds 484 MB of pages, it ran for
+    -- 171 seconds and wrote 585 MB, the HTML and JSON more than nine lines in
+    -- ten; C and C++ alone took 3 seconds and 13 MB. The build that runs
+    -- without gutentags (lua/taka/gtags/index.lua) is given the same. A C
+    -- source with an extension of its own, Pro*C's .pc say, is mapped in
+    -- lua/config/local.lua:
+    --   vim.g.ctags_local_args = { "--map-C=+.pc" }
+    vim.g.gutentags_ctags_extra_args = vim.list_extend({ "--languages=C,C++" }, vim.g.ctags_local_args or {})
   end,
   config = function()
     -- gutentags' own update_tags.cmd writes its progress to CON, the console

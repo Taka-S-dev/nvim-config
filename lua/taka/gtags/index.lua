@@ -116,11 +116,13 @@ local function build_ctags()
   end
 
   -- Written under another name and moved into place, so a reader never sees a
-  -- half-written index. The excludes are the ones gutentags is given.
+  -- half-written index. The excludes and the languages are the ones gutentags
+  -- is given (lua/plugins/gutentags.lua).
   local cmd = { vim.g.gutentags_ctags_executable or "ctags", "-R", "--tag-relative=yes", "-f", "tags.temp" }
   for _, pattern in ipairs(vim.g.gutentags_ctags_exclude or {}) do
     cmd[#cmd + 1] = "--exclude=" .. pattern
   end
+  vim.list_extend(cmd, vim.g.gutentags_ctags_extra_args or { "--languages=C,C++" })
   cmd[#cmd + 1] = "--exclude=tags.temp"
   cmd[#cmd + 1] = "."
   run_indexer(root, cmd, "Building ctags", function()

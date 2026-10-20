@@ -898,9 +898,17 @@ return function(T)
     expect(ok, tostring(err))
     expect(shown == want.MASK, "the key showed " .. tostring(shown))
   end)
+  -- Only C and C++ are read, as gtags reads: every language ctags knows took
+  -- 171 seconds on openssl and wrote 585 MB, its HTML pages most of it. A C
+  -- source with an extension of its own is read once mapped to C, as
+  -- lua/config/local.lua does with vim.g.ctags_local_args.
   check("ctags: <leader>jB writes tags to the root of a tree that is not under version control", function()
     need(vim.g.gutentags_ctags_executable or "ctags")
     local dir = c_project()
+    write(dir .. "/page.html", { "<html><body>", '<h1 id="html_anchor">html_heading</h1>', "</body></html>" })
+    write(dir .. "/query.pc", { "int pc_fn(void)", "{", "    return 1;", "}" })
+    local given = vim.g.gutentags_ctags_extra_args
+    vim.g.gutentags_ctags_extra_args = vim.list_extend(vim.deepcopy(given or {}), { "--map-C=+.pc" })
     vim.api.nvim_set_current_dir(dir)
     vim.cmd("enew")
     key("<leader>jB")()
@@ -908,17 +916,24 @@ return function(T)
       return vim.uv.fs_stat(dir .. "/tags") ~= nil
     end, 50)
     vim.wait(500)
+    vim.g.gutentags_ctags_extra_args = given
     local leftover = vim.uv.fs_stat(dir .. "/tags.temp") ~= nil
-    local found = false
+    local names = {}
     if built then
       for _, line in ipairs(vim.fn.readfile(dir .. "/tags")) do
-        found = found or line:find("^target_fn\t") ~= nil
+        local name = line:match("^([^!][^\t]*)\t")
+        if name then
+          names[name] = true
+        end
       end
     end
     reset_editor()
+    expect(given and given[1] == "--languages=C,C++", "ctags is given " .. vim.inspect(given))
     expect(built, "tags was not written to the project root")
     expect(not leftover, "tags.temp was left behind")
-    expect(found, "the definition is not in the index")
+    expect(names.target_fn, "the definition is not in the index")
+    expect(not names.html_anchor and not names.html_heading, "the HTML page was read")
+    expect(names.pc_fn, "the .pc source mapped to C was not read")
   end)
   -- A save leaves the tags file alone: where there was none it made one, the
   -- first save in a folder under version control indexing all of it, and
