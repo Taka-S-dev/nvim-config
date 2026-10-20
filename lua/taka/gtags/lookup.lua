@@ -461,6 +461,7 @@ local M = {}
 M.root = gtags_root
 M.begin = begin_lookup
 M.show = show
+M.heal = heal
 M.ctags_definitions = ctags_definitions
 M.lookup_definition = lookup_definition
 M.jump = jump_to_definition

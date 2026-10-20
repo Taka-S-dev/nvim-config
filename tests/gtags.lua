@@ -119,6 +119,20 @@ return function(T)
     expect(ok, tostring(err))
     expect(vim.deep_equal(landed, { "lib.c:4", "lib.c:1", "lib.c:3" }), "landed on " .. vim.inspect(landed))
   end)
+  -- Types `text` into the list of names and waits until it is narrowed to
+  -- it: the list holds every name from the start, so having items says
+  -- nothing about what was typed. The texts of the items are returned.
+  local function type_name(picker, text)
+    local input = picker.input.win.buf
+    vim.api.nvim_buf_set_lines(input, 0, -1, false, { text })
+    vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
+    vim.wait(5000, function()
+      return picker.matcher.pattern == text and not picker:is_active()
+    end, 20)
+    return vim.tbl_map(function(item)
+      return item.text
+    end, picker:items())
+  end
   -- <C-]>, <leader>jp and <leader>jw open the list of names on a blank line,
   -- and on the bare " *" of a block comment, too, each doing with the name
   -- what it does on a word: jump, peek, and the writes list. <C-]> did
@@ -126,8 +140,6 @@ return function(T)
   check("gtags: <C-]>, jp and jw list names on a blank line, each to its own end", function()
     need("gtags", "global", "rg")
     local dir = c_project()
-    -- The name written to has two letters: the list of names asks global
-    -- for two at least.
     write(
       dir .. "/lib.c",
       { "", "int target_fn(void)", "{", "    return 42;", "}", "int vv; void w(void) { vv = 1; }", "/*", " *", " */" }
@@ -146,12 +158,7 @@ return function(T)
       if not picker then
         return "no list"
       end
-      local input = picker.input.win.buf
-      vim.api.nvim_buf_set_lines(input, 0, -1, false, { name })
-      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
-      vim.wait(5000, function()
-        return #picker:items() > 0
-      end, 20)
+      type_name(picker, name)
       picker:action("confirm")
       return "chosen"
     end
@@ -263,11 +270,145 @@ return function(T)
     )
   end)
 
-  -- <C-]> on a name where it is defined, as on a macro in its own #define,
-  -- went to the line it was on and still put a jump on the tag stack: each
-  -- press added a level to the jump stack. It adds none. Nor does a name with
-  -- several definitions until one is chosen from the list: closed without a
-  -- choice, the list left a level that went nowhere.
+  -- The list of names is narrowed as <leader>ff narrows files: words split
+  -- at spaces must all be in the name, in any order, so bio ssl finds
+  -- BIO_f_ssl; lower case matches any case and a capital only that one. The
+  -- name typed whole comes first. global lists names only by how they begin,
+  -- and bio ssl found nothing.
+  check("gtags: the list of names takes words in any order, case aside unless a capital", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    write(dir .. "/lib.c", {
+      "int SSL_new(void) { return 1; }",
+      "int ssl_new(void) { return 2; }",
+      "int ssl_new_ex(void) { return 3; }",
+      "int BIO_f_ssl(void) { return 4; }",
+      "int ssl_to_bio(void) { return 5; }",
+      "int other(void) { return 6; }",
+    })
+    run({ "gtags" }, dir)
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/lib.c")
+      local picker = require("taka.gtags.names").pick("s", "Find this symbol")
+      vim.wait(5000, function()
+        return picker:count() > 0 and not picker:is_active()
+      end, 20)
+      seen.all = picker:count()
+      seen.lower = type_name(picker, "ssl_new")
+      seen.capital = type_name(picker, "SSL_new")
+      seen.words = type_name(picker, "bio ssl")
+      picker:close()
+      -- The names are kept once read; a name added and the index built
+      -- again is in the list opened after.
+      write(dir .. "/more.c", { "int added_later(void) { return 7; }" })
+      run({ "gtags" }, dir)
+      picker = require("taka.gtags.names").pick("s", "Find this symbol")
+      vim.wait(5000, function()
+        return picker:count() > 0 and not picker:is_active()
+      end, 20)
+      seen.after = picker:count()
+      picker:close()
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    local function sorted(list)
+      list = vim.deepcopy(list or {})
+      table.sort(list)
+      return list
+    end
+    expect(seen.all == 6, "names listed at the start: " .. tostring(seen.all))
+    expect(seen.after == 7, "names listed after the index was built again: " .. tostring(seen.after))
+    expect(
+      seen.lower and seen.lower[1] == "ssl_new" and vim.list_contains(seen.lower, "SSL_new"),
+      "ssl_new listed " .. vim.inspect(seen.lower)
+    )
+    expect(
+      seen.capital and seen.capital[1] == "SSL_new" and not vim.list_contains(seen.capital, "ssl_new"),
+      "SSL_new listed " .. vim.inspect(seen.capital)
+    )
+    expect(
+      vim.deep_equal(sorted(seen.words), { "BIO_f_ssl", "ssl_to_bio" }),
+      "bio ssl listed " .. vim.inspect(seen.words)
+    )
+  end)
+  -- Each definition is a row of its own, its file and line beside the name and
+  -- the lines around it in the preview, so a name defined in two files is told
+  -- apart before one is chosen, and <leader>jg goes to the one chosen. A name
+  -- only used, with no definition recorded, is a row with no file.
+  check("gtags: the list of names shows each definition's file, and jg goes to the one chosen", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "", "static int helper(void) { return 1; }" })
+    write(dir .. "/b.c", { "", "", "", "static int helper(void) { return 2; }", "int f(void) { return used_only; }" })
+    run({ "gtags" }, dir)
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/a.c")
+      vim.fn.settagstack(vim.api.nvim_get_current_win(), { items = {} }, "r")
+      local picker = require("taka.gtags.names").pick("g", "Find global definition")
+      vim.wait(5000, function()
+        return picker:count() > 0 and not picker:is_active()
+      end, 20)
+      seen.first_top = picker:items()[1].text
+      type_name(picker, "used_only")
+      vim.wait(300)
+      seen.no_file_row = vim.api.nvim_buf_get_lines(picker.list.win.buf, 0, 1, false)[1]
+      seen.no_file_preview = table.concat(vim.api.nvim_buf_get_lines(picker.preview.win.buf, 0, -1, false), " ")
+      type_name(picker, "helper")
+      vim.wait(300)
+      seen.rows = vim.tbl_map(vim.trim, vim.api.nvim_buf_get_lines(picker.list.win.buf, 0, 2, false))
+      local at
+      for i, item in ipairs(picker:items()) do
+        if item.path == "b.c" then
+          at = i
+        end
+      end
+      picker.list:view(at)
+      vim.wait(300)
+      seen.preview = vim.api.nvim_buf_get_lines(picker.preview.win.buf, 3, 4, false)[1]
+      picker:action("confirm")
+      vim.wait(3000, function()
+        return vim.fn.expand("%:t") == "b.c"
+      end, 20)
+      seen.landed = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+      seen.stack = #vim.fn.gettagstack().items
+      -- Opened again, with nothing typed, the list starts from the top as it
+      -- did the first time, not in the order of the last search.
+      picker = require("taka.gtags.names").pick("g", "Find global definition")
+      vim.wait(5000, function()
+        return picker:count() > 0 and not picker:is_active()
+      end, 20)
+      seen.again_top = picker:items()[1].text
+      picker:close()
+    end)
+    for _, picker in ipairs(Snacks.picker.get()) do
+      picker:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    table.sort(seen.rows or {})
+    expect(
+      vim.deep_equal(seen.rows, { "helper  a.c:2", "helper  b.c:4" }),
+      "rows for helper: " .. vim.inspect(seen.rows)
+    )
+    expect(
+      seen.preview == "static int helper(void) { return 2; }",
+      "preview of b.c's helper: " .. tostring(seen.preview)
+    )
+    expect(seen.landed == "b.c:4", "jg from the b.c row landed on " .. tostring(seen.landed))
+    expect(seen.stack == 1, "tag stack after the jump: " .. tostring(seen.stack))
+    expect(
+      seen.again_top == seen.first_top,
+      ("first row when opened again: %s, not %s"):format(tostring(seen.again_top), tostring(seen.first_top))
+    )
+    expect(vim.trim(seen.no_file_row or "") == "used_only", "row of a name only used: " .. tostring(seen.no_file_row))
+    expect(
+      (seen.no_file_preview or ""):find("No definition recorded", 1, true) ~= nil,
+      "preview of a name only used: " .. tostring(seen.no_file_preview)
+    )
+  end)
   -- <leader>js on a line with no name, a blank one or the bare " *" of a
   -- block comment, lists the names the project defines as they are typed,
   -- and Enter runs the query on the one chosen. The key did nothing on the
@@ -288,15 +429,6 @@ return function(T)
       " */",
     })
     run({ "gtags" }, dir)
-    local names = require("taka.gtags.names")
-    -- The name typed whole comes first, whatever order global lists them in.
-    local listed
-    names.names(dir, "target_fn", function(list)
-      listed = list
-    end)
-    vim.wait(5000, function()
-      return listed ~= nil
-    end, 20)
     local seen = {}
     local ok, err = pcall(function()
       vim.cmd.edit(dir .. "/lib.c")
@@ -308,15 +440,7 @@ return function(T)
         return picker ~= nil
       end, 20)
       seen.opened = picker ~= nil
-      local input = picker.input.win.buf
-      vim.api.nvim_buf_set_lines(input, 0, -1, false, { "target" })
-      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
-      vim.wait(5000, function()
-        return #picker:items() > 0
-      end, 20)
-      seen.items = vim.tbl_map(function(item)
-        return item.text
-      end, picker:items())
+      seen.items = type_name(picker, "target")
       -- The quickfix list a test before may have left is told from this one
       -- by the title show() gives it.
       vim.fn.setqflist({}, " ", { title = "" })
@@ -334,12 +458,7 @@ return function(T)
         picker = Snacks.picker.get({ source = "gtags_names" })[1]
         return picker ~= nil
       end, 20)
-      input = picker.input.win.buf
-      vim.api.nvim_buf_set_lines(input, 0, -1, false, { "target_fn" })
-      vim.api.nvim_exec_autocmds("TextChanged", { buffer = input })
-      vim.wait(5000, function()
-        return #picker:items() > 0
-      end, 20)
+      seen.jg_items = type_name(picker, "target_fn")
       picker:action("confirm")
       vim.wait(5000, function()
         return vim.fn.line(".") == 3
@@ -361,7 +480,11 @@ return function(T)
     end
     reset_editor()
     expect(ok, tostring(err))
-    expect(vim.deep_equal(listed, { "target_fn", "target_fn_extra" }), "names for target_fn: " .. vim.inspect(listed))
+    -- The name typed whole comes first, the longer one after it.
+    expect(
+      vim.deep_equal(seen.jg_items, { "target_fn", "target_fn_extra" }),
+      "names for target_fn: " .. vim.inspect(seen.jg_items)
+    )
     expect(seen.opened, "the list of names did not open")
     expect(vim.deep_equal(seen.items, { "target_fn", "target_fn_extra" }), "listed: " .. vim.inspect(seen.items))
     expect((seen.results or 0) >= 2, "occurrences found: " .. tostring(seen.results))
@@ -370,6 +493,11 @@ return function(T)
     expect(seen.star_word == "*", "the word on the comment's star: " .. tostring(seen.star_word))
     expect(seen.star_list, "<leader>js on a bare ' *' did not open the list of names")
   end)
+  -- <C-]> on a name where it is defined, as on a macro in its own #define,
+  -- went to the line it was on and still put a jump on the tag stack: each
+  -- press added a level to the jump stack. It adds none. Nor does a name with
+  -- several definitions until one is chosen from the list: closed without a
+  -- choice, the list left a level that went nowhere.
   check("gtags: <C-]> puts no jump on the tag stack until it moves", function()
     need("gtags", "global")
     local dir = c_project()

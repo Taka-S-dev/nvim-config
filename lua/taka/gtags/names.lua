@@ -1,60 +1,124 @@
 -- A name typed for a query of GTAGS, where the cursor is on none: the names
--- the project defines, listed as they are typed, and the query run on the one
--- chosen. <leader>js on a blank line did nothing, and on the bare " *" of a
--- block comment looked for the star; the word had to be found in the code
+-- the project defines, narrowed as they are typed, and the query run on the
+-- one chosen. <leader>js on a blank line did nothing, and on the bare " *" of
+-- a block comment looked for the star; the word had to be found in the code
 -- first.
 --
--- global answers a query only for a name given whole, so what is typed cannot
--- be searched for as it is; but `global -c` lists the names a prefix begins,
--- in some sixty milliseconds on openssl, which keeps up with typing. The list
--- is of names only, each a line; Enter runs the query the key was for.
+-- Every definition GTAGS knows is read once, and the picker narrows them as
+-- <leader>ff narrows files: the words typed, split at spaces, must all be in
+-- the name, in any order and loosely, so bio ssl finds BIO_f_ssl; in lower
+-- case they match any case, with a capital only that one ('smartcase').
+-- global itself lists names only by how they begin, so bio ssl found nothing
+-- when the list asked it for each letter typed.
+--
+-- Each definition is a row of its own, with its file and line beside the name
+-- and the lines around it in the preview, so a name defined in two files, as
+-- openssl's ssl_servername_cb is in s_client.c and s_server.c, is told apart
+-- before one is chosen. The names gtags knows but records no definition of,
+-- those from outside the tree such as memcpy and size_t, follow with no file.
 local M = {}
 
--- Names beginning with `prefix`, handed to `done` as a list: definitions,
--- then the other symbols gtags knows (enum values among them), each once.
--- Two letters at least: one lists thousands, 4306 names beginning with S on
--- openssl.
-local function names(root, prefix, done)
-  if #prefix < 2 then
-    return done({})
+-- What was read, by project: the rows, and the GTAGS files they came from as
+-- they stood, so a rebuild or `global -u` is read again.
+local cache = {} ---@type table<string, { stamp: string, parts: table[][] }>
+
+local function stamp(root)
+  local parts = {}
+  for _, name in ipairs({ "GTAGS", "GRTAGS" }) do
+    local stat = vim.uv.fs_stat(vim.fs.joinpath(root, name))
+    parts[#parts + 1] = stat and ("%d.%d:%d"):format(stat.mtime.sec, stat.mtime.nsec, stat.size) or "-"
   end
-  local global = require("taka.lib.gtags_global")
-  local out, seen = {}, {}
-  local function take(output)
-    for name in vim.gsplit(output or "", "\n", { trimempty = true }) do
-      name = vim.trim(name)
-      if name ~= "" and not seen[name] then
-        seen[name] = true
-        out[#out + 1] = name
-      end
+  return table.concat(parts, " ")
+end
+
+-- `global -dx` prints `name  line  path  source-line`, the path from the root.
+local function definitions(root, output)
+  local rows, named = {}, {}
+  for line in vim.gsplit(output or "", "\n", { trimempty = true }) do
+    local name, lnum, path, text = line:gsub("\r$", ""):match("^(%S+)%s+(%d+)%s+(%S+)%s?(.*)$")
+    if name then
+      named[name] = true
+      rows[#rows + 1] = {
+        text = name,
+        name = name,
+        path = path,
+        file = vim.fs.joinpath(root, path),
+        pos = { tonumber(lnum), 0 },
+        source = vim.trim(text),
+      }
     end
   end
-  global.ask(root, { "-c", prefix }, function(definitions)
-    take(definitions)
-    global.ask(root, { "-cs", prefix }, function(symbols)
-      take(symbols)
-      -- The name typed whole first, where it is one: ssl_read before
-      -- ssl_read_internal, whatever order global lists them in.
-      table.sort(out, function(a, b)
-        local ea, eb = a == prefix, b == prefix
-        if ea ~= eb then
-          return ea
+  return rows, named
+end
+
+-- Every row under `root`, handed to `part(list, last)` in two lists as they
+-- arrive: the definitions, then the other names gtags knows that have none.
+local function all(root, part)
+  local key = stamp(root)
+  local kept = cache[root]
+  if kept and kept.stamp == key then
+    part(kept.parts[1], false)
+    return part(kept.parts[2], true)
+  end
+  local global = require("taka.lib.gtags_global")
+  global.ask(root, { "-dx", ".*" }, function(output)
+    local first, named = definitions(root, output)
+    part(first, false)
+    global.ask(root, { "-cs" }, function(symbols)
+      local second = {}
+      for name in vim.gsplit(symbols or "", "\n", { trimempty = true }) do
+        name = vim.trim(name)
+        if name ~= "" and not named[name] then
+          named[name] = true
+          second[#second + 1] = { text = name, name = name }
         end
-        return a < b
-      end)
-      done(out)
+      end
+      cache[root] = { stamp = key, parts = { first, second } }
+      part(second, true)
     end)
   end)
 end
 
-M.names = names
+M.all = all
+
+-- The name typed whole goes first, where it is one: ssl_read before SSL_read
+-- and ssl_read_internal, which the picker scores alike.
+local EXACT = 1e6
+
+-- The name, then its file and line in the colour of a comment. The name comes
+-- first: the picker marks the letters matched from the start of the row.
+local function format(item)
+  local ret = { { item.name } }
+  if item.path then
+    ret[#ret + 1] = { "  " }
+    ret[#ret + 1] = { ("%s:%d"):format(item.path, item.pos[1]), "SnacksPickerComment" }
+  end
+  return ret
+end
+
+-- The lines around the definition, or a word on why there are none.
+local function preview(ctx)
+  if ctx.item.file then
+    return Snacks.picker.preview.file(ctx)
+  end
+  ctx.preview:reset()
+  ctx.preview:set_lines({ "No definition recorded: Enter still looks for where it is used." })
+end
+
+-- A definition chosen is gone to as <C-]> goes to one: on the tag stack, at
+-- the line its text now stands on where the file has moved since the index.
+local function jump(item)
+  local lookup = require("taka.gtags.lookup")
+  local found = lookup.heal({ filename = item.file, lnum = item.pos[1], col = 1, text = item.source })
+  lookup.show("Definitions of " .. item.name, item.name, { found })
+end
 
 -- Opens the list for the query `kind` (s, c, t and the rest of
 -- lua/taka/gtags/lookup.lua), `title` naming it; a name chosen runs it. For
--- "g" the name chosen is jumped to, as <leader>jg does on a word: a
--- definition is found by its name alone, so no second list is needed. A key
--- that is no query of lookup.lua, the peek or the writes list, hands what to
--- do with the name as `on_name` instead.
+-- "g" the definition chosen is gone to, the row saying which; a name with no
+-- definition recorded is looked up as <leader>jg does on a word. A key that is
+-- no query of lookup.lua, the peek or the writes list, hands what to do with
+-- the name as `on_name` instead.
 function M.pick(kind, title, on_name)
   local file = vim.api.nvim_buf_get_name(0)
   local root = require("taka.lib.gtags_global").root(file)
@@ -64,31 +128,43 @@ function M.pick(kind, title, on_name)
   return Snacks.picker({
     source = "gtags_names",
     title = title .. ": type a name",
-    live = true,
-    supports_live = true,
-    format = "text",
-    layout = { preset = "vscode" },
-    -- The names arrive from global later: the finder, run by snacks in a
-    -- coroutine of its own, is suspended until they do and resumed with them.
-    finder = function(_, ctx)
-      local prefix = vim.trim(ctx.filter.search)
-      return function(cb)
-        if not prefix:match("^[%a_][%w_]*$") then
-          return
+    format = format,
+    preview = preview,
+    matcher = {
+      on_match = function(matcher, item)
+        if item.name == vim.trim(matcher.pattern) then
+          item.score = item.score + EXACT
         end
+      end,
+    },
+    -- The rows arrive from global later: the finder, run by snacks in a
+    -- coroutine of its own, is suspended until each part does and resumed
+    -- with it, the definitions shown before the rest are read.
+    finder = function()
+      return function(cb)
         local async = require("snacks.picker.util.async").running()
-        local list
-        names(root, prefix, function(found)
-          list = found
+        local waiting, last = {}, false
+        all(root, function(list, is_last)
+          waiting[#waiting + 1] = list
+          last = is_last
           if async then
             async:resume()
           end
         end)
-        if async and not list then
+        while true do
+          while #waiting > 0 do
+            for _, row in ipairs(table.remove(waiting, 1)) do
+              -- A copy: snacks writes its score onto each item, and the kept
+              -- rows serve every list opened after. Given the rows themselves,
+              -- a list opened again with nothing typed came up in the order of
+              -- the last search, not from the top.
+              cb(setmetatable({}, { __index = row }))
+            end
+          end
+          if last or not async then
+            return
+          end
           async:suspend()
-        end
-        for _, name in ipairs(list or {}) do
-          cb({ text = name })
         end
       end
     end,
@@ -98,11 +174,13 @@ function M.pick(kind, title, on_name)
         return
       end
       if on_name then
-        on_name(item.text)
+        on_name(item.name)
+      elseif kind == "g" and item.file then
+        jump(item)
       elseif kind == "g" then
-        require("taka.gtags").jump(item.text)
+        require("taka.gtags").jump(item.name)
       else
-        require("taka.gtags").query(kind, item.text)
+        require("taka.gtags").query(kind, item.name)
       end
     end,
   })
