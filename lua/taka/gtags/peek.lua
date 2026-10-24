@@ -15,6 +15,23 @@ local peek_definition -- defined below; the keys inside the window call it
 -- The peeks left behind by jumping from inside one, newest last, so <C-t> in
 -- the window can walk back through them the way it does through real jumps.
 local peek_history = {}
+-- Where `m` brings the open peek back to: the column it opened at.
+local peek_home
+
+-- The open peek's place and size, for the one opened from inside it.
+local function current_frame()
+  if not (peek_window and vim.api.nvim_win_is_valid(peek_window)) then
+    return nil
+  end
+  local config = vim.api.nvim_win_get_config(peek_window)
+  return {
+    row = config.row,
+    col = config.col,
+    width = config.width,
+    height = config.height,
+    home = peek_home,
+  }
+end
 
 local function close_peek()
   pcall(vim.api.nvim_del_augroup_by_name, "gtags_peek")
@@ -24,8 +41,9 @@ local function close_peek()
   peek_window = nil
 end
 
----@param opts? { chained?: boolean, view?: table } chained: opened from inside
----a peek, so the history is kept; view: scroll position to restore.
+---@param opts? { chained?: boolean, view?: table, frame?: table } chained:
+---opened from inside a peek, so the history is kept; view: scroll position to
+---restore; frame: the place and size of the peek it was opened from, kept.
 local function open_peek(symbol, items, opts)
   opts = opts or {}
   close_peek()
@@ -148,6 +166,17 @@ local function open_peek(symbol, items, opts)
     local row = math.min(math.max(cursor_screen - math.floor(h / 2), tabline), math.max(screen_bottom - h - 2, tabline))
     chosen = { height = h, row = row - win_top }
   end
+  -- A peek opened from inside one, or gone back to with <C-t>, takes the
+  -- place and size of the one it replaces. Placed afresh, it went where its
+  -- own lines fit: from a definition with long lines laid over the code to
+  -- one with short lines beside it, the window jumped across the screen at
+  -- each step, and a place chosen with m was lost. The cursor line it keeps
+  -- clear of is the same one.
+  local kept = opts.frame
+  if kept then
+    col, width = kept.col, kept.width
+    chosen = { row = kept.row, height = kept.height }
+  end
 
   peek_window = vim.api.nvim_open_win(buf, true, {
     relative = "win",
@@ -214,7 +243,7 @@ local function open_peek(symbol, items, opts)
   table.sort(candidates, function(a, b)
     return a.height > b.height
   end)
-  for _, candidate in ipairs(candidates) do
+  for _, candidate in ipairs(kept and {} or candidates) do
     if not covers_cursor_line() then
       break
     end
@@ -298,7 +327,8 @@ local function open_peek(symbol, items, opts)
   -- left edge instead. Only sideways: its height and its rows stay, so the
   -- cursor line stays clear.
   local origin_col = vim.fn.win_screenpos(origin)[2] - 1
-  local home = vim.api.nvim_win_get_config(peek_window).col
+  local home = kept and kept.home or vim.api.nvim_win_get_config(peek_window).col
+  peek_home = home
   local right = vim.o.columns - width - 2 - origin_col
   local away = home < right and right or -origin_col
   vim.keymap.set("n", "m", function()
@@ -325,21 +355,29 @@ local function open_peek(symbol, items, opts)
     end
   end
 
-  local function peek_earlier()
+  local function peek_earlier(frame)
     local earlier = table.remove(peek_history)
     if not earlier then
       return false
     end
+    frame = frame or current_frame()
     back_to_origin()
-    open_peek(earlier.symbol, earlier.items, { chained = true, view = earlier.view })
+    open_peek(earlier.symbol, earlier.items, { chained = true, view = earlier.view, frame = frame })
     return true
   end
 
   local function peek_again(word)
     peek_history[#peek_history + 1] = { symbol = symbol, items = items, view = vim.fn.winsaveview() }
+    local frame = current_frame()
     back_to_origin()
     -- A word with no definition would otherwise close the peek being read.
-    peek_definition(word, { chained = true, on_missing = peek_earlier })
+    peek_definition(word, {
+      chained = true,
+      frame = frame,
+      on_missing = function()
+        peek_earlier(frame)
+      end,
+    })
   end
 
   -- <C-t> walks back through the peeks the way it does through real jumps.
@@ -404,8 +442,8 @@ local function open_peek(symbol, items, opts)
   })
 end
 
----@param opts? { chained?: boolean, on_missing?: fun() } on_missing runs when
----there is nothing to show, after the warning.
+---@param opts? { chained?: boolean, frame?: table, on_missing?: fun() }
+---on_missing runs when there is nothing to show, after the warning.
 function peek_definition(symbol, opts)
   opts = opts or {}
   local function missing(message)
@@ -426,7 +464,7 @@ function peek_definition(symbol, opts)
     if #items == 0 then
       missing("No definition found for " .. symbol)
     else
-      open_peek(symbol, items, { chained = opts.chained })
+      open_peek(symbol, items, { chained = opts.chained, frame = opts.frame })
     end
   end
   lookup_definition(symbol, show_or_ctags, function()

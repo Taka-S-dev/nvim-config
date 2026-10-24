@@ -635,6 +635,84 @@ return function(T)
     expect(scratch, "a jump inside the peek loaded a file into it")
     expect(left == 0, "Esc did not close the peek")
   end)
+  -- A peek followed from inside one, and gone back to with <C-t>, keeps the
+  -- place and size of the one it replaces, a place chosen with m included.
+  -- Placed afresh, it went where its own lines fit, and jumped across the
+  -- screen at each step.
+  check("peek: a jump inside it keeps the window where it was", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    -- A long file and a short one: placed afresh, the second peek would be
+    -- only as tall as its file.
+    local long = { "struct holder { int x; };", "int use_short(void) { return short_fn(); }" }
+    for i = 1, 40 do
+      long[#long + 1] = ("int filler_%d;"):format(i)
+    end
+    write(dir .. "/long.c", long)
+    write(dir .. "/short.c", { "int short_fn(void)", "{", "    return 1;", "}" })
+    write(dir .. "/main.c", { "", "", "", "", "int main(void) { struct holder h; return use_short(); }" })
+    run({ "gtags" }, dir)
+    vim.api.nvim_set_current_dir(dir)
+    local seen = {}
+    local function peek()
+      for _, win in ipairs(floats()) do
+        if vim.wo[win].statuscolumn:find("v:lnum +", 1, true) then
+          return win
+        end
+      end
+    end
+    local function frame()
+      local win = peek()
+      if not win then
+        return "no peek"
+      end
+      local c = vim.api.nvim_win_get_config(win)
+      return ("row=%s col=%s %dx%d"):format(tostring(c.row), tostring(c.col), c.width, c.height)
+    end
+    local function title()
+      local c = vim.api.nvim_win_get_config(peek())
+      return c.title and c.title[1] and c.title[1][1] or ""
+    end
+    local function wait_for(name)
+      vim.wait(15000, function()
+        return peek() ~= nil and title():find(name, 1, true) ~= nil
+      end, 20)
+    end
+    -- Wide enough for m to have somewhere to move the peek to.
+    local columns = vim.o.columns
+    vim.o.columns = 200
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/main.c")
+      vim.fn.cursor(5, 1)
+      vim.fn.search("use_short", "c", 5)
+      key("<leader>jp")()
+      wait_for("long.c")
+      seen.first = frame()
+      vim.fn.search("short_fn")
+      press("<C-]>")
+      wait_for("short.c")
+      seen.inside = frame()
+      press("<C-t>")
+      wait_for("long.c")
+      seen.back = frame()
+      press("m")
+      vim.wait(200)
+      seen.moved = frame()
+      vim.fn.search("short_fn")
+      press("<C-]>")
+      wait_for("short.c")
+      seen.moved_inside = frame()
+      press("<Esc>")
+    end)
+    vim.o.columns = columns
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.first ~= "no peek", "the peek did not open")
+    expect(seen.inside == seen.first, ("followed inside: %s, opened at %s"):format(seen.inside, seen.first))
+    expect(seen.back == seen.first, ("back with <C-t>: %s, opened at %s"):format(seen.back, seen.first))
+    expect(seen.moved ~= seen.first, "m did not move the peek: " .. tostring(seen.moved))
+    expect(seen.moved_inside == seen.moved, ("followed after m: %s, moved to %s"):format(seen.moved_inside, seen.moved))
+  end)
   -- The peek opens on the head of a definition, as far as its line stays in
   -- view: the members of a typedef struct, which are above the line its name
   -- is on, and the comment over a function. It showed two lines above the
