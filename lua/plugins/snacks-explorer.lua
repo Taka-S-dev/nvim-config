@@ -44,6 +44,11 @@ local keys = {
   -- Ctrl+click inside the tree.
   ["<C-LeftMouse>"] = { "explorer_drag", mode = { "n", "i" } },
   ["<C-LeftDrag>"] = { "explorer_drag", mode = { "n", "i" } },
+  -- A menu for the file clicked, its path to copy among it, in place of the
+  -- one for code (lua/taka/explorer_menu.lua); Y copies the path relative to
+  -- the cwd, as y copies it whole.
+  ["<RightMouse>"] = { "explorer_menu", mode = { "n", "i" } },
+  ["Y"] = "explorer_yank_relative",
 }
 
 -- The file shown in the code, shown in the tree too: the tree opened down to it
@@ -127,6 +132,15 @@ return {
             explorer_narrower = step(-5),
             explorer_wider = step(5),
             explorer_drag = drag,
+            explorer_menu = function(picker)
+              require("taka.explorer_menu").open(picker)
+            end,
+            explorer_yank_relative = function(picker)
+              local item = picker:current()
+              if item then
+                require("taka.explorer_menu").actions.copy_relative(Snacks.picker.util.path(item))
+              end
+            end,
           },
           win = {
             list = { keys = keys },

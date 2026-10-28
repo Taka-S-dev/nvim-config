@@ -390,6 +390,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   ├── words.lua       # 複数の単語を色分けして光らせる (<leader>hh)
 │   │   ├── selection_matches.lua # 選んだ文字列と同じものを、選んでいる間だけ光らせる
 │   │   ├── cursor_word.lua # カーソルの単語と同じものを、止めている間だけ光らせる
+│   │   ├── explorer_menu.lua # ファイルツリーの右クリックメニュー(パスのコピーなど)
 │   │   ├── scope_pin.lua   # いまのスコープの線を固定する (<leader>jl)
 │   │   ├── markdown_links.lua # Markdown のリンクを gf でたどる
 │   │   └── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)

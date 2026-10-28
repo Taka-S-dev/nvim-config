@@ -304,6 +304,123 @@ return function(T)
     expect(again == 7, "shown again at " .. tostring(again) .. " rows")
   end)
 
+  -- The right click on the file tree opens a menu for the file clicked, its
+  -- paths to copy among it, in place of the menu for code; Y copies the path
+  -- relative to the cwd. Headless there is no mouse, so where it points is
+  -- given, the menu itself is not drawn, and what is copied or opened is
+  -- caught rather than done.
+  check("explorer: the right click offers the file's paths, Y copies the relative one", function()
+    local dir = temp_dir()
+    T.write(dir .. "/sub/deep.c", { "int x;" })
+    T.write(dir .. "/top.c", { "int y;" })
+    local seen = { copied = {}, ran = {} }
+    local explorer
+    local setreg, getmousepos, cmd, system, spawn, open =
+      vim.fn.setreg, vim.fn.getmousepos, vim.cmd, vim.system, vim.uv.spawn, vim.ui.open
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/sub/deep.c")
+      Snacks.explorer()
+      vim.wait(2000, function()
+        explorer = Snacks.picker.get({ source = "explorer" })[1]
+        return explorer and explorer:current() ~= nil
+      end, 20)
+      vim.wait(500)
+      local win = explorer.list.win.win
+      local function row_of(name)
+        for i, line in ipairs(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false)) do
+          if line:find(name, 1, true) then
+            return i
+          end
+        end
+      end
+      vim.fn.setreg = function(register, value)
+        seen.copied[#seen.copied + 1] = register .. "=" .. value
+      end
+      vim.system = function(command)
+        seen.ran[#seen.ran + 1] = "system " .. table.concat(command, " ")
+        return {}
+      end
+      -- Explorer is started without vim.system, which hides the window of what
+      -- it starts: Explorer's came up hidden, and never showed.
+      vim.uv.spawn = function(command, options)
+        seen.ran[#seen.ran + 1] = ("%s %s verbatim=%s hide=%s"):format(
+          command,
+          table.concat(options.args, " "),
+          tostring(options.verbatim),
+          tostring(options.hide)
+        )
+        return nil
+      end
+      vim.ui.open = function(path)
+        seen.ran[#seen.ran + 1] = "open " .. path
+      end
+      vim.cmd = setmetatable({}, {
+        __call = function(_, command)
+          if type(command) == "string" and command:find("^popup") then
+            seen.popup = command
+            seen.popup_from = vim.bo.filetype
+            return
+          end
+          return cmd(command)
+        end,
+        __index = cmd,
+      })
+      -- The right click on top.c, the cursor being on deep.c.
+      local line = row_of("top.c")
+      vim.fn.getmousepos = function()
+        return { winid = win, line = line, column = 3 }
+      end
+      vim.api.nvim_set_current_win(win)
+      require("taka.explorer_menu").open(explorer)
+      seen.target = require("taka.explorer_menu").target()
+      seen.current = vim.fs.basename(Snacks.picker.util.path(explorer:current()))
+      seen.back = vim.api.nvim_get_current_win() == win
+      for _, name in ipairs({ "copy_path", "copy_relative", "copy_name", "reveal", "open" }) do
+        require("taka.explorer_menu").run(name)
+      end
+      -- Y on deep.c, in its folder.
+      vim.fn.getmousepos = getmousepos
+      explorer.list:move(row_of("deep.c"), true)
+      vim.wait(100)
+      vim.api.nvim_feedkeys("Y", "x", false)
+      seen.keys = {
+        right = vim.fn.maparg("<RightMouse>", "n", false, true).desc,
+        Y = vim.fn.maparg("Y", "n", false, true).desc,
+      }
+      seen.menu = vim.fn.menu_info("]Explorer").submenus
+    end)
+    vim.fn.setreg, vim.fn.getmousepos, vim.cmd, vim.system, vim.uv.spawn, vim.ui.open =
+      setreg, getmousepos, cmd, system, spawn, open
+    if explorer and not explorer.closed then
+      explorer:close()
+    end
+    reset_editor()
+    expect(ok, tostring(err))
+    local full = vim.fs.normalize(dir) .. "/top.c"
+    expect(seen.target == full, "the menu was opened on " .. tostring(seen.target))
+    expect(seen.current == "top.c", "the row clicked is not the current one: " .. tostring(seen.current))
+    expect(seen.popup == "popup! ]Explorer", "the menu opened was " .. tostring(seen.popup))
+    -- From the code window: in the tree's list, j, <Down> and Enter are the
+    -- list's own, and took the keys meant for the menu.
+    expect(seen.popup_from == "c", "the menu opened from a " .. tostring(seen.popup_from) .. " window")
+    expect(seen.back, "the tree was not gone back to after the menu")
+    expect(
+      vim.deep_equal(vim.list_slice(seen.copied, 1, 3), { "+=" .. full, "+=top.c", "+=top.c" }),
+      "copied: " .. vim.inspect(seen.copied)
+    )
+    expect(seen.copied[4] == "+=sub/deep.c", "Y copied " .. tostring(seen.copied[4]))
+    local reveal = vim.fn.has("win32") == 1
+        and ('explorer.exe /select,"%s" verbatim=true hide=nil'):format((full:gsub("/", "\\")))
+      or ("open " .. vim.fs.dirname(full))
+    expect(vim.deep_equal(seen.ran, { reveal, "open " .. full }), "ran: " .. vim.inspect(seen.ran))
+    expect(
+      seen.keys and seen.keys.right == "explorer_menu" and seen.keys.Y == "explorer_yank_relative",
+      "keys: " .. vim.inspect(seen.keys)
+    )
+    expect(seen.menu and #seen.menu == 6, "menu: " .. vim.inspect(seen.menu))
+  end)
+
   -- <C-l> in the file tree goes to the code beside it. The picker keys that
   -- scroll a preview sideways took <C-l> in every picker, the tree among
   -- them, and there, with no preview, it did nothing.
