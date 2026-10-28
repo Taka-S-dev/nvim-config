@@ -112,6 +112,48 @@ return function(T)
       expect(bg ~= line, name .. " is the cursor line's colour")
     end
   end)
+  check("words: past the last colour, the words lit go round the colours again", function()
+    local words = require("taka.words")
+    local dir = temp_dir()
+    local names = {}
+    for index = 1, 12 do
+      names[index] = "w" .. index
+    end
+    write(dir .. "/a.c", { table.concat(names, " ") .. " " })
+    vim.cmd.edit(dir .. "/a.c")
+    local function colour_of(name)
+      for _, match in ipairs(vim.fn.getmatches(0)) do
+        if match.pattern == [[\V\<]] .. name .. [[\>]] then
+          return match.group
+        end
+      end
+    end
+    local function light(name)
+      vim.fn.cursor(1, vim.fn.stridx(vim.fn.getline(1), name .. " ") + 1)
+      words.toggle()
+    end
+    for _, name in ipairs(names) do
+      light(name)
+    end
+    local seen = {}
+    for _, name in ipairs(names) do
+      seen[#seen + 1] = colour_of(name)
+    end
+    -- One put out frees its colour, which the next word lit takes.
+    light("w3")
+    light("w3")
+    local freed = colour_of("w3")
+    words.clear()
+    reset_editor()
+    local want = {}
+    for index = 1, 10 do
+      want[index] = "Word" .. index
+    end
+    want[11], want[12] = "Word1", "Word2"
+    expect(vim.deep_equal(seen, want), "colours: " .. table.concat(seen, " "))
+    expect(freed == "Word3", "w3 put out and lit again: " .. tostring(freed))
+  end)
+
   check("words: several words stay lit across files and windows, and are stepped through", function()
     local words = require("taka.words")
     local dir = temp_dir()

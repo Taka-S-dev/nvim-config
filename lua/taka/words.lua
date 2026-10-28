@@ -25,6 +25,10 @@ local colours = {
   { fg = "#1b1d2b", bg = "#c099ff" }, -- magenta
   { fg = "#1b1d2b", bg = "#ff966c" }, -- orange
   { fg = "#1b1d2b", bg = "#82aaff" }, -- blue
+  { fg = "#1b1d2b", bg = "#ff757f" }, -- red
+  { fg = "#1b1d2b", bg = "#4fd6be" }, -- teal
+  { fg = "#1b1d2b", bg = "#fca7ea" }, -- pink
+  { fg = "#1b1d2b", bg = "#c8d3f5" }, -- white
 }
 for index, colour in ipairs(colours) do
   vim.api.nvim_set_hl(0, "Word" .. index, vim.tbl_extend("keep", { default = true }, colour))
@@ -118,13 +122,18 @@ function M.toggle()
       return
     end
   end
+  -- The first colour no word has; with every colour taken, the one fewest
+  -- words have, so that the words lit after the last colour go round the
+  -- colours again instead of all taking the last one.
   local used = {}
   for _, word in ipairs(words) do
-    used[word.colour] = true
+    used[word.colour] = (used[word.colour] or 0) + 1
   end
   local colour = 1
-  while used[colour] and colour < #colours do
-    colour = colour + 1
+  for index = 2, #colours do
+    if (used[index] or 0) < (used[colour] or 0) then
+      colour = index
+    end
   end
   words[#words + 1] = { pattern = pattern, colour = colour, label = text }
   apply_everywhere()
