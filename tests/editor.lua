@@ -282,6 +282,199 @@ return function(T)
     expect(found == 2, "findme -- -g found " .. tostring(found))
     expect(complaints == 0, ("%d messages of output the picker could not read"):format(complaints))
   end)
+  -- Each tab searches what it was given: a folder chosen from a list with
+  -- Alt+., kinds of file chosen with Alt+e, in a grep or a file search, kept
+  -- for the tab until changed, and shown in the statusline. A new tab starts
+  -- with none. The list puts the file's folder first and the whole project
+  -- next; a path pasted is taken as it is. Esc leaves the tab's as it was.
+  check("scope: each tab keeps the folder and kinds chosen for its searches", function()
+    need("rg")
+    local dir = vim.fs.normalize(temp_dir())
+    write(dir .. "/sub/deep/a.c", { "int findme;" })
+    write(dir .. "/sub/deep/a.txt", { "findme" })
+    write(dir .. "/sub/b.c", { "int findme;" })
+    write(dir .. "/sub/b.h", { "int findme;" })
+    write(dir .. "/top.c", { "int findme;" })
+    local scope = require("taka.scope")
+    local grep_folder = require("taka.grep_folder")
+    local bs = string.char(92)
+    local cases = {
+      { "sub/deep/", dir .. "/sub/deep" },
+      { (dir .. "/sub/deep"):gsub("/", bs), dir .. "/sub/deep" },
+      { '"sub/b.c"', dir .. "/sub" },
+      { ".", dir },
+      { "", dir .. "/sub" },
+      { "no/such", nil },
+    }
+    local got = {}
+    for _, case in ipairs(cases) do
+      got[#got + 1] = tostring((grep_folder.folder(case[1], dir, dir .. "/sub")))
+    end
+    local cwd = vim.fn.getcwd()
+    local grep = Snacks.picker.grep
+    local seen = {}
+    local function now()
+      return scope.describe(scope.get())
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/sub/b.c")
+      -- From a grep for findme, the list `source` opened by its key; `typed`
+      -- put in it then Enter, or `rows` picked with Tab then Enter, or the
+      -- list closed when both are nil. The search opened again is returned.
+      local function choose(action, source, typed, rows)
+        local picker = grep({ search = "findme" })
+        vim.wait(3000, function()
+          return not picker:is_active()
+        end, 20)
+        local opened
+        Snacks.picker.grep = function(opts)
+          opened = opts
+        end
+        picker:action(action)
+        local list
+        vim.wait(3000, function()
+          list = Snacks.picker.get({ source = source })[1]
+          return list ~= nil and not list:is_active()
+        end, 20)
+        seen[source] = seen[source] or vim.tbl_map(function(item)
+          return item.text
+        end, list:items())
+        -- The title and the rows marked as the tab's, at each opening.
+        seen.marked = { list.opts.title }
+        for _, item in ipairs(list:items()) do
+          if item.now then
+            seen.marked[#seen.marked + 1] = item.text
+          end
+        end
+        seen.first = list:items()[1].text
+        if typed then
+          vim.api.nvim_buf_set_lines(list.input.win.buf, 0, -1, false, { typed })
+          vim.api.nvim_exec_autocmds("TextChanged", { buffer = list.input.win.buf })
+          vim.wait(1000, function()
+            return list.matcher.pattern == typed and not list:is_active()
+          end, 10)
+          list:action("confirm")
+        elseif rows then
+          for _, item in ipairs(list:items()) do
+            if vim.tbl_contains(rows, item.text) then
+              list.list:select(item)
+            end
+          end
+          list:action("confirm")
+        else
+          list:close()
+        end
+        vim.wait(1000, function()
+          return opened ~= nil
+        end, 10)
+        Snacks.picker.grep = grep
+        return opened and opened.search
+      end
+      seen.at_once = choose("scope_folder", "grep_folders", "") .. " " .. now()
+      seen.unpinned_first = seen.first
+      seen.fuzzy = choose("scope_folder", "grep_folders", "dee") .. " " .. now()
+      seen.pinned_first, seen.pinned = seen.first, seen.marked
+      seen.pasted = choose("scope_folder", "grep_folders", (dir .. "/sub"):gsub("/", bs)) .. " " .. now()
+      seen.given_up = choose("scope_folder", "grep_folders", nil) .. " " .. now()
+      seen.kinds = choose("scope_kinds", "grep_kinds", nil, { "*.c", "*.h" }) .. " " .. now()
+      choose("scope_kinds", "grep_kinds", nil)
+      seen.kinds_marked = seen.marked
+      -- The searches of the tab keep to it: rg is given the folder and the
+      -- globs once, though snacks runs the hook more than once.
+      local search = grep({ search = "findme" })
+      vim.wait(3000, function()
+        return not search:is_active()
+      end, 20)
+      seen.grep_args = table.concat(search.opts.args or {}, " ")
+      -- The two keys are named at the foot of the search's frame.
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        local footer = vim.api.nvim_win_get_config(win).footer
+        if type(footer) == "table" and #footer > 0 then
+          local text = table.concat(vim.tbl_map(function(chunk)
+            return chunk[1]
+          end, footer))
+          seen.footer = vim.trim(text):gsub("%s+", " ")
+        end
+      end
+      seen.found = vim.tbl_map(function(item)
+        return item.file:gsub(bs, "/")
+      end, search:items())
+      table.sort(seen.found)
+      search:close()
+      local files = Snacks.picker.files()
+      vim.wait(3000, function()
+        return not files:is_active()
+      end, 20)
+      seen.files = vim.tbl_map(function(item)
+        return item.file:gsub(bs, "/")
+      end, files:items())
+      table.sort(seen.files)
+      files:close()
+      seen.status = scope.status():gsub("^%S+ ", "")
+      -- Another tab searches the whole project; the first keeps its own.
+      vim.cmd.tabnew()
+      seen.other_tab = now()
+      vim.cmd.tabprevious()
+      seen.first_tab = now()
+      vim.cmd.tabclose({ range = { 2 } })
+      choose("scope_folder", "grep_folders", ".")
+      seen.whole = now()
+      vim.cmd("Scope off")
+      seen.off = now()
+    end)
+    Snacks.picker.grep = grep
+    for _, picker in ipairs(Snacks.picker.get()) do
+      picker:close()
+    end
+    scope.clear()
+    vim.api.nvim_set_current_dir(cwd)
+    reset_editor()
+    expect(ok, tostring(err))
+    local want = {}
+    for _, case in ipairs(cases) do
+      want[#want + 1] = tostring(case[2])
+    end
+    expect(vim.deep_equal(got, want), "folders: " .. vim.inspect(got))
+    expect(
+      vim.deep_equal(seen.grep_folders, { "sub/", "./", "sub/deep/" }),
+      "the folders listed: " .. vim.inspect(seen.grep_folders)
+    )
+    expect(seen.at_once == "findme sub/", "Enter at once: " .. tostring(seen.at_once))
+    expect(seen.unpinned_first == "sub/", "first with no folder kept: " .. tostring(seen.unpinned_first))
+    expect(seen.pinned_first == "./", "first with sub/ kept: " .. tostring(seen.pinned_first))
+    expect(
+      vim.deep_equal(seen.pinned, { "Folder this tab searches (now sub/)", "sub/" }),
+      "the folder kept, marked: " .. vim.inspect(seen.pinned)
+    )
+    expect(
+      vim.deep_equal(seen.kinds_marked, { "Kinds of file this tab searches (now *.c *.h; Tab: several)", "*.c *.h" }),
+      "the kinds kept, marked: " .. vim.inspect(seen.kinds_marked)
+    )
+    expect(seen.fuzzy == "findme sub/deep/", "dee chosen: " .. tostring(seen.fuzzy))
+    expect(seen.pasted == "findme sub/", "a path pasted: " .. tostring(seen.pasted))
+    expect(seen.given_up == "findme sub/", "given up: " .. tostring(seen.given_up))
+    expect(
+      vim.deep_equal(seen.grep_kinds, { "every kind", "*.c *.h", "*.c", "*.h", "*.txt" }),
+      "the kinds listed under sub/: " .. vim.inspect(seen.grep_kinds)
+    )
+    expect(seen.kinds == "findme sub/ *.c *.h", "kinds chosen: " .. tostring(seen.kinds))
+    expect(seen.grep_args == "-g *.c -g *.h", "rg given: " .. tostring(seen.grep_args))
+    expect(seen.footer == "Alt+. folder Alt+e kinds", "the keys named: " .. tostring(seen.footer))
+    expect(
+      vim.deep_equal(seen.found, { "sub/b.c", "sub/b.h", "sub/deep/a.c" }),
+      "grep found: " .. vim.inspect(seen.found)
+    )
+    expect(
+      vim.deep_equal(seen.files, { "sub/b.c", "sub/b.h", "sub/deep/a.c" }),
+      "files listed: " .. vim.inspect(seen.files)
+    )
+    expect(seen.status == "sub/ *.c *.h", "statusline: " .. tostring(seen.status))
+    expect(seen.other_tab == "", "a new tab searches: " .. tostring(seen.other_tab))
+    expect(seen.first_tab == "sub/ *.c *.h", "back in the first tab: " .. tostring(seen.first_tab))
+    expect(seen.whole == "*.c *.h", ". takes the folder off: " .. tostring(seen.whole))
+    expect(seen.off == "", ":Scope off left: " .. tostring(seen.off))
+  end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
   -- shows. LazyVim looked up from the file for a .git, and a project with none
   -- of its own, in a folder of checkouts under one .git, searched them all.

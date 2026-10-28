@@ -391,6 +391,10 @@ $env:LOCALAPPDATA\nvim\
 │   │   ├── selection_matches.lua # 選んだ文字列と同じものを、選んでいる間だけ光らせる
 │   │   ├── cursor_word.lua # カーソルの単語と同じものを、止めている間だけ光らせる
 │   │   ├── explorer_menu.lua # ファイルツリーの右クリックメニュー(パスのコピーなど)
+│   │   ├── scope.lua       # タブごとの検索範囲(フォルダと拡張子) :Scope
+│   │   ├── grep_folder.lua # 検索の中でフォルダを一覧から選ぶ (<A-.>)
+│   │   ├── grep_kinds.lua  # 検索の中でファイルの種類を一覧から選ぶ (<A-e>)
+│   │   ├── grep_args.lua   # grep の ` -- ` の後の、打ちかけの rg オプションを外す
 │   │   ├── scope_pin.lua   # いまのスコープの線を固定する (<leader>jl)
 │   │   ├── markdown_links.lua # Markdown のリンクを gf でたどる
 │   │   └── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)
@@ -400,6 +404,7 @@ $env:LOCALAPPDATA\nvim\
 │       ├── gutentags.lua   # ctags で tags を維持 (gtags fallback)
 │       ├── completion.lua  # 補完に gtags の候補を足す (blink.cmp)
 │       ├── svn.lua         # SVN: 変更行の印 (vim-signify、svn のみ) と <leader>v のキー
+│       ├── snacks-grep.lua # grep とファイル検索にタブの範囲を効かせる
 │       ├── snacks-scroll.lua # 差分の窓ではなめらかスクロールを切る
 │       ├── snacks-terminal.lua # <C-/> の端末を、閉じたときの高さで開き直す
 │       ├── markdown.lua    # Markdown を画面上で整形表示 (render-markdown.nvim)
