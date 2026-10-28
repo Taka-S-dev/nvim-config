@@ -108,6 +108,16 @@ vim.opt.diffopt:append("context:1000000")
 vim.opt.diffopt:remove("inline:char")
 vim.opt.diffopt:append("inline:word")
 
+-- Neovim's own menus, the right click's and the command line's completions, in
+-- a rounded border and not see-through. Their background is the colour of the
+-- file tree, #1e2030 both, so the right click's menu in the tree had no edge
+-- to tell it by; and see-through by a tenth (LazyVim's pumblend), the names in
+-- the tree beneath it showed between its own words. The border is drawn in the
+-- colour of the other floating windows' (lua/plugins/colorscheme.lua). The
+-- completion while typing (blink.cmp) draws windows of its own.
+vim.o.pumborder = "rounded"
+vim.o.pumblend = 0
+
 -- A .h file opens as C, not C++. Neovim guesses C++, the C++ parser is not
 -- installed, so a header got no treesitter colours at all, and the headers of
 -- a C project are C.

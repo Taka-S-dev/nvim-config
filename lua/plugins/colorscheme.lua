@@ -68,6 +68,10 @@ return {
       -- cursor line and 17.2 or more from the selection's blue and the three
       -- tints of a diff, at about the same lightness, and code on it reads at
       -- 4.0:1 or more (names of functions, the darkest; 4.28:1 as shipped).
+      -- The border of Neovim's own menus (pumborder, lua/config/options.lua)
+      -- in the blue of the other floating windows' borders, not in the white
+      -- of the text, which outshone the menu it framed.
+      hl.PmenuBorder = { fg = c.border_highlight, bg = c.bg_popup }
       for _, name in ipairs({ "LspReferenceText", "LspReferenceRead", "LspReferenceWrite" }) do
         hl[name] = { bg = "#21503c" }
       end

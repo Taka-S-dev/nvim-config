@@ -419,6 +419,16 @@ return function(T)
       "keys: " .. vim.inspect(seen.keys)
     )
     expect(seen.menu and #seen.menu == 6, "menu: " .. vim.inspect(seen.menu))
+    -- Framed and not see-through: its background is the tree's, and it had no
+    -- edge there, the names beneath showing between its words.
+    local border = vim.api.nvim_get_hl(0, { name = "PmenuBorder", link = false }).fg
+    local floats = vim.api.nvim_get_hl(0, { name = "FloatBorder", link = false }).fg
+    expect(vim.o.pumborder == "rounded", "pumborder: " .. vim.o.pumborder)
+    expect(vim.o.pumblend == 0, "pumblend: " .. vim.o.pumblend)
+    expect(
+      border ~= nil and border == floats,
+      ("the menu's border is #%06x, the floats' #%06x"):format(border or 0, floats or 0)
+    )
   end)
 
   -- <C-l> in the file tree goes to the code beside it. The picker keys that
