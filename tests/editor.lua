@@ -169,6 +169,67 @@ return function(T)
     expect(ok, tostring(err))
     expect(vim.deep_equal(seen, { 3, 2 }), "matches before and after the save: " .. vim.inspect(seen))
   end)
+  -- <leader>sr keeps one search, put away with q or <leader>sr and brought back
+  -- as it was: its text, its paths and its filter. LazyVim's opened a fresh one
+  -- each time, and the paths were typed again at every opening. \d sets the
+  -- paths to the folder of the file it was opened from.
+  check("grug-far: <leader>sr keeps the search, and \\d searches the file's folder", function()
+    need("rg")
+    local dir = temp_dir()
+    write(dir .. "/sub/a.c", { "int findme;" })
+    write(dir .. "/b.c", { "int findme;" })
+    local cwd = vim.fn.getcwd()
+    local seen = {}
+    local grug_far
+    local function values()
+      local instance = grug_far.get_instance("main")
+      local v = require("grug-far.inputs").getValues(instance._context, instance._buf)
+      return ("%s|%s|%s"):format(v.search or "", v.paths or "", v.filesFilter or "")
+    end
+    local function buf_key(lhs)
+      local buf = grug_far.get_instance("main")._buf
+      return vim.api.nvim_buf_call(buf, function()
+        return vim.fn.maparg(lhs, "n", false, true).callback
+      end)
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/sub/a.c")
+      T.key("<leader>sr")()
+      grug_far = require("grug-far")
+      vim.wait(5000, function()
+        return grug_far.is_instance_open("main")
+      end, 20)
+      vim.wait(300)
+      grug_far.update_instance_prefills("main", { search = "findme" }, false)
+      buf_key("<localleader>d")()
+      vim.wait(5000, function()
+        local s = grug_far.get_instance("main"):get_status_info()
+        return s.status == "success" and s.stats and s.stats.matches == 1
+      end, 50)
+      seen.narrowed = values()
+      seen.listed = vim.bo[grug_far.get_instance("main")._buf].buflisted
+      buf_key("q")()
+      vim.wait(200)
+      seen.away = grug_far.has_instance("main") and not grug_far.is_instance_open("main")
+      T.key("<leader>sr")()
+      vim.wait(2000, function()
+        return grug_far.is_instance_open("main")
+      end, 20)
+      seen.back = values()
+    end)
+    if grug_far and grug_far.has_instance("main") then
+      grug_far.kill_instance("main")
+    end
+    vim.cmd("silent! %bwipeout!")
+    vim.api.nvim_set_current_dir(cwd)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.narrowed == "findme|sub/|*.c", "after \\d: " .. tostring(seen.narrowed))
+    expect(seen.listed == false, "the search is among the open buffers")
+    expect(seen.away, "q did not put the search away and keep it")
+    expect(seen.back == "findme|sub/|*.c", "brought back: " .. tostring(seen.back))
+  end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
   -- shows. LazyVim looked up from the file for a .git, and a project with none
   -- of its own, in a folder of checkouts under one .git, searched them all.
