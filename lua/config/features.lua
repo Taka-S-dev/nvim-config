@@ -106,6 +106,8 @@ require("taka.c_macros")
 
 -- The text selected, lit where else it stands (lua/taka/selection_matches.lua).
 require("taka.selection_matches")
+-- The word under the cursor, lit where else it stands (lua/taka/cursor_word.lua).
+require("taka.cursor_word")
 
 -- A number in every base: the literal under the cursor, the expression
 -- selected, or one typed to :Radix (lua/taka/radix.lua). A macro's name, or

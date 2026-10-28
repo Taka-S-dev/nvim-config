@@ -52,6 +52,56 @@ return function(T)
     )
     expect(seen.left == "", "left after the selection: " .. tostring(seen.left))
   end)
+  -- The word under the cursor is lit where else it stands on screen, whole
+  -- and with its case: len is not lit in buflen, nor LEN. Nothing is lit on a
+  -- blank, for a word that stands nowhere else, or in Insert mode. A C file
+  -- has no language server here, and nothing was lit at all.
+  check("cursor word: the word under the cursor is lit where else it stands", function()
+    local cursor_word = require("taka.cursor_word")
+    local dir = temp_dir()
+    write(dir .. "/a.c", {
+      "int len = 0;",
+      "int buflen = len + LEN;",
+      "return len;",
+      "int once_only;",
+    })
+    local seen = {}
+    local function at(row, col)
+      vim.api.nvim_win_set_cursor(0, { row, col })
+      cursor_word.update()
+      return table.concat(cursor_word.marks(), " ")
+    end
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/a.c")
+      seen.word = at(1, 5)
+      seen.blank = at(1, 3)
+      seen.once = at(4, 6)
+      -- Moved onto the word for real: lit once the cursor has rested.
+      at(4, 6)
+      vim.api.nvim_win_set_cursor(0, { 3, 8 })
+      vim.api.nvim_exec_autocmds("CursorMoved", {})
+      seen.at_once = table.concat(cursor_word.marks(), " ")
+      vim.wait(cursor_word.DELAY + 500, function()
+        return #cursor_word.marks() > 0
+      end, 20)
+      seen.rested = table.concat(cursor_word.marks(), " ")
+      -- Entering Insert mode, as InsertEnter tells of it: a headless run
+      -- left in Insert mode by keys fed to it took the next checks' keys as
+      -- text.
+      vim.api.nvim_exec_autocmds("InsertEnter", {})
+      vim.wait(cursor_word.DELAY + 200)
+      seen.insert = table.concat(cursor_word.marks(), " ")
+    end)
+    press("<Esc>")
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.word == "1:5 2:14 3:8", "len: " .. tostring(seen.word))
+    expect(seen.blank == "", "on a blank: " .. tostring(seen.blank))
+    expect(seen.once == "", "a word that stands nowhere else: " .. tostring(seen.once))
+    expect(seen.at_once == "", "lit before the cursor rested: " .. tostring(seen.at_once))
+    expect(seen.rested == "1:5 2:14 3:8", "after resting on len: " .. tostring(seen.rested))
+    expect(seen.insert == "", "in Insert mode: " .. tostring(seen.insert))
+  end)
   check("words: several words stay lit across files and windows, and are stepped through", function()
     local words = require("taka.words")
     local dir = temp_dir()
