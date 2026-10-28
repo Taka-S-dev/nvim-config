@@ -25,6 +25,16 @@ return function(T)
   -- A trace is written a line at a time by something else, so it is read as it
   -- comes: the header gives the title and the folder the paths are under, a
   -- step goes under the step it names, and a line half written is left out.
+  -- The line of the step chosen is lit by its background only: with a colour
+  -- of text too, the cyan of an info note, it put out the colours of the code
+  -- on the line.
+  check("trace: the chosen step's line keeps the colours of its code", function()
+    require("taka.trace")
+    local current = vim.api.nvim_get_hl(0, { name = "TraceCurrent", link = false })
+    local info = vim.api.nvim_get_hl(0, { name = "DiagnosticVirtualTextInfo", link = false })
+    expect(current.fg == nil, ("TraceCurrent sets the text colour #%06x"):format(current.fg or 0))
+    expect(current.bg ~= nil and current.bg == info.bg, "TraceCurrent's background: " .. vim.inspect(current))
+  end)
   check("trace: read as written, each step under the one it names", function()
     local dir = temp_dir()
     local path = dir .. "/t.jsonl"

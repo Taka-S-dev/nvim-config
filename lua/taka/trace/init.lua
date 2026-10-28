@@ -107,7 +107,11 @@ local function colours()
     set(group .. "Line", { fg = mix(fg, bg, 0.7), bg = card })
   end
   set("TraceEdited", { link = "DiagnosticHint" })
-  set("TraceCurrent", { link = "DiagnosticVirtualTextInfo" })
+  -- The line of the step chosen: the background of an info note under the
+  -- code, and no colour of text. Linked to the note's own colours, its cyan
+  -- text took the whole line and put out the colours of the code on it.
+  local info = vim.api.nvim_get_hl(0, { name = "DiagnosticVirtualTextInfo", link = false })
+  set("TraceCurrent", { bg = info.bg or card })
   set("TraceLost", { link = "DiagnosticWarn" })
   -- The file of a place in the panel: the text of the sidebar, unlit.
   set("TraceFile", { link = "SnacksPickerFile" })
