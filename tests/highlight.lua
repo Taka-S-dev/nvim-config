@@ -76,6 +76,23 @@ return function(T)
       seen.word = at(1, 5)
       seen.blank = at(1, 3)
       seen.once = at(4, 6)
+      -- A word lit in a colour of its own: the green drawn over its colour,
+      -- as a match above the colour's, and taken off once the cursor leaves.
+      local function over()
+        local out = {}
+        for _, match in ipairs(vim.fn.getmatches()) do
+          out[#out + 1] = match.group .. "@" .. match.priority .. "=" .. match.pattern
+        end
+        table.sort(out)
+        return table.concat(out, " ")
+      end
+      vim.api.nvim_win_set_cursor(0, { 1, 5 })
+      require("taka.words").toggle()
+      seen.coloured = at(3, 8)
+      seen.coloured_look = over()
+      at(4, 0)
+      seen.left = over()
+      require("taka.words").clear()
       -- Moved onto the word for real: lit once the cursor has rested.
       at(4, 6)
       vim.api.nvim_win_set_cursor(0, { 3, 8 })
@@ -98,6 +115,12 @@ return function(T)
     expect(seen.word == "1:5 2:14 3:8", "len: " .. tostring(seen.word))
     expect(seen.blank == "", "on a blank: " .. tostring(seen.blank))
     expect(seen.once == "", "a word that stands nowhere else: " .. tostring(seen.once))
+    expect(seen.coloured == "1:5 2:14 3:8", "len lit in a colour: " .. tostring(seen.coloured))
+    expect(
+      seen.coloured_look == [[CursorWordMatch@11=\V\<len\> Word1@10=\V\<len\>]],
+      "over len lit in a colour: " .. tostring(seen.coloured_look)
+    )
+    expect(seen.left == [[Word1@10=\V\<len\>]], "the cursor gone from len: " .. tostring(seen.left))
     expect(seen.at_once == "", "lit before the cursor rested: " .. tostring(seen.at_once))
     expect(seen.rested == "1:5 2:14 3:8", "after resting on len: " .. tostring(seen.rested))
     expect(seen.insert == "", "in Insert mode: " .. tostring(seen.insert))

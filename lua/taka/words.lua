@@ -66,6 +66,30 @@ local function apply_everywhere()
   end
 end
 
+-- The window where the lit word under the cursor is drawn in the green of
+-- the cursor word, and the id of the match that does it.
+local focused = { win = nil, id = nil, pattern = nil }
+
+-- With the cursor resting on a lit word (lua/taka/cursor_word.lua): its
+-- places in the window drawn over its colour in the green any word under the
+-- cursor is lit in, so they stand out from words of the same colour. `text`
+-- nil gives them their colour back.
+function M.focus(text)
+  local pattern = text and pattern_of(text, true)
+  local win = vim.api.nvim_get_current_win()
+  if pattern == focused.pattern and (not pattern or win == focused.win) then
+    return
+  end
+  if focused.id and vim.api.nvim_win_is_valid(focused.win) then
+    pcall(vim.fn.matchdelete, focused.id, focused.win)
+  end
+  focused = { win = nil, id = nil, pattern = nil }
+  if pattern then
+    local id = vim.fn.matchadd("CursorWordMatch", pattern, 11, -1, { window = win })
+    focused = { win = win, pattern = pattern, id = id }
+  end
+end
+
 local function selection()
   local from, to = vim.fn.getpos("v"), vim.fn.getpos(".")
   local text = vim.fn.getregion(from, to, { type = vim.fn.mode() })
@@ -138,6 +162,17 @@ function M.toggle()
   words[#words + 1] = { pattern = pattern, colour = colour, label = text }
   apply_everywhere()
   panel_refresh()
+end
+
+-- Whether `text` is lit as a whole word.
+function M.is_lit(text)
+  local pattern = pattern_of(text, true)
+  for _, word in ipairs(words) do
+    if word.pattern == pattern then
+      return true
+    end
+  end
+  return false
 end
 
 function M.clear()

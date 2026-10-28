@@ -11,6 +11,13 @@
 -- somewhere else on screen as well, so moving through the text does not light
 -- one word after another. Only the lines on screen are looked through, as for
 -- the selection (lua/taka/selection_matches.lua), in the same colour.
+--
+-- A word lit in a colour of its own (lua/taka/words.lua, <leader>hh) turns
+-- the same green, drawn over its colour: under it the green could not be
+-- seen, and with ten colours gone round more than once, two words in one
+-- colour could not be told apart. An underline over the colour was tried
+-- first, and was lost among a screen of colours. This is so with a language
+-- server attached too, whose lit references are drawn under the colour.
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("config_cursor_word")
@@ -21,6 +28,10 @@ local lit = {} ---@type table<integer, boolean>
 local timer = vim.uv.new_timer()
 
 local function clear()
+  local words = package.loaded["taka.words"]
+  if words then
+    words.focus(nil)
+  end
   for buf in pairs(lit) do
     if vim.api.nvim_buf_is_valid(buf) then
       vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
@@ -29,12 +40,16 @@ local function clear()
   lit = {}
 end
 
--- The word to light, or nil where none is.
+-- Whether `text` is lit by lua/taka/words.lua, left unloaded until a word is.
+local function lit_word(text)
+  local words = package.loaded["taka.words"]
+  return words ~= nil and words.is_lit(text)
+end
+
+-- The word to light and whether it is lit in a colour of its own, or nil
+-- where none is.
 local function word()
   if vim.api.nvim_get_mode().mode ~= "n" or vim.bo.buftype ~= "" then
-    return nil
-  end
-  if #vim.lsp.get_clients({ bufnr = 0, method = "textDocument/documentHighlight" }) > 0 then
     return nil
   end
   local text = vim.fn.expand("<cword>")
@@ -48,14 +63,18 @@ local function word()
   if not line:sub(col, col):match("[%w_]") then
     return nil
   end
-  return text
+  local coloured = lit_word(text)
+  if not coloured and #vim.lsp.get_clients({ bufnr = 0, method = "textDocument/documentHighlight" }) > 0 then
+    return nil
+  end
+  return text, coloured
 end
 
 -- The places the word under the cursor stands on screen lit, and the last
 -- ones put out.
 function M.update()
   clear()
-  local text = word()
+  local text, coloured = word()
   if not text then
     return
   end
@@ -76,6 +95,9 @@ function M.update()
   end
   if #found < 2 then
     return
+  end
+  if coloured then
+    package.loaded["taka.words"].focus(text)
   end
   for _, place in ipairs(found) do
     vim.api.nvim_buf_set_extmark(buf, ns, place[1], place[2], { end_col = place[3], hl_group = "CursorWordMatch" })
