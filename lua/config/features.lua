@@ -108,6 +108,9 @@ require("taka.c_macros")
 require("taka.selection_matches")
 -- The word under the cursor, lit where else it stands (lua/taka/cursor_word.lua).
 require("taka.cursor_word")
+-- The rg options typed after ` -- ` in the grep picker, searched only once
+-- they are whole (lua/taka/grep_args.lua).
+require("taka.grep_args").setup()
 
 -- A number in every base: the literal under the cursor, the expression
 -- selected, or one typed to :Radix (lua/taka/radix.lua). A macro's name, or

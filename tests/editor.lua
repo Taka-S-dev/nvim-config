@@ -230,6 +230,58 @@ return function(T)
     expect(seen.away, "q did not put the search away and keep it")
     expect(seen.back == "findme|sub/|*.c", "brought back: " .. tostring(seen.back))
   end)
+  -- What is typed after ` -- ` in the grep picker goes to rg once it is
+  -- whole: on `findme -- -g`, the glob not typed yet, rg took the `--` that
+  -- closes the options for the glob, and its output, nothing the picker could
+  -- read, put up a message for each line.
+  check("grep: an rg option still being typed is left out until it is whole", function()
+    need("rg")
+    local parse = require("snacks.picker.util").parse
+    local function args(text)
+      return table.concat(select(2, parse(text)), " ")
+    end
+    local split = {
+      args("findme -- -g"),
+      args("findme -- -g *.c"),
+      args("findme -- -i"),
+      args("findme -- -"),
+      args("findme -- --glob=*.c"),
+      args("findme -- -i -t"),
+    }
+    local dir = temp_dir()
+    write(dir .. "/a.c", { "int findme;" })
+    write(dir .. "/b.h", { "int findme;" })
+    local cwd = vim.fn.getcwd()
+    local notify = vim.notify
+    local complaints = 0
+    local found
+    local ok, err = pcall(function()
+      vim.notify = function(message, ...)
+        if tostring(message):find("invalid grep output", 1, true) then
+          complaints = complaints + 1
+        end
+        return notify(message, ...)
+      end
+      vim.api.nvim_set_current_dir(dir)
+      local picker = Snacks.picker.grep({ search = "findme -- -g" })
+      vim.wait(3000, function()
+        return not picker:is_active()
+      end, 20)
+      vim.wait(200)
+      found = #picker:items()
+      picker:close()
+    end)
+    vim.notify = notify
+    vim.api.nvim_set_current_dir(cwd)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(
+      vim.deep_equal(split, { "", "-g *.c", "-i", "", "--glob=*.c", "-i" }),
+      "options passed: " .. vim.inspect(split)
+    )
+    expect(found == 2, "findme -- -g found " .. tostring(found))
+    expect(complaints == 0, ("%d messages of output the picker could not read"):format(complaints))
+  end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
   -- shows. LazyVim looked up from the file for a .git, and a project with none
   -- of its own, in a folder of checkouts under one .git, searched them all.
