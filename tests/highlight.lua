@@ -101,6 +101,16 @@ return function(T)
     expect(seen.at_once == "", "lit before the cursor rested: " .. tostring(seen.at_once))
     expect(seen.rested == "1:5 2:14 3:8", "after resting on len: " .. tostring(seen.rested))
     expect(seen.insert == "", "in Insert mode: " .. tostring(seen.insert))
+    -- In the green the references a language server lights are given
+    -- (lua/plugins/colorscheme.lua), not the blue grey of the cursor line,
+    -- which on the cursor line, where the word under the cursor is, could
+    -- hardly be told.
+    local line = vim.api.nvim_get_hl(0, { name = "CursorLine", link = false }).bg
+    for _, name in ipairs({ "CursorWordMatch", "SelectionMatch", "LspReferenceText" }) do
+      local bg = vim.api.nvim_get_hl(0, { name = name, link = false }).bg
+      expect(bg == 0x21503c, ("%s is #%06x, not the green"):format(name, bg or 0))
+      expect(bg ~= line, name .. " is the cursor line's colour")
+    end
   end)
   check("words: several words stay lit across files and windows, and are stepped through", function()
     local words = require("taka.words")

@@ -58,6 +58,19 @@ return {
       hl["@variable.parameter.c"] = { fg = c.fg }
       hl.CMacro = { fg = macro }
       hl.CEnum = { fg = c.orange }
+      -- The other places a name stands, lit by a language server, for the word
+      -- under the cursor (lua/taka/cursor_word.lua) and for a selection
+      -- (lua/taka/selection_matches.lua), in a deep green. As shipped they are
+      -- the blue grey of the cursor line, a little lighter: 5.2 from it
+      -- (CIEDE2000) and 1.26:1, so on the cursor line, where the word under
+      -- the cursor is, they could barely be told. Lighter, the text on them
+      -- stops reading. The green stands apart by hue instead, 27.8 from the
+      -- cursor line and 17.2 or more from the selection's blue and the three
+      -- tints of a diff, at about the same lightness, and code on it reads at
+      -- 4.0:1 or more (names of functions, the darkest; 4.28:1 as shipped).
+      for _, name in ipairs({ "LspReferenceText", "LspReferenceRead", "LspReferenceWrite" }) do
+        hl[name] = { bg = "#21503c" }
+      end
     end,
   },
 }
