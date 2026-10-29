@@ -90,6 +90,17 @@ function M.focus(text)
   end
 end
 
+-- Words put out: the word under the cursor left without the green of
+-- lua/taka/cursor_word.lua, which would look as if it were still lit.
+local function put_out_done()
+  apply_everywhere()
+  panel_refresh()
+  local cursor_word = package.loaded["taka.cursor_word"]
+  if cursor_word then
+    cursor_word.hold()
+  end
+end
+
 local function selection()
   local from, to = vim.fn.getpos("v"), vim.fn.getpos(".")
   local text = vim.fn.getregion(from, to, { type = vim.fn.mode() })
@@ -128,8 +139,7 @@ function M.toggle()
     local index = lit_at_cursor()
     if index then
       table.remove(words, index)
-      apply_everywhere()
-      panel_refresh()
+      put_out_done()
       return
     end
     text, whole = vim.fn.expand("<cword>"), true
@@ -141,8 +151,7 @@ function M.toggle()
   for index, word in ipairs(words) do
     if word.pattern == pattern then
       table.remove(words, index)
-      apply_everywhere()
-      panel_refresh()
+      put_out_done()
       return
     end
   end
@@ -177,8 +186,7 @@ end
 
 function M.clear()
   words = {}
-  apply_everywhere()
-  panel_refresh()
+  put_out_done()
 end
 
 function M.jump(backwards)
@@ -322,8 +330,7 @@ local function put_out(word)
       table.remove(words, index)
     end
   end
-  apply_everywhere()
-  panel_refresh()
+  put_out_done()
 end
 
 function M.toggle_panel()

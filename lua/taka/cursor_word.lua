@@ -18,6 +18,11 @@
 -- colour could not be told apart. An underline over the colour was tried
 -- first, and was lost among a screen of colours. This is so with a language
 -- server attached too, whose lit references are drawn under the colour.
+--
+-- A word put out of its colour under the cursor (<leader>hh, <leader>hc) is
+-- left unlit until the cursor goes to another word: lit green at once, it
+-- looked as it did while it was still lit, and whether it had gone out could
+-- not be told.
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("config_cursor_word")
@@ -25,6 +30,8 @@ local ns = vim.api.nvim_create_namespace("config_cursor_word")
 local DELAY = 200
 
 local lit = {} ---@type table<integer, boolean>
+-- The word put out under the cursor, left unlit while the cursor is on it.
+local held ---@type string?
 local timer = vim.uv.new_timer()
 
 local function clear()
@@ -75,6 +82,10 @@ end
 function M.update()
   clear()
   local text, coloured = word()
+  if held and text == held then
+    return
+  end
+  held = nil
   if not text then
     return
   end
@@ -103,6 +114,14 @@ function M.update()
     vim.api.nvim_buf_set_extmark(buf, ns, place[1], place[2], { end_col = place[3], hl_group = "CursorWordMatch" })
   end
   lit[buf] = true
+end
+
+-- Called by lua/taka/words.lua when words are put out: the word under the
+-- cursor shown as it now is, without the green, until the cursor leaves it.
+function M.hold()
+  timer:stop()
+  clear()
+  held = word()
 end
 
 -- For the checks: the places lit, as "line:column".
