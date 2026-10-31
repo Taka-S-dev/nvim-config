@@ -476,6 +476,89 @@ return function(T)
     expect(seen.whole == "*.c *.h", ". takes the folder off: " .. tostring(seen.whole))
     expect(seen.off == "", ":Scope off left: " .. tostring(seen.off))
   end)
+  -- The grep has VS Code's three buttons for how it matches, with its keys:
+  -- the case typed always (Alt+c), whole words (Alt+w) and the pattern or
+  -- the text as it is (Alt+r), lit while on. What a grep was set to is kept
+  -- for the next; <leader>sw starts with whole words and the text as it is,
+  -- and leaves the next grep as it was. Alt+o moves between the windows, as
+  -- Alt+w did. The clicks on the buttons are read off the screen, which a
+  -- headless run has none of.
+  check("grep: buttons and keys for the case, whole words and the pattern", function()
+    need("rg")
+    local dir = vim.fs.normalize(temp_dir())
+    write(dir .. "/a.c", { "int len;", "int LEN;", "int strlen;", "int l.n;" })
+    local match = require("taka.grep_match")
+    local cwd = vim.fn.getcwd()
+    local seen = {}
+    local function open(source, search)
+      local picker = Snacks.picker[source]({ search = search })
+      vim.wait(3000, function()
+        return not picker:is_active()
+      end, 20)
+      return picker
+    end
+    local function look(picker, action)
+      if action then
+        picker:action(action)
+        vim.wait(100)
+        vim.wait(3000, function()
+          return not picker:is_active()
+        end, 20)
+      end
+      local lines = vim.tbl_map(function(item)
+        return item.pos[1]
+      end, picker:items())
+      table.sort(lines)
+      return match.shown(picker) .. " | " .. table.concat(lines, ",")
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      vim.cmd.edit(dir .. "/a.c")
+      local picker = open("grep", "len")
+      seen.start = look(picker)
+      seen.case = look(picker, "grep_case")
+      look(picker, "grep_case")
+      seen.word = look(picker, "grep_word")
+      look(picker, "grep_word")
+      local buf = picker.input.win.buf
+      seen.keys = {}
+      for _, lhs in ipairs({ "<M-c>", "<M-w>", "<M-r>", "<M-o>" }) do
+        seen.keys[#seen.keys + 1] = vim.fn.maparg(lhs, "i", false, true).buffer == 1
+      end
+      picker:close()
+      picker = open("grep", "l.n")
+      seen.pattern = look(picker)
+      seen.text = look(picker, "grep_regex")
+      picker:close()
+      picker = open("grep", "l.n")
+      seen.kept = look(picker)
+      picker:close()
+      picker = open("grep_word", "len")
+      seen.word_source = look(picker)
+      look(picker, "grep_case")
+      picker:close()
+      seen.options = vim.inspect(match.options, { newline = "" })
+    end)
+    for _, picker in ipairs(Snacks.picker.get()) do
+      picker:close()
+    end
+    match.options = { case = false, word = false, regex = true }
+    vim.api.nvim_set_current_dir(cwd)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.start == "Aa ab [.*] | 1,2,3", "len: " .. tostring(seen.start))
+    expect(seen.case == "[Aa] ab [.*] | 1,3", "len, its case: " .. tostring(seen.case))
+    expect(seen.word == "Aa [ab] [.*] | 1,2", "len, whole words: " .. tostring(seen.word))
+    expect(vim.deep_equal(seen.keys, { true, true, true, true }), "keys: " .. vim.inspect(seen.keys))
+    expect(seen.pattern == "Aa ab [.*] | 1,2,3,4", "l.n as a pattern: " .. tostring(seen.pattern))
+    expect(seen.text == "Aa ab .* | 4", "l.n as it is: " .. tostring(seen.text))
+    expect(seen.kept == "Aa ab .* | 4", "the next grep: " .. tostring(seen.kept))
+    expect(seen.word_source == "Aa [ab] .* | 1,2", "<leader>sw on len: " .. tostring(seen.word_source))
+    expect(
+      seen.options == "{  case = false,  regex = false,  word = false}",
+      "kept for the next grep: " .. tostring(seen.options)
+    )
+  end)
   -- <leader>ff and <leader>sg search the folder opened, the one the file tree
   -- shows. LazyVim looked up from the file for a .git, and a project with none
   -- of its own, in a folder of checkouts under one .git, searched them all.

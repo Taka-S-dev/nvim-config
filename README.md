@@ -395,6 +395,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   ├── grep_folder.lua # 検索の中でフォルダを一覧から選ぶ (<A-.>)
 │   │   ├── grep_kinds.lua  # 検索の中でファイルの種類を一覧から選ぶ (<A-e>)
 │   │   ├── grep_args.lua   # grep の ` -- ` の後の、打ちかけの rg オプションを外す
+│   │   ├── grep_match.lua  # grep の Aa / ab / .* のボタン (<A-c> <A-w> <A-r>)
 │   │   ├── scope_pin.lua   # いまのスコープの線を固定する (<leader>jl)
 │   │   ├── markdown_links.lua # Markdown のリンクを gf でたどる
 │   │   └── cd_picker.lua   # 外部のピッカーで cwd を移す :C / :Cf / :Zi (オプション)

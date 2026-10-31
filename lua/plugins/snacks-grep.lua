@@ -4,10 +4,21 @@
 -- them. `.` is the key that narrows the file tree to a folder too; e for the
 -- extensions. The statusline shows what the current tab keeps to, and the
 -- frame of each search names the two keys at its foot.
+--
+-- A grep also has the buttons of VS Code's search for how it matches, the
+-- case, whole words and the pattern, with VS Code's keys
+-- (lua/taka/grep_match.lua). Alt+w is whole words there, so moving between
+-- the windows of a search, snacks' Alt+w, is Alt+o too, in every search.
 local keys = {
   ["<a-.>"] = { "scope_folder", mode = { "n", "i" } },
   ["<a-e>"] = { "scope_kinds", mode = { "n", "i" } },
 }
+
+local grep_keys = vim.tbl_extend("force", keys, {
+  ["<a-c>"] = { "grep_case", mode = { "n", "i" } },
+  ["<a-w>"] = { "grep_word", mode = { "n", "i" } },
+  ["<a-r>"] = { "grep_regex", mode = { "n", "i" } },
+})
 
 local actions = {
   scope_folder = function(picker)
@@ -17,6 +28,18 @@ local actions = {
     require("taka.grep_kinds").choose(picker)
   end,
 }
+
+local grep_actions = vim.tbl_extend("force", actions, {
+  grep_case = function(picker)
+    require("taka.grep_match").toggle(picker, "case")
+  end,
+  grep_word = function(picker)
+    require("taka.grep_match").toggle(picker, "word")
+  end,
+  grep_regex = function(picker)
+    require("taka.grep_match").toggle(picker, "regex")
+  end,
+})
 
 -- The two keys, named under the frame that carries the search's title: they
 -- were found only in the help. In the grey of comments and at the right, so
@@ -38,15 +61,22 @@ local function show_keys(picker)
 end
 
 local function source(hook)
+  local grep = hook == "grep"
   return {
     config = function(opts)
-      return require("taka.scope")[hook](opts)
+      opts = require("taka.scope")[hook](opts)
+      return grep and require("taka.grep_match").config(opts) or opts
     end,
-    on_show = show_keys,
-    actions = actions,
+    on_show = function(picker)
+      show_keys(picker)
+      if grep then
+        require("taka.grep_match").attach(picker)
+      end
+    end,
+    actions = grep and grep_actions or actions,
     win = {
-      input = { keys = keys },
-      list = { keys = keys },
+      input = { keys = grep and grep_keys or keys },
+      list = { keys = grep and grep_keys or keys },
     },
   }
 end
@@ -56,6 +86,10 @@ return {
     "folke/snacks.nvim",
     opts = {
       picker = {
+        win = {
+          input = { keys = { ["<a-o>"] = { "cycle_win", mode = { "n", "i" } } } },
+          list = { keys = { ["<a-o>"] = "cycle_win" } },
+        },
         sources = {
           grep = source("grep"),
           grep_word = source("grep"),
