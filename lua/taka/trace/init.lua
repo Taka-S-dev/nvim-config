@@ -318,11 +318,22 @@ function M.decorate(buf)
       vim.api.nvim_buf_set_extmark(buf, namespace, line - 1, 0, {
         sign_text = row.number < 100 and ("%2d"):format(row.number) or "··",
         sign_hl_group = found and M.kind_colour(row.step) or "TraceLost",
-        line_hl_group = state.notes and row.step.id == state.current and "TraceCurrent" or nil,
         virt_lines = note,
         virt_lines_above = true,
         priority = 20,
       })
+      -- The line of the step chosen, to the edge of the window. Not a line
+      -- highlight: that is drawn over every other colour on the line, and
+      -- hides the word under the cursor lit there.
+      if state.notes and row.step.id == state.current then
+        vim.api.nvim_buf_set_extmark(buf, namespace, line - 1, 0, {
+          end_row = line,
+          end_col = 0,
+          hl_group = "TraceCurrent",
+          hl_eol = true,
+          priority = 20,
+        })
+      end
       stacks[line] = stacks[line] or {}
       table.insert(stacks[line], { row = row, height = note and #note or 0 })
     end

@@ -35,6 +35,47 @@ return function(T)
     expect(current.fg == nil, ("TraceCurrent sets the text colour #%06x"):format(current.fg or 0))
     expect(current.bg ~= nil and current.bg == info.bg, "TraceCurrent's background: " .. vim.inspect(current))
   end)
+  -- Its background is drawn under the other colours of the line, to the edge
+  -- of the window: a line highlight would be drawn over them and hide the
+  -- word under the cursor, lit by a language server on that line.
+  check("trace: the chosen step's line lets the words lit on it show", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/m.c", { "int f(int flag)", "{", "    if (flag) return 1;", "}" })
+    write(
+      folder .. "/c.jsonl",
+      lines_of({ { title = "Chosen", root = code }, { id = "s", file = "m.c", line = 3, title = "Tests flag" } })
+    )
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/m.c")
+      expect(trace.open(), "the trace was not found")
+      trace.show_notes(true)
+      trace.choose(trace.state().rows[1])
+      local namespace = vim.api.nvim_get_namespaces().config_trace
+      for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })) do
+        local details = mark[4]
+        if details.line_hl_group then
+          seen.line_hl = details.line_hl_group
+        end
+        if details.hl_group == "TraceCurrent" then
+          seen.lit = ("%d-%d eol=%s below=%s"):format(
+            mark[2] + 1,
+            details.end_row + 1,
+            tostring(details.hl_eol),
+            tostring(details.priority < vim.hl.priorities.user)
+          )
+        end
+      end
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.line_hl == nil, "a line highlight: " .. tostring(seen.line_hl))
+    expect(seen.lit == "3-4 eol=true below=true", "the chosen line: " .. tostring(seen.lit))
+  end)
   check("trace: read as written, each step under the one it names", function()
     local dir = temp_dir()
     local path = dir .. "/t.jsonl"
@@ -104,7 +145,11 @@ return function(T)
       local function marks(buf)
         local out = {}
         local namespace = vim.api.nvim_get_namespaces().config_trace
-        for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, namespace, 0, -1, { details = true })) do
+        -- The steps, without the background of the one chosen.
+        local steps = vim.tbl_filter(function(mark)
+          return mark[4].sign_text ~= nil
+        end, vim.api.nvim_buf_get_extmarks(buf, namespace, 0, -1, { details = true }))
+        for _, mark in ipairs(steps) do
           local details = mark[4]
           local text = {}
           for _, virt in ipairs(details.virt_lines or {}) do
