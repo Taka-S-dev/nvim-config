@@ -7,6 +7,12 @@
 vim.keymap.set("n", "<A-Left>", "<C-o>", { desc = "Jump back" })
 vim.keymap.set("n", "<A-Right>", "<C-i>", { desc = "Jump forward" })
 
+-- Leaving insert mode without reaching for Esc, or for <C-[>, whose [ on a JIS
+-- keyboard is a key further out than on a US one. The j waits for the k as
+-- long as any key waits for the next (timeoutlen); with the IME on, the two
+-- are taken by it and Esc is still needed.
+vim.keymap.set("i", "jk", "<Esc>", { desc = "Leave insert mode" })
+
 -- Copy the current location as `path:line`, the form grep output, compiler
 -- errors and issue trackers all take. Paths use forward slashes and are
 -- relative to the cwd, so they stay pasteable as-is; a file outside the cwd
