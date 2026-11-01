@@ -492,8 +492,10 @@ return function(T)
     local seen = {}
     local function open(source, search)
       local picker = Snacks.picker[source]({ search = search })
+      -- The search can be done before the window it is typed in is open, and
+      -- the buttons are drawn after that.
       vim.wait(3000, function()
-        return not picker:is_active()
+        return not picker:is_active() and picker.input.win.buf ~= nil and match.shown(picker) ~= ""
       end, 20)
       return picker
     end
