@@ -38,6 +38,7 @@ local function run_checks()
     "gtags",
     "markdown",
     "writes",
+    "debug_lines",
     "clipboard",
     "docs",
     "pins",

@@ -88,6 +88,17 @@ Snacks.toggle({
 require("taka.writes")
 key("n", "<leader>jw", "taka.writes", "show", "Where this name is written to")
 
+-- Debug lines put in for a run and taken out again, <leader>di and friends;
+-- an agent puts its own in from the command line (lua/taka/debug_lines.lua).
+require("taka.debug_lines")
+key("n", "<leader>di", "taka.debug_lines", "insert", "Put a debug line in below")
+key("x", "<leader>di", "taka.debug_lines", "mark_selection", "Make the lines selected debug lines")
+key("n", "<leader>dl", "taka.debug_lines", "list", "List the debug lines")
+key("n", "<leader>dL", "taka.debug_lines", "list", "List the debug lines (search every file)", true)
+key("n", "<leader>dx", "taka.debug_lines", "clear", "Take debug lines out")
+key("n", "<leader>dj", "taka.debug_lines", "jump", "Go to the debug line this log line names")
+key("n", "<leader>dg", "taka.debug_lines", "set_group", "Group of the debug lines")
+
 -- A bar to find text in the file, buttons and all, <leader>sf
 -- (lua/taka/find.lua).
 key({ "n", "x" }, "<leader>sf", "taka.find", "open", "Find in this file (a bar)")

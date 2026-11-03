@@ -386,6 +386,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   │   └── panel.lua   # 階層に整理するパネル (<leader>jo)
 │   │   ├── jump_stack.lua  # 定義・参照へ飛んで潜っている段を右のパネルに出す (<leader>jy)
 │   │   ├── writes.lua      # C の名前に値を入れている所の一覧 (<leader>jw)
+│   │   ├── debug_lines.lua # 目印つきのデバッグ行を入れ、一覧し、まとめて消す (<leader>di)
 │   │   ├── c_macros.lua    # C のマクロと enum の値を、使っている所で色分けする
 │   │   ├── words.lua       # 複数の単語を色分けして光らせる (<leader>hh)
 │   │   ├── selection_matches.lua # 選んだ文字列と同じものを、選んでいる間だけ光らせる
