@@ -30,6 +30,36 @@ return function(T)
     expect(not copilot, "copilot is enabled")
     expect(lua_ls, "lua_ls is not enabled")
   end)
+  -- The path in the statusline is whole when it fits; past the width, the
+  -- folders go from the front, the ones next to the file staying, and the
+  -- file name is never cut. LazyVim's cut the middle, and with it the module.
+  check("statusline: the path is cut from the front, and only past the width", function()
+    local fit = require("taka.lib.fit_path").fit
+    local function shown(path, width)
+      return table.concat(fit(path, width), "/")
+    end
+    local cases = {
+      { "ssl/statem/extensions/x.c", 40, "ssl/statem/extensions/x.c" },
+      { "ssl/statem/extensions/x.c", 25, "ssl/statem/extensions/x.c" },
+      { "ssl/statem/extensions/x.c", 24, "…/statem/extensions/x.c" },
+      { "ssl/statem/extensions/x.c", 16, "…/extensions/x.c" },
+      { "ssl/statem/extensions/x.c", 5, "…/x.c" },
+      { "a_very_long_file_name.c", 5, "a_very_long_file_name.c" },
+    }
+    for _, case in ipairs(cases) do
+      local got = shown(case[1], case[2])
+      expect(got == case[3], ("%s in %d: %s, not %s"):format(case[1], case[2], got, case[3]))
+    end
+    -- In the statusline itself, in place of LazyVim's.
+    local found
+    for _, component in ipairs(require("lualine").get_config().sections.lualine_c) do
+      if type(component[1]) == "function" and debug.getinfo(component[1], "S").source:find("lualine%-path") then
+        found = true
+      end
+    end
+    expect(found, "the path of lua/plugins/lualine-path.lua is not in the statusline")
+  end)
+
   -- Space typed in Normal mode with the Japanese input method on came in as a
   -- full-width space, and <leader> did nothing. The input method is turned off
   -- on leaving Insert mode or the command line (lua/taka/ime.lua); with no
