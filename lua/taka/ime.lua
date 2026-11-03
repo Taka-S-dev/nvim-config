@@ -81,12 +81,24 @@ local group = vim.api.nvim_create_augroup("taka_ime", { clear = true })
 -- left the input method on. A move between those modes, as to the completion
 -- menu, is no way out, nor is Ctrl-O, one command in Normal mode (niI) before
 -- the text goes on.
+--
+-- Nor is a way out that comes straight back: the grep picker draws its preview
+-- out of Insert mode and back for every character typed, and the input method
+-- was turned off in the middle of a Japanese word. So the mode is looked at
+-- again once the change is done, and only one still out of them turns it off.
+local function out_of_typing(mode)
+  return not mode:match("^[icR]") and not mode:match("^ni")
+end
 vim.api.nvim_create_autocmd("ModeChanged", {
   group = group,
   callback = function(args)
     local old, new = args.match:match("^(.-):(.*)$")
-    if old and old:match("^[icR]") and not new:match("^[icR]") and not new:match("^ni") then
-      M.off()
+    if old and old:match("^[icR]") and out_of_typing(new) then
+      vim.schedule(function()
+        if out_of_typing(vim.api.nvim_get_mode().mode) then
+          M.off()
+        end
+      end)
     end
   end,
 })

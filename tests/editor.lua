@@ -54,11 +54,28 @@ return function(T)
     -- In Insert mode it is text.
     local fed, notify, feedkeys = {}, vim.notify, vim.api.nvim_feedkeys
     local ok, err = pcall(function()
-      for _, change in ipairs(changes) do
+      -- The input method is turned off once the change is done, so this waits
+      -- a moment for each.
+      local function change_to(change)
         local before = calls
         vim.api.nvim_exec_autocmds("ModeChanged", { pattern = change })
-        seen[#seen + 1] = change .. "=" .. (calls > before and "off" or "-")
+        vim.wait(30, function()
+          return calls > before
+        end, 5)
+        return change .. "=" .. (calls > before and "off" or "-")
       end
+      for _, change in ipairs(changes) do
+        seen[#seen + 1] = change_to(change)
+      end
+      -- Out of Insert mode and straight back, as the grep picker does to draw
+      -- its preview for every character typed: the input method stays on.
+      local get_mode = vim.api.nvim_get_mode
+      vim.api.nvim_get_mode = function()
+        return { mode = "i", blocking = false }
+      end
+      local back = change_to("i:n")
+      vim.api.nvim_get_mode = get_mode
+      seen[#seen + 1] = "back:" .. back
       vim.notify = function() end
       vim.api.nvim_feedkeys = function(keys)
         fed[#fed + 1] = keys
@@ -74,7 +91,7 @@ return function(T)
     expect(ok, tostring(err))
     expect(ime.available(), "the Windows API could not be loaded")
     expect(
-      table.concat(seen, " ") == "i:n=off c:n=off R:n=off i:ic=- i:niI=- ic:i=- n:i=- i:c=-",
+      table.concat(seen, " ") == "i:n=off c:n=off R:n=off i:ic=- i:niI=- ic:i=- n:i=- i:c=- back:i:n=-",
       "turned off on: " .. table.concat(seen, " ")
     )
     expect(
