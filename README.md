@@ -340,6 +340,7 @@ $env:LOCALAPPDATA\nvim\
 │   ├── open-in-nvim.cmd    # 外部ツールから nvim にファイルを送る wrapper
 │   ├── test.cmd            # プラグイン更新後の確認 (tests\run.lua を実行)
 │   ├── gutentags\update_tags.cmd # gutentags 付属バッチの出力を NUL に向ける wrapper
+│   ├── link-skills.cmd     # skills\ のスキルを、AI エージェントのスキルのフォルダからリンクする
 │   └── profile-snippet.ps1 # `nv` エイリアス定義 ($PROFILE に貼り付け)
 ├── doc\
 │   └── cfg.txt             # 使い方のヘルプ (:h cfg)。doc\tags は起動時に作る (git 管理外)
@@ -411,6 +412,9 @@ $env:LOCALAPPDATA\nvim\
 │       ├── snacks-terminal.lua # <C-/> の端末を、閉じたときの高さで開き直す
 │       ├── markdown.lua    # Markdown を画面上で整形表示 (render-markdown.nvim)
 │       └── treesitter.lua  # 追加パーサ
+├── skills\                # この設定の機能を AI エージェントから使うスキル (skills\README.md)
+│   ├── nvim-trace\         # 調べた道筋を Neovim に出す (:h cfg-trace)
+│   └── nvim-debug-lines\   # デバッグ行を Neovim を通して入れて消す (:h cfg-debug-lines)
 ├── tests\
 │   ├── run.lua             # bin\test.cmd が実行する。下の確認を順に走らせる
 │   ├── helpers.lua         # どの確認も使う部品

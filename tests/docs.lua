@@ -84,4 +84,40 @@ return function(T)
     reset_editor()
     expect(#broken == 0, "leads nowhere: " .. table.concat(broken, ", "))
   end)
+
+  -- The skills agents read (skills/README.md): each one's name is its folder's,
+  -- as the agents look a skill up by it, it says when it is for, and every
+  -- :h cfg-... it points to is in the help.
+  check("skills: each has its name and what it is for, and its help tags exist", function()
+    local config = vim.fn.stdpath("config")
+    local help = table.concat(vim.fn.readfile(config .. "/doc/cfg.txt"), " ")
+    local wrong, count = {}, 0
+    for _, file in ipairs(vim.fn.globpath(config .. "/skills", "*/SKILL.md", false, true)) do
+      count = count + 1
+      local folder = vim.fs.basename(vim.fs.dirname(file))
+      local lines = vim.fn.readfile(file)
+      -- The header between the first two `---` lines.
+      local name, description
+      for i = 2, #lines do
+        if lines[i] == "---" or lines[1] ~= "---" then
+          break
+        end
+        name = name or lines[i]:match("^name: *(%S+)")
+        description = description or lines[i]:match("^description: *(%S.*)")
+      end
+      if name ~= folder then
+        wrong[#wrong + 1] = folder .. ": name " .. tostring(name)
+      end
+      if not description then
+        wrong[#wrong + 1] = folder .. ": description"
+      end
+      for tag in table.concat(lines, " "):gmatch(":h (cfg[%w-]*)") do
+        if not help:find("*" .. tag .. "*", 1, true) then
+          wrong[#wrong + 1] = folder .. ": no " .. tag
+        end
+      end
+    end
+    expect(count >= 2, count .. " skills found")
+    expect(#wrong == 0, table.concat(wrong, ", "))
+  end)
 end
