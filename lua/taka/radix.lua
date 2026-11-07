@@ -184,23 +184,26 @@ function M.describe(text)
 end
 
 -- How tightly each operator binds, as in C, loosest first.
+-- The conditional, `? :`, binds more loosely still, and is read apart.
 local PRECEDENCE = {
-  ["|"] = 1,
-  ["^"] = 2,
-  ["&"] = 3,
-  ["=="] = 4,
-  ["!="] = 4,
-  ["<"] = 5,
-  ["<="] = 5,
-  [">"] = 5,
-  [">="] = 5,
-  ["<<"] = 6,
-  [">>"] = 6,
-  ["+"] = 7,
-  ["-"] = 7,
-  ["*"] = 8,
-  ["/"] = 8,
-  ["%"] = 8,
+  ["||"] = 1,
+  ["&&"] = 2,
+  ["|"] = 3,
+  ["^"] = 4,
+  ["&"] = 5,
+  ["=="] = 6,
+  ["!="] = 6,
+  ["<"] = 7,
+  ["<="] = 7,
+  [">"] = 7,
+  [">="] = 7,
+  ["<<"] = 8,
+  [">>"] = 8,
+  ["+"] = 9,
+  ["-"] = 9,
+  ["*"] = 10,
+  ["/"] = 10,
+  ["%"] = 10,
 }
 
 local function tokens(source)
@@ -218,8 +221,10 @@ local function tokens(source)
       and (
         source:match("^<<", i)
         or source:match("^>>", i)
+        or source:match("^&&", i)
+        or source:match("^||", i)
         or source:match("^[<>=!]=", i)
-        or source:match("^[<>|&^+%-*/%%~()]", i)
+        or source:match("^[<>|&^+%-*/%%~()!?:]", i)
       )
     if space then
       i = i + #space
@@ -240,7 +245,7 @@ local function tokens(source)
   return out
 end
 
-local binary_op, unary
+local binary_op, unary, conditional
 
 local function primary(state)
   local token = state.tokens[state.at]
@@ -253,7 +258,7 @@ local function primary(state)
   end
   if token.op == "(" then
     state.at = state.at + 1
-    local v = binary_op(state, 1)
+    local v = conditional(state)
     local close = state.tokens[state.at]
     if not v or not close or close.op ~= ")" then
       return nil
@@ -263,9 +268,13 @@ local function primary(state)
   end
 end
 
+local function truth(yes)
+  return yes and 1ULL or 0ULL
+end
+
 function unary(state)
   local token = state.tokens[state.at]
-  if token and (token.op == "~" or token.op == "-" or token.op == "+") then
+  if token and (token.op == "~" or token.op == "-" or token.op == "+" or token.op == "!") then
     state.at = state.at + 1
     local v = unary(state)
     if not v then
@@ -275,13 +284,13 @@ function unary(state)
       state.negative = true
       return 0ULL - v
     end
+    if token.op == "!" then
+      state.compared = true
+      return truth(v == 0ULL)
+    end
     return token.op == "~" and bit.bnot(v) or v
   end
   return primary(state)
-end
-
-local function truth(yes)
-  return yes and 1ULL or 0ULL
 end
 
 function binary_op(state, loosest)
@@ -298,13 +307,17 @@ function binary_op(state, loosest)
       return nil
     end
     local op = token.op
-    if op == "|" then
+    if op == "||" or op == "&&" then
+      state.compared = true
+      local l, r = left ~= 0ULL, right ~= 0ULL
+      left = truth(op == "||" and (l or r) or op == "&&" and l and r)
+    elseif op == "|" then
       left = bit.bor(left, right)
     elseif op == "^" then
       left = bit.bxor(left, right)
     elseif op == "&" then
       left = bit.band(left, right)
-    elseif PRECEDENCE[op] <= 5 then
+    elseif PRECEDENCE[op] <= 7 then
       state.compared = true
       left = truth(
         op == "==" and left == right
@@ -336,6 +349,28 @@ function binary_op(state, loosest)
   return left
 end
 
+-- `cond ? a : b`, the loosest of all, and grouping from the right as in C:
+-- `a ? b : c ? d : e` is `a ? b : (c ? d : e)`.
+function conditional(state)
+  local test = binary_op(state, 1)
+  local token = state.tokens[state.at]
+  if not test or not token or token.op ~= "?" then
+    return test
+  end
+  state.at = state.at + 1
+  local yes = conditional(state)
+  local colon = state.tokens[state.at]
+  if not yes or not colon or colon.op ~= ":" then
+    return nil
+  end
+  state.at = state.at + 1
+  local no = conditional(state)
+  if not no then
+    return nil
+  end
+  return test ~= 0ULL and yes or no
+end
+
 -- An expression of literals and C's integer operators worked out: its value
 -- and what it was worked out from, whether it compared or went below zero, or
 -- nil when it is none: a name in it, a division by zero, a shift past 63.
@@ -345,7 +380,7 @@ function M.evaluate(source)
     return nil
   end
   local state = { tokens = list, at = 1 }
-  local v = binary_op(state, 1)
+  local v = conditional(state)
   if not v or state.at <= #list then
     return nil
   end

@@ -1006,6 +1006,11 @@ return function(T)
     local sums = {
       ["1 << 6 | 2"] = "1 << 6 | 2 | dec  66 | hex  0x42 | bin  0b0100_0010 | bit  6, 1 set (0=LSB)",
       ["1 & 2 == 2"] = "1 & 2 == 2 | true",
+      -- The logical operators and the conditional, as an #if condition has
+      -- them, bound as C binds them.
+      ["1 || 0 && 0"] = "1 || 0 && 0 | true",
+      ["!(1 == 2)"] = "!(1 == 2) | true",
+      ["0 ? 2 : 0 ? 4 : 5"] = "0 ? 2 : 0 ? 4 : 5 | dec  5 | hex  0x5 | bin  0b0000_0101 | bit  2, 0 set (0=LSB)",
       ["3 - 5"] = "3 - 5 | dec  -2 | hex  0xfffffffffffffffe  (64-bit)",
       ["10 / 0"] = "nil",
       ["FOO | 1"] = "nil",
