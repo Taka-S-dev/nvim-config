@@ -135,6 +135,11 @@ vim.api.nvim_create_user_command("Radix", function(command)
   require("taka.radix").command(command.args, macro_value)
 end, { nargs = "+", desc = "An expression of numbers or macros in dec, hex and binary" })
 
+-- The blocks of C that #if leaves out for macros set for the session, grey,
+-- <leader>cp and :Defines (lua/taka/inactive.lua).
+require("taka.inactive")
+key("n", "<leader>cp", "taka.inactive", "ask", "Macros for #if (grey what is left out)")
+
 -- The Japanese input method off on leaving Insert mode or the command line, so
 -- Space in Normal mode reaches <leader> (lua/taka/ime.lua).
 require("taka.ime")

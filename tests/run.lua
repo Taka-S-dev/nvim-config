@@ -45,6 +45,7 @@ local function run_checks()
     "diff",
     "scope",
     "c_macros",
+    "inactive",
     "call_tree",
     "lsp",
     "jump_stack",
