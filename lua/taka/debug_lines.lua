@@ -205,7 +205,8 @@ local function in_file(path)
   end
   local data = handle:read("*a")
   handle:close()
-  return in_lines(vim.split((data:gsub("\r\n", "\n")), "\n", { plain = true }))
+  local lines = vim.split((data:gsub("\r\n", "\n")), "\n", { plain = true })
+  return in_lines((require("taka.lib.legacy_text").lines(lines)))
 end
 
 -- The root to look in: the project the file is in, by GTAGS or version
@@ -401,10 +402,13 @@ function M.find(root, done, everywhere)
         local mark = file and M.parse(text)
         if mark then
           on_disk[same(file)] = on_disk[same(file)] or { name = file, found = {} }
-          table.insert(
-            on_disk[same(file)].found,
-            { lnum = tonumber(lnum), text = vim.trim(text), ai = mark.ai, group = mark.group, n = mark.n }
-          )
+          table.insert(on_disk[same(file)].found, {
+            lnum = tonumber(lnum),
+            text = vim.trim((require("taka.lib.legacy_text").text(text))),
+            ai = mark.ai,
+            group = mark.group,
+            n = mark.n,
+          })
         end
       end
       finish(on_disk)

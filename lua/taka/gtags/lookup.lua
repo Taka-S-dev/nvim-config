@@ -336,7 +336,16 @@ local function lookup_definition(symbol, done, no_database)
     end
     -- Placed where the definitions are now each time, the ones kept included:
     -- the file may have changed since they were looked up.
-    done(vim.tbl_map(heal, items), source)
+    -- The text read as the file does only now, in a copy: it is looked for
+    -- in the bytes of the file above, and the items are kept.
+    done(
+      vim.tbl_map(function(item)
+        local healed = heal(item)
+        local text = require("taka.lib.legacy_text").text(healed.text or "")
+        return vim.tbl_extend("force", healed, { text = text })
+      end, items),
+      source
+    )
   end
   if symbols[symbol] then
     -- No global to wait for, but the statusline still says the key was heard.

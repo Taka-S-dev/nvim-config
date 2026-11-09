@@ -46,6 +46,7 @@ local function run_checks()
     "scope",
     "c_macros",
     "inactive",
+    "encoding",
     "call_tree",
     "lsp",
     "jump_stack",

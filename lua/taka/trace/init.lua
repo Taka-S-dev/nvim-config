@@ -940,7 +940,10 @@ function M.check(path)
       }
     end
     if files[step.file] == nil then
-      files[step.file] = vim.uv.fs_stat(step.file) and vim.fn.readfile(step.file) or false
+      -- As the file reads when opened: a step's text is what the editor shows.
+      files[step.file] = vim.uv.fs_stat(step.file)
+          and (require("taka.lib.legacy_text").lines(vim.fn.readfile(step.file)))
+        or false
     end
     local lines = files[step.file]
     if not lines then

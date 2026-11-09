@@ -60,9 +60,15 @@ local function show_keys(picker)
   end
 end
 
+-- A grep finds Japanese in files in Shift-JIS too (lua/taka/grep_encoding.lua).
+local function legacy_finder(opts, ctx)
+  return require("taka.grep_encoding").finder(opts, ctx)
+end
+
 local function source(hook)
   local grep = hook == "grep"
   return {
+    finder = grep and legacy_finder or nil,
     config = function(opts)
       opts = require("taka.scope")[hook](opts)
       return grep and require("taka.grep_match").config(opts) or opts
@@ -93,6 +99,7 @@ return {
         sources = {
           grep = source("grep"),
           grep_word = source("grep"),
+          grep_buffers = { finder = legacy_finder },
           files = source("files"),
         },
       },

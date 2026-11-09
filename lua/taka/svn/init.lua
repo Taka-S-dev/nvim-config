@@ -46,7 +46,9 @@ local function lines_of(text)
   if lines[#lines] == "" then
     lines[#lines] = nil
   end
-  return lines
+  -- svn cat hands over the bytes of the file, and a file in Shift-JIS compared
+  -- with its own buffer differed on every line of Japanese.
+  return (require("taka.lib.legacy_text").lines(lines))
 end
 
 local function unescape(text)

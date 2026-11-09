@@ -122,6 +122,9 @@ require("taka.cursor_word")
 -- The rg options typed after ` -- ` in the grep picker, searched only once
 -- they are whole (lua/taka/grep_args.lua).
 require("taka.grep_args").setup()
+-- Searches and previews that read files in Shift-JIS as the editor does
+-- (lua/taka/grep_encoding.lua).
+require("taka.grep_encoding").setup()
 
 -- A number in every base: the literal under the cursor, the expression
 -- selected, or one typed to :Radix (lua/taka/radix.lua). A macro's name, or

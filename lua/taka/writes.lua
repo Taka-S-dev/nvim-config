@@ -109,8 +109,11 @@ function M.find(name, root, done)
           index = index + 1
           local file = files[index]
           for _, hit in ipairs(writes_in(file, name, by_file[file])) do
-            local text = vim.fn.readfile(file, "", hit.lnum)[hit.lnum] or ""
-            items[#items + 1] = { filename = file, lnum = hit.lnum, col = hit.col, text = vim.trim(text) }
+            local raw = vim.fn.readfile(file, "", hit.lnum)[hit.lnum] or ""
+            local legacy = require("taka.lib.legacy_text")
+            local text, converted = legacy.text(raw)
+            local col = converted and legacy.column(raw, hit.col - 1) + 1 or hit.col
+            items[#items + 1] = { filename = file, lnum = hit.lnum, col = col, text = vim.trim(text) }
           end
         end
         if index < #files then

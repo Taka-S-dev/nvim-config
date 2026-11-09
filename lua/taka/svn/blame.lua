@@ -358,7 +358,8 @@ function M.message(row)
     return
   end
   require("taka.svn").run({ "log", "-r", tostring(row.revision), "--", M.file_of(row) }, function(result)
-    vim.notify(vim.trim(result.stdout ~= "" and result.stdout or result.stderr), vim.log.levels.INFO, { title = "svn" })
+    local text = require("taka.lib.legacy_text").text(result.stdout ~= "" and result.stdout or result.stderr)
+    vim.notify(vim.trim(text), vim.log.levels.INFO, { title = "svn" })
   end)
 end
 

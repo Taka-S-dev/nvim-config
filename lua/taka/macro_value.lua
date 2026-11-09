@@ -133,7 +133,9 @@ local function gather(root, names, done)
         if name and known[name] then
           if not lines_of[file] then
             local ok, read = pcall(vim.fn.readfile, file)
-            lines_of[file] = ok and read or {}
+            -- Converted, as the second byte of a Japanese letter in cp932
+            -- can be a backslash, which would read as a line continued.
+            lines_of[file] = ok and (require("taka.lib.legacy_text").lines(read)) or {}
           end
           local body, err = body_of(lines_of[file], name, tonumber(lnum))
           err = err and name .. " " .. err
