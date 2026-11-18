@@ -33,6 +33,9 @@ local state = {
   trace = nil,
   rows = {},
   current = nil,
+  -- Whether the code shows the function of the step chosen, from its heading
+  -- in the panel, rather than the step's own line.
+  on_function = false,
   follow = true,
   notes = true,
   all_notes = false,
@@ -115,6 +118,9 @@ local function colours()
   set("TraceLost", { link = "DiagnosticWarn" })
   -- The file of a place in the panel: the text of the sidebar, unlit.
   set("TraceFile", { link = "SnacksPickerFile" })
+  -- The heading of the steps in one function: in the colour of a function's
+  -- name, so it is told from the titles of the steps under it.
+  set("TraceFunction", { link = "Function" })
 end
 colours()
 vim.api.nvim_create_autocmd("ColorScheme", {
@@ -275,6 +281,25 @@ end
 function M.where(step)
   local found = state.located[step.id]
   return found or { line = step.line, lost = false }
+end
+
+-- The function a step's line is in, "" where it is in none or it cannot be
+-- told: from the file's buffer where it is open, else, for C, from the file
+-- on disk, which needs no buffer loaded for a step not looked at yet. Worked
+-- out from the code, not written in the trace: a name written there would go
+-- wrong as the code moves, and the line already says it.
+function M.function_of(step)
+  local line = M.where(step).line
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) and same_file(vim.api.nvim_buf_get_name(buf), step.file) then
+      return require("taka.lib.enclosing").at(buf, line)
+    end
+  end
+  local kind = vim.filetype.match({ filename = step.file })
+  if (kind == "c" or kind == "cpp") and vim.uv.fs_stat(step.file) then
+    return require("taka.lib.c_outline").function_at(step.file, line) or ""
+  end
+  return ""
 end
 
 -- Draws the steps of the trace that are in one buffer. True when a step was
@@ -499,14 +524,31 @@ local function index_of(id)
   end
 end
 
+-- The line the function a step is in starts on, the line of its name; nil
+-- where it is not known, as outside C.
+function M.function_line(step)
+  local kind = vim.filetype.match({ filename = step.file })
+  if kind ~= "c" and kind ~= "cpp" then
+    return nil
+  end
+  local outline = require("taka.lib.c_outline")
+  local body = outline.enclosing(outline.read(vim.fs.normalize(step.file)), M.where(step).line)
+  return body and body.kind == "function" and body.line or nil
+end
+
 -- A step shown in `win`, the cursor on its line, and made the one chosen:
 -- its line tinted and the panel's cursor on its row. With `go` the cursor
 -- goes to that window too, and the place it leaves is kept on the jump list.
-function M.show(row, win, go)
+-- With `at_function`, from the heading of its function in the panel, the
+-- cursor is put on the line of the function's name instead: the heading
+-- names the function, and showing the step under it there gave the heading
+-- and the step the same place.
+function M.show(row, win, go, at_function)
   if not (win and vim.api.nvim_win_is_valid(win)) then
     return
   end
   state.current = row.step.id
+  state.on_function = at_function or false
   local buf = vim.fn.bufadd(row.step.file)
   vim.fn.bufload(buf)
   vim.bo[buf].buflisted = true
@@ -517,6 +559,9 @@ function M.show(row, win, go)
   end
   vim.api.nvim_win_set_buf(win, buf)
   local line = M.locate(buf, row.step)
+  if at_function then
+    line = M.function_line(row.step) or line
+  end
   vim.api.nvim_win_set_cursor(win, { line, 0 })
   vim.api.nvim_win_call(win, function()
     vim.cmd("normal! ^zz")
@@ -624,11 +669,15 @@ function M.report()
     if M.where(row.step).lost then
       tags[#tags + 1] = "[line not found]"
     end
-    out[#out + 1] = ("%s%d. **%s** `%s`%s"):format(
+    -- The function each step is in, so the reader follows a call and its
+    -- return as the panel shows them.
+    local func = M.function_of(row.step)
+    out[#out + 1] = ("%s%d. **%s** `%s`%s%s"):format(
       indent,
       row.number,
       row.step.title,
       place(row.step),
+      func ~= "" and (" in `" .. func .. "()`") or "",
       #tags > 0 and (" " .. table.concat(tags, " ")) or ""
     )
     if row.step.note ~= "" then
@@ -665,7 +714,10 @@ function M.hover(row)
     vim.list_extend(lines, vim.split(row.step.note, "\n"))
   end
   lines[#lines + 1] = ""
-  lines[#lines + 1] = place(row.step)
+  -- The function too: in the panel it heads a run of steps, often out of
+  -- sight above the step, and a name too long for the panel is cut short.
+  local func = M.function_of(row.step)
+  lines[#lines + 1] = place(row.step) .. (func ~= "" and ("  " .. func .. "()") or "")
   local buf, win = vim.lsp.util.open_floating_preview(lines, "", {
     border = "rounded",
     focus_id = "trace_note",

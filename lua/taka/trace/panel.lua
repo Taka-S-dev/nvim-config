@@ -37,28 +37,38 @@ end
 -- Font).
 local MARKS = { cause = " ", suspect = " ", answer = " " }
 
--- The place of a step is at the right edge, the file named only where it is
--- not the file of the row above: a trace stays in one file for steps on end,
--- and the same name on each row took the room of the titles, which were cut
--- short. So a row with a file name is where the trace goes to another file.
--- The place is in one quiet colour: here the colours say the kind of a step,
--- and the colour of each folder, as the jump stack has them, mixed with them
--- (a folder in orange beside a cause in red). A step whose line is not found
--- has its place in the colour of a warning.
-local function row_text(row, short, look)
-  local guides = ""
-  if row.depth > 0 then
-    for level = 2, #row.ancestors_last do
-      guides = guides .. (row.ancestors_last[level] and "  " or look.vertical)
-    end
-    guides = guides .. (row.last and look.last or look.middle)
+-- The line of a step is at the right edge. Its file is named only where it
+-- is not the file of the row above: a trace stays in one file for steps on
+-- end, and the same name on each row took the room of the titles, which were
+-- cut short. The place is in one quiet colour: here the colours say the kind
+-- of a step, and the colour of each folder, as the jump stack has them, mixed
+-- with them (a folder in orange beside a cause in red). A step whose line is
+-- not found has its place in the colour of a warning.
+--
+-- Where a step is in another function than the step above, a row of its own
+-- names the function and its file, above the step: a trace goes from a
+-- function into one it calls and back, and the steps of one function were not
+-- told from those of the next. Named on the step's own row, beside its title
+-- and file, the function took the room of the title and the three ran
+-- together.
+local function guides_of(row, look, header)
+  if row.depth == 0 then
+    return ""
   end
+  local guides = ""
+  for level = 2, #row.ancestors_last do
+    guides = guides .. (row.ancestors_last[level] and "  " or look.vertical)
+  end
+  -- A heading stands between a step and the one it comes from: the line
+  -- that joins them goes on through it.
+  return guides .. (header and look.vertical or (row.last and look.last or look.middle))
+end
+
+local function row_text(row, short, look)
   local colour = trace().kind_colour(row.step)
   local where = trace().where(row.step)
-  local file = short and "" or vim.fs.basename(row.step.file)
-  local line = ":" .. where.line
   return {
-    { guides, "SnacksPickerTree" },
+    { guides_of(row, look, false), "SnacksPickerTree" },
     { ("%2d "):format(row.number), colour },
     { MARKS[row.step.kind] or "", colour },
     { row.step.title },
@@ -68,14 +78,77 @@ local function row_text(row, short, look)
       col = 0,
       virt_text = {
         { " " },
-        { file, where.lost and "TraceLost" or "TraceFile" },
-        { line, where.lost and "TraceLost" or "Comment" },
+        { short and "" or vim.fs.basename(row.step.file), where.lost and "TraceLost" or "TraceFile" },
+        { ":" .. where.line, where.lost and "TraceLost" or "Comment" },
         { " " },
       },
       virt_text_pos = "right_align",
       hl_mode = "combine",
     },
   }
+end
+
+-- The heading of the steps in one function: its name, and its file at the
+-- right. A name too long for the row is cut short, the file kept.
+local function heading_text(item, look, room)
+  local guides = guides_of(item.row, look, true)
+  local file = vim.fs.basename(item.row.step.file)
+  local width = vim.fn.strdisplaywidth
+  local name = item.func .. "()"
+  local fits = (room or WIDTH - 2) - width(guides) - width(file) - 4
+  if width(name) > fits then
+    name = vim.fn.strcharpart(name, 0, math.max(fits - 1, 4)) .. "…"
+  end
+  return {
+    { guides, "SnacksPickerTree" },
+    { name, "TraceFunction" },
+    {
+      col = 0,
+      virt_text = { { " " }, { file, "TraceFile" }, { " " } },
+      virt_text_pos = "right_align",
+      hl_mode = "combine",
+    },
+  }
+end
+
+-- The rows of the panel: each step, and a heading above the first step of
+-- each run of steps in one function. A heading carries the step below it, so
+-- what is done on it, a press of K or of Enter, is done to that step.
+local function build_items()
+  local items, file_above, func_above = {}, nil, nil
+  for _, row in ipairs(trace().state().rows) do
+    local func = trace().function_of(row.step)
+    local same_file = file_above ~= nil and file_above:lower() == row.step.file:lower()
+    local sort = ("%06d"):format(row.number)
+    if func ~= "" and not (same_file and func == func_above) then
+      items[#items + 1] = {
+        header = true,
+        text = func .. " " .. vim.fs.basename(row.step.file),
+        row = row,
+        func = func,
+        sort = sort .. "0",
+      }
+      -- The heading names the file.
+      same_file = true
+    end
+    items[#items + 1] = {
+      text = table.concat({ row.step.title, row.step.note, vim.fs.basename(row.step.file), func }, " "),
+      row = row,
+      func = func,
+      same_file = same_file,
+      sort = sort .. "1",
+    }
+    file_above, func_above = row.step.file, func
+  end
+  return items
+end
+
+-- The text of a row as drawn: a heading, or a step.
+local function item_text(item, searching, look, room)
+  if item.header then
+    return heading_text(item, look, room)
+  end
+  return row_text(item.row, item.same_file and not searching, look)
 end
 
 -- The window the steps are shown in: the one the panel was opened from, or
@@ -93,10 +166,17 @@ local function code_window()
   end
 end
 
-local function number_of(id)
-  for _, row in ipairs(trace().state().rows) do
-    if row.step.id == id then
-      return row.number
+-- The row of the panel a step is on, headings counted; with `header`, the
+-- row of the heading above it, where it has one.
+local function number_of(id, header)
+  local heading
+  for index, item in ipairs(build_items()) do
+    if item.row.step.id == id then
+      if item.header then
+        heading = index
+      else
+        return header and heading or index
+      end
     end
   end
 end
@@ -143,24 +223,14 @@ function M.open()
     title = title(),
     -- Open with no trace yet too: the panel is where it will show up.
     show_empty = true,
-    finder = function()
-      local items, above = {}, nil
-      for _, row in ipairs(trace().state().rows) do
-        items[#items + 1] = {
-          text = table.concat({ row.step.title, row.step.note, vim.fs.basename(row.step.file) }, " "),
-          row = row,
-          same_file = above ~= nil and above:lower() == row.step.file:lower(),
-          sort = ("%06d"):format(row.number),
-        }
-        above = row.step.file
-      end
-      return items
-    end,
+    finder = build_items,
     -- While a filter is typed the rows between are hidden, and each names its
     -- file.
     format = function(item, picker)
       local searching = picker and picker.input and not picker.input.filter:is_empty()
-      return row_text(item.row, item.same_file and not searching, look)
+      local win = picker and picker.list and picker.list.win.win
+      local room = win and vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_width(win) or nil
+      return item_text(item, searching, look, room)
     end,
     matcher = { sort_empty = false, fuzzy = false },
     sort = { fields = { "sort" } },
@@ -189,13 +259,19 @@ function M.open()
           return M.focus(current)
         end
       end
-      if item.row.step.id ~= current then
-        trace().show(item.row, code_window())
+      -- On a heading the start of its function is shown, and the cursor stays
+      -- on the heading. Moved on by the panel to the step, past the heading
+      -- the way the cursor went, it lost its way when the panel was drawn
+      -- again in between, as it is once a lookup of a call comes back. The
+      -- heading and the step under it are one step, shown at two places.
+      local header = item.header or false
+      if item.row.step.id ~= current or header ~= trace().state().on_function then
+        trace().show(item.row, code_window(), false, header)
       end
     end,
     confirm = function(_, item)
       if item then
-        trace().show(item.row, code_window(), true)
+        trace().show(item.row, code_window(), true, item.header or false)
       end
     end,
     actions = {
@@ -213,12 +289,16 @@ function M.open()
         end
       end,
       trace_yank = function(picker)
-        local items = picker:selected({ fallback = true })
+        local rows, seen = {}, {}
+        for _, item in ipairs(picker:selected({ fallback = true })) do
+          if not seen[item.row] then
+            seen[item.row] = true
+            rows[#rows + 1] = item.row
+          end
+        end
         picker.list:set_selected()
-        if #items > 0 then
-          trace().yank(vim.tbl_map(function(item)
-            return item.row
-          end, items))
+        if #rows > 0 then
+          trace().yank(rows)
         end
       end,
       trace_report = function()
@@ -273,9 +353,9 @@ function M.toggle()
   M.open()
 end
 
-local function wanted(id)
+local function wanted(id, header)
   return function(item)
-    return item.row.step.id == id
+    return (item.header or false) == (header or false) and item.row.step.id == id
   end
 end
 
@@ -294,7 +374,9 @@ function M.refresh()
   end
   local current = panel.picker:current()
   local id = state.current or (current and current.row.step.id)
-  sidebar.refresh(panel.picker, number_of(id), wanted(id))
+  -- A cursor on the heading of the step stays on it.
+  local on_heading = current and current.header and current.row.step.id == id
+  sidebar.refresh(panel.picker, number_of(id, on_heading), wanted(id, on_heading))
 end
 
 -- The cursor of the panel put on a step.
@@ -302,6 +384,7 @@ function M.focus(id)
   if not is_open() then
     return
   end
+  -- On the step, or on its heading: the cursor is left where it is.
   local current = panel.picker:current()
   if current and current.row.step.id == id then
     return
@@ -320,11 +403,15 @@ function M.lines()
   local out = {}
   for _, item in ipairs(panel.picker:items()) do
     local parts = {}
-    for _, part in ipairs(row_text(item.row, item.same_file, sidebar.tree_look())) do
+    for _, part in ipairs(item_text(item, false, sidebar.tree_look(), 200)) do
       if part[1] then
         parts[#parts + 1] = part[1]
       elseif part.virt_text then
-        parts[#parts + 1] = "  @" .. part.virt_text[2][1] .. part.virt_text[3][1]
+        local tail = {}
+        for index = 2, #part.virt_text - 1 do
+          tail[#tail + 1] = part.virt_text[index][1]
+        end
+        parts[#parts + 1] = "  @" .. table.concat(tail)
       end
     end
     out[#out + 1] = table.concat(parts)

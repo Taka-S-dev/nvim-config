@@ -272,6 +272,90 @@ return function(T)
     expect(seen.stayed, "the cursor left the panel")
   end)
 
+  -- A heading names the function and its file above a step in another
+  -- function than the step above, so a call and the return from it are seen:
+  -- the function of an open file read from its buffer, and of a file not open
+  -- from the disk.
+  check("trace: the panel heads the steps of each function with its name", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/a.c", {
+      "static int inner(void)", -- 1
+      "{", -- 2
+      "    int x = 1;", -- 3
+      "    return x;", -- 4
+      "}", -- 5
+      "int outer(void)", -- 6
+      "{", -- 7
+      "    int y = inner();", -- 8
+      "    return y;", -- 9
+      "}", -- 10
+    })
+    write(code .. "/b.c", { "void far(void)", "{", "    go();", "}" })
+    write(
+      folder .. "/f.jsonl",
+      lines_of({
+        { title = "Calls", root = code },
+        { file = "a.c", line = 8, title = "Calls inner" },
+        { file = "a.c", line = 3, title = "Sets x" },
+        { file = "a.c", line = 4, title = "Returns x" },
+        { file = "a.c", line = 9, title = "Back" },
+        { file = "b.c", line = 3, title = "Elsewhere" },
+      })
+    )
+    local rows, shown, cursor, up_shown, step_shown
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/a.c")
+      local code_win = vim.api.nvim_get_current_win()
+      key("<leader>ja")()
+      vim.wait(1000, function()
+        return #require("taka.trace.panel").lines() == 9
+      end, 20)
+      rows = require("taka.trace.panel").lines()
+      -- On the heading of inner(), the line of its name is shown and the
+      -- cursor stays on the heading, going down onto it or up; on the step
+      -- under it, the step's line; and the cursor stays on the heading when
+      -- the panel is drawn again.
+      local picker = Snacks.picker.get({ source = "trace" })[1]
+      local function on(row, line)
+        picker.list:view(row)
+        vim.wait(1000, function()
+          return vim.api.nvim_win_get_cursor(code_win)[1] == line
+        end, 20)
+        vim.wait(200)
+        return vim.api.nvim_win_get_cursor(code_win)[1] .. "@" .. picker.list.cursor
+      end
+      shown = on(3, 1)
+      step_shown = on(4, 3)
+      on(5, 4)
+      up_shown = on(3, 1)
+      require("taka.trace.panel").refresh()
+      vim.wait(300)
+      cursor = picker.list.cursor
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    local wanted = {
+      "outer()  @a.c",
+      " 1 Calls inner  @:8",
+      "inner()  @a.c",
+      " 2 Sets x  @:3",
+      " 3 Returns x  @:4",
+      "outer()  @a.c",
+      " 4 Back  @:9",
+      "far()  @b.c",
+      " 5 Elsewhere  @:3",
+    }
+    expect(vim.deep_equal(rows, wanted), "rows: " .. vim.inspect(rows))
+    expect(shown == "1@3", "down onto the heading, line@row: " .. tostring(shown))
+    expect(step_shown == "3@4", "from the heading to its step, line@row: " .. tostring(step_shown))
+    expect(up_shown == "1@3", "up onto the heading, line@row: " .. tostring(up_shown))
+    expect(cursor == 3, "drawn again, the cursor went to row " .. tostring(cursor))
+  end)
+
   -- A step that gives the text of its line is found by it once the code has
   -- moved, or its line number was written wrong; one whose text is nowhere is
   -- marked, not shown on a line it does not mean. A step is copied with its
@@ -499,7 +583,7 @@ return function(T)
       expect(trace.open(), "the trace was not found")
       key("<leader>ja")()
       vim.wait(1000, function()
-        return #require("taka.trace.panel").lines() == 3
+        return #require("taka.trace.panel").lines() == 4
       end, 20)
       local picker = Snacks.picker.get({ source = "trace" })[1]
       vim.fn.setreg('"', "")
@@ -523,11 +607,11 @@ return function(T)
       "",
       "## Steps",
       "",
-      "1. **Three, unless set** `src/conf.c:3` [answer]",
+      "1. **Three, unless set** `src/conf.c:3` in `retries()` [answer]",
       "   3 times by default.",
       "   The environment can change it.",
-      "   2. **Read from the environment** `src/conf.c:3` [suspect]",
-      "3. **The function** `src/conf.c:1`",
+      "   2. **Read from the environment** `src/conf.c:3` in `retries()` [suspect]",
+      "3. **The function** `src/conf.c:1` in `retries()`",
       "   Called once.",
       "",
     }, "\n")
@@ -555,23 +639,23 @@ return function(T)
       local code_win = vim.api.nvim_get_current_win()
       key("<leader>ja")()
       vim.wait(1000, function()
-        return #require("taka.trace.panel").lines() == 1
+        return #require("taka.trace.panel").lines() == 2
       end, 20)
-      seen.before = require("taka.trace.panel").lines()[1]
+      seen.before = require("taka.trace.panel").lines()[2]
       vim.api.nvim_set_current_win(code_win)
       vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "/* one */", "/* two */" })
       vim.api.nvim_exec_autocmds("TextChanged", { buffer = buf })
       vim.wait(2000, function()
-        return (require("taka.trace.panel").lines()[1] or ""):find(":5$") ~= nil
+        return (require("taka.trace.panel").lines()[2] or ""):find(":5$") ~= nil
       end, 20)
-      seen.after = require("taka.trace.panel").lines()[1]
+      seen.after = require("taka.trace.panel").lines()[2]
     end)
     trace.close()
     store.dir = real_dir
     reset_editor()
     expect(ok, err)
-    expect(seen.before == " 1 Runs  @e.c:3", "before: " .. tostring(seen.before))
-    expect(seen.after == " 1 Runs  @e.c:5", "after the edit: " .. tostring(seen.after))
+    expect(seen.before == " 1 Runs  @:3", "before: " .. tostring(seen.before))
+    expect(seen.after == " 1 Runs  @:5", "after the edit: " .. tostring(seen.after))
   end)
 
   -- K in the panel shows the step's note in a small window, read without the
@@ -593,7 +677,7 @@ return function(T)
       vim.cmd.edit(code .. "/k.c")
       key("<leader>ja")()
       vim.wait(1000, function()
-        return #require("taka.trace.panel").lines() == 1
+        return #require("taka.trace.panel").lines() == 2
       end, 20)
       trace.show_notes(false)
       local picker = Snacks.picker.get({ source = "trace" })[1]
@@ -612,7 +696,10 @@ return function(T)
     reset_editor()
     expect(ok, err)
     expect(
-      seen and seen:find("1. Returns", 1, true) and seen:find("[suspect]", 1, true) and seen:find("k.c:3", 1, true),
+      seen
+        and seen:find("1. Returns", 1, true)
+        and seen:find("[suspect]", 1, true)
+        and seen:find("k.c:3  main()", 1, true),
       "the window held: " .. tostring(seen)
     )
   end)
