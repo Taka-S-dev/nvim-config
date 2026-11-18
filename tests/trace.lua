@@ -1,7 +1,7 @@
 -- The trace (lua/taka/trace/).
 return function(T)
-  local check, expect, temp_dir, write, key, reset_editor =
-    T.check, T.expect, T.temp_dir, T.write, T.key, T.reset_editor
+  local check, expect, temp_dir, write, key, reset_editor, need, run =
+    T.check, T.expect, T.temp_dir, T.write, T.key, T.reset_editor, T.need, T.run
 
   local store = require("taka.trace.store")
   local real_dir = store.dir
@@ -310,7 +310,7 @@ return function(T)
       local code_win = vim.api.nvim_get_current_win()
       key("<leader>ja")()
       vim.wait(1000, function()
-        return #require("taka.trace.panel").lines() == 9
+        return #require("taka.trace.panel").lines() == 8
       end, 20)
       rows = require("taka.trace.panel").lines()
       -- On the heading of inner(), the line of its name is shown and the
@@ -338,15 +338,17 @@ return function(T)
     store.dir = real_dir
     reset_editor()
     expect(ok, err)
+    -- inner() is called by outer(), so it stands a step in; back in outer(),
+    -- its steps go on with no second heading; far() is called by nothing
+    -- seen, so it stands at the left.
     local wanted = {
       "outer()  @a.c",
       " 1 Calls inner  @:8",
-      "inner()  @a.c",
-      " 2 Sets x  @:3",
-      " 3 Returns x  @:4",
-      "outer()  @a.c",
+      "│ inner()  @a.c",
+      "│  2 Sets x  @:3",
+      "│  3 Returns x  @:4",
       " 4 Back  @:9",
-      "far()  @b.c",
+      "far()  ← ?  @b.c",
       " 5 Elsewhere  @:3",
     }
     expect(vim.deep_equal(rows, wanted), "rows: " .. vim.inspect(rows))
@@ -354,6 +356,182 @@ return function(T)
     expect(step_shown == "3@4", "from the heading to its step, line@row: " .. tostring(step_shown))
     expect(up_shown == "1@3", "up onto the heading, line@row: " .. tostring(up_shown))
     expect(cursor == 3, "drawn again, the cursor went to row " .. tostring(cursor))
+  end)
+
+  -- A call through a macro counts as a call: the macro is looked up in GTAGS,
+  -- its lines continued with backslashes read as one, and the panel drawn
+  -- again once it is known.
+  check("trace: a function called through a macro stands a step in", function()
+    need("gtags", "global")
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/mem.h", { "#define ALLOC(n) \\", "    real_alloc(n, __FILE__)" })
+    write(code .. "/use.c", {
+      '#include "mem.h"',
+      "void *real_alloc(int n, const char *f)",
+      "{",
+      "    return 0;",
+      "}",
+      "int user(void)",
+      "{",
+      "    void *p = ALLOC(4);",
+      "    return p != 0;",
+      "}",
+    })
+    run({ "gtags" }, code)
+    write(
+      folder .. "/m.jsonl",
+      lines_of({
+        { title = "Macro", root = code },
+        { file = "use.c", line = 8, title = "Allocates" },
+        { file = "use.c", line = 4, title = "Gives nothing" },
+      })
+    )
+    require("taka.trace.calls").forget()
+    local rows
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/use.c")
+      key("<leader>ja")()
+      vim.wait(5000, function()
+        return (require("taka.trace.panel").lines()[3] or ""):match("^│ ") ~= nil
+      end, 20)
+      rows = require("taka.trace.panel").lines()
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    local wanted = {
+      "user()  @use.c",
+      " 1 Allocates  @:8",
+      "│ real_alloc()  @use.c",
+      "│  2 Gives nothing  @:4",
+    }
+    expect(vim.deep_equal(rows, wanted), "rows: " .. vim.inspect(rows))
+  end)
+
+  -- A call made through one function the trace does not go into counts, and
+  -- the heading names that function: one in the same file, its call made
+  -- through a macro, and one in another file, found by GTAGS. A heading
+  -- over a step written as a branch has none of the lines of the tree, which
+  -- made it look as deep as a call.
+  check("trace: a call through a function between names it on the heading", function()
+    need("gtags", "global")
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/mem.h", { "#define ALLOC(n) real_alloc(n)" })
+    write(code .. "/far.c", { "void *far_wrap(int n)", "{", "    return real_alloc(n);", "}" })
+    write(code .. "/use.c", {
+      '#include "mem.h"', -- 1
+      "void *real_alloc(int n)", -- 2
+      "{", -- 3
+      "    return 0;", -- 4
+      "}", -- 5
+      "static void *wrap(int n)", -- 6
+      "{", -- 7
+      "    return ALLOC(n);", -- 8
+      "}", -- 9
+      "int user(void)", -- 10
+      "{", -- 11
+      "    return wrap(4) != 0;", -- 12
+      "}", -- 13
+      "int user2(void)", -- 14
+      "{", -- 15
+      "    return far_wrap(4) != 0;", -- 16
+      "}", -- 17
+    })
+    run({ "gtags" }, code)
+    write(
+      folder .. "/w.jsonl",
+      lines_of({
+        { title = "Wrapped", root = code },
+        { id = "a", file = "use.c", line = 12, title = "Wraps" },
+        { id = "b", parent = "a", file = "use.c", line = 4, title = "Gives nothing" },
+      })
+    )
+    write(
+      folder .. "/v.jsonl",
+      lines_of({
+        { title = "Far", root = code },
+        { file = "use.c", line = 16, title = "Wraps far" },
+        { file = "use.c", line = 4, title = "Gives nothing" },
+      })
+    )
+    require("taka.trace.calls").forget()
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/use.c")
+      for _, name in ipairs({ "w", "v" }) do
+        trace.open(folder .. "/" .. name .. ".jsonl")
+        key("<leader>ja")()
+        vim.wait(5000, function()
+          return (require("taka.trace.panel").lines()[3] or ""):find("←", 1, true) ~= nil
+        end, 20)
+        seen[name] = require("taka.trace.panel").lines()
+        require("taka.trace.panel").close()
+      end
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    local wanted = {
+      w = {
+        "user()  @use.c",
+        " 1 Wraps  @:12",
+        "│ real_alloc()  ← wrap()  @use.c",
+        "│ └╴ 2 Gives nothing  @:4",
+      },
+      v = {
+        "user2()  @use.c",
+        " 1 Wraps far  @:16",
+        "│ real_alloc()  ← far_wrap()  @use.c",
+        "│  2 Gives nothing  @:4",
+      },
+    }
+    for name, rows in pairs(wanted) do
+      expect(vim.deep_equal(seen[name], rows), name .. ": " .. vim.inspect(seen[name]))
+    end
+  end)
+
+  -- Calls deeper than the rows go stand level with the deepest, and the
+  -- heading says how much deeper it is.
+  check("trace: a heading deeper than the rows go says how much deeper", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    local lines, steps = {}, { { title = "Deep", root = code } }
+    local names = { "f0", "f1", "f2", "f3", "f4", "f5" }
+    for index, name in ipairs(names) do
+      local callee = names[index + 1]
+      vim.list_extend(lines, {
+        "int " .. name .. "(void)",
+        "{",
+        "    return " .. (callee and (callee .. "()") or "0") .. ";",
+        "}",
+      })
+      steps[#steps + 1] = { file = "d.c", line = #lines - 1, title = "In " .. name }
+    end
+    write(code .. "/d.c", lines)
+    write(folder .. "/d.jsonl", lines_of(steps))
+    local rows
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/d.c")
+      key("<leader>ja")()
+      vim.wait(1000, function()
+        return #require("taka.trace.panel").lines() == 12
+      end, 20)
+      rows = require("taka.trace.panel").lines()
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    local guide = "│ "
+    expect(rows and rows[9] == guide:rep(4) .. "f4()  @d.c", "f4: " .. tostring(rows and rows[9]))
+    expect(rows and rows[11] == guide:rep(4) .. "+1 f5()  @d.c", "f5: " .. tostring(rows and rows[11]))
   end)
 
   -- A step that gives the text of its line is found by it once the code has

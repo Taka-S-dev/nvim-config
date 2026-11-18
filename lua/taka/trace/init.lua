@@ -121,6 +121,9 @@ local function colours()
   -- The heading of the steps in one function: in the colour of a function's
   -- name, so it is told from the titles of the steps under it.
   set("TraceFunction", { link = "Function" })
+  -- The lines of the calls a row is inside: the colour of the guides of the
+  -- indent in the code.
+  set("TraceCallGuide", { link = "SnacksIndent" })
 end
 colours()
 vim.api.nvim_create_autocmd("ColorScheme", {

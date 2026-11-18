@@ -51,7 +51,29 @@ local MARKS = { cause = " ", suspect = " ", answer = " " }
 -- told from those of the next. Named on the step's own row, beside its title
 -- and file, the function took the room of the title and the three ran
 -- together.
-local function guides_of(row, look, header)
+--
+-- A function the one above it calls is set in a step, its steps with it, so
+-- the calls read as they nest: a call is taken as one only where the code
+-- shows it (lua/taka/trace/calls.lua), and a function the trace comes back
+-- to goes back to where it stood. A call made through a function the trace
+-- does not go into names that function on the heading. One the trace goes to
+-- with no call seen, a side path or a call through a pointer, stands at the
+-- left, and what stood before is kept for the trace to come back to. Past a
+-- few steps in, the rows would leave the titles no room. A heading is set by
+-- the calls only, with none of the lines of the tree of steps: with them, a
+-- heading over a step written as a branch stood as deep as a call, and named
+-- a function the one above it did not call.
+local MAX_DEPTH = 4
+
+-- A line for each call the row is inside, as the guides of the indent are
+-- drawn in the code: with blanks only, which function a deep row was in was
+-- hard to follow up the panel. In the colour of the guides of the indent,
+-- apart from the dimmer lines of the tree of steps.
+local function indent(depth, look)
+  return string.rep(look.vertical, math.min(depth or 0, MAX_DEPTH))
+end
+
+local function guides_of(row, look)
   if row.depth == 0 then
     return ""
   end
@@ -59,16 +81,15 @@ local function guides_of(row, look, header)
   for level = 2, #row.ancestors_last do
     guides = guides .. (row.ancestors_last[level] and "  " or look.vertical)
   end
-  -- A heading stands between a step and the one it comes from: the line
-  -- that joins them goes on through it.
-  return guides .. (header and look.vertical or (row.last and look.last or look.middle))
+  return guides .. (row.last and look.last or look.middle)
 end
 
-local function row_text(row, short, look)
+local function row_text(row, short, look, depth)
   local colour = trace().kind_colour(row.step)
   local where = trace().where(row.step)
   return {
-    { guides_of(row, look, false), "SnacksPickerTree" },
+    { indent(depth, look), "TraceCallGuide" },
+    { guides_of(row, look), "SnacksPickerTree" },
     { ("%2d "):format(row.number), colour },
     { MARKS[row.step.kind] or "", colour },
     { row.step.title },
@@ -88,20 +109,34 @@ local function row_text(row, short, look)
   }
 end
 
--- The heading of the steps in one function: its name, and its file at the
--- right. A name too long for the row is cut short, the file kept.
+-- The heading of the steps in one function: its name, the function it is
+-- called through where there is one, and its file at the right. A name too
+-- long for the row is cut short, the file kept.
+--
+-- One the trace goes to with no call seen says so, `← ?`: at the left it was
+-- not told from the function the trace starts in, and read as another start.
+-- One deeper than the rows go says how much deeper, `+2`, where it would
+-- otherwise stand level with the one that calls it.
 local function heading_text(item, look, room)
-  local guides = guides_of(item.row, look, true)
+  local guides = indent(item.depth, look)
+  local deeper = (item.depth or 0) - MAX_DEPTH
+  local more = deeper > 0 and ("+" .. deeper .. " ") or ""
   local file = vim.fs.basename(item.row.step.file)
   local width = vim.fn.strdisplaywidth
   local name = item.func .. "()"
-  local fits = (room or WIDTH - 2) - width(guides) - width(file) - 4
+  local via = item.via and ("  ← " .. item.via .. "()") or item.unknown and "  ← ?" or ""
+  local fits = (room or WIDTH - 2) - width(guides .. more) - width(file) - 4
+  if width(name .. via) > fits then
+    via = ""
+  end
   if width(name) > fits then
     name = vim.fn.strcharpart(name, 0, math.max(fits - 1, 4)) .. "…"
   end
   return {
-    { guides, "SnacksPickerTree" },
+    { guides, "TraceCallGuide" },
+    { more, "Comment" },
     { name, "TraceFunction" },
+    { via, "Comment" },
     {
       col = 0,
       virt_text = { { " " }, { file, "TraceFile" }, { " " } },
@@ -113,32 +148,75 @@ end
 
 -- The rows of the panel: each step, and a heading above the first step of
 -- each run of steps in one function. A heading carries the step below it, so
--- what is done on it, a press of K or of Enter, is done to that step.
+-- what is done on it, a press of K or of Enter, is done to that step. Each
+-- row has the depth of the calls its function is in.
 local function build_items()
   local items, file_above, func_above = {}, nil, nil
+  -- The functions called, the outermost first, down to the one the trace is
+  -- in; and the depth of the rows being made.
+  local stack, depth = {}, 0
+  local function same(entry, func, file)
+    return entry.func == func and entry.file:lower() == file:lower()
+  end
   for _, row in ipairs(trace().state().rows) do
     local func = trace().function_of(row.step)
-    local same_file = file_above ~= nil and file_above:lower() == row.step.file:lower()
+    local file = row.step.file
+    local same_file = file_above ~= nil and file_above:lower() == file:lower()
     local sort = ("%06d"):format(row.number)
-    if func ~= "" and not (same_file and func == func_above) then
-      items[#items + 1] = {
-        header = true,
-        text = func .. " " .. vim.fs.basename(row.step.file),
-        row = row,
-        func = func,
-        sort = sort .. "0",
-      }
-      -- The heading names the file.
+    if func == "" then
+      depth = 0
+    elseif not (same_file and func == func_above) then
+      local back
+      for index = #stack, 1, -1 do
+        if same(stack[index], func, file) then
+          back = index
+          break
+        end
+      end
+      local top = stack[#stack]
+      local via = top and not back and require("taka.trace.calls").via(top.file, top.func, func, M.refresh_later)
+      if back then
+        for index = #stack, back + 1, -1 do
+          stack[index] = nil
+        end
+        depth = back - 1
+      elseif not top then
+        stack[1], depth = { func = func, file = file }, 0
+      elseif via then
+        stack[#stack + 1] = { func = func, file = file }
+        depth = #stack - 1
+      else
+        depth = 0
+      end
+      -- Coming back to a function, its steps go on at its depth under the
+      -- heading it already has: a second heading of the same name read as a
+      -- second call of it.
+      if not back then
+        items[#items + 1] = {
+          header = true,
+          text = func .. " " .. vim.fs.basename(file),
+          row = row,
+          func = func,
+          via = via and via ~= "" and via or nil,
+          -- No call seen, once nothing is left to look up.
+          unknown = top ~= nil and via == false,
+          depth = depth,
+          sort = sort .. "0",
+        }
+      end
+      -- The heading names the file: this one, or the one the function the
+      -- trace comes back to already has.
       same_file = true
     end
     items[#items + 1] = {
-      text = table.concat({ row.step.title, row.step.note, vim.fs.basename(row.step.file), func }, " "),
+      text = table.concat({ row.step.title, row.step.note, vim.fs.basename(file), func }, " "),
       row = row,
       func = func,
+      depth = depth,
       same_file = same_file,
       sort = sort .. "1",
     }
-    file_above, func_above = row.step.file, func
+    file_above, func_above = file, func
   end
   return items
 end
@@ -148,7 +226,7 @@ local function item_text(item, searching, look, room)
   if item.header then
     return heading_text(item, look, room)
   end
-  return row_text(item.row, item.same_file and not searching, look)
+  return row_text(item.row, item.same_file and not searching, look, item.depth)
 end
 
 -- The window the steps are shown in: the one the panel was opened from, or
@@ -164,6 +242,13 @@ local function code_window()
       return win
     end
   end
+end
+
+-- The panel drawn again once what a lookup of a call waited for is known.
+function M.refresh_later()
+  vim.schedule(function()
+    M.refresh()
+  end)
 end
 
 -- The row of the panel a step is on, headings counted; with `header`, the
