@@ -647,6 +647,56 @@ return function(T)
     expect(seen.none == 8, "zR left " .. tostring(seen.none) .. " rows")
   end)
 
+  -- A key held down in the panel moves its cursor at once, and the code shows
+  -- the row it stops on, once: shown at every row passed, the code was drawn
+  -- again at each, and the cursor went in jerks.
+  check("trace: the code shows the row the panel's cursor stops on, once", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    local lines, steps = {}, { { title = "Held", root = code } }
+    for index = 1, 8 do
+      lines[#lines + 1] = ("int v%d = %d;"):format(index, index)
+      steps[#steps + 1] = { file = "h.c", line = index, title = "Step " .. index }
+    end
+    write(code .. "/h.c", lines)
+    write(folder .. "/h.jsonl", lines_of(steps))
+    local shows, shown_line, cursor
+    local show = trace.show
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/h.c")
+      local code_win = vim.api.nvim_get_current_win()
+      key("<leader>ja")()
+      vim.wait(1000, function()
+        return #require("taka.trace.panel").lines() == 8
+      end, 20)
+      local picker = Snacks.picker.get({ source = "trace" })[1]
+      vim.wait(300)
+      shows = 0
+      trace.show = function(...)
+        shows = shows + 1
+        return show(...)
+      end
+      for row = 2, 7 do
+        picker.list:view(row)
+        vim.wait(30)
+      end
+      cursor = picker.list.cursor
+      vim.wait(1000, function()
+        return vim.api.nvim_win_get_cursor(code_win)[1] == 7
+      end, 20)
+      shown_line = vim.api.nvim_win_get_cursor(code_win)[1]
+    end)
+    trace.show = show
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(cursor == 7, "the panel's cursor is on row " .. tostring(cursor))
+    expect(shown_line == 7, "the code shows line " .. tostring(shown_line))
+    expect(shows == 1, "the code was shown " .. tostring(shows) .. " times")
+  end)
+
   -- A step that gives the text of its line is found by it once the code has
   -- moved, or its line number was written wrong; one whose text is nowhere is
   -- marked, not shown on a line it does not mean. A step is copied with its

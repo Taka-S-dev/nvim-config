@@ -298,6 +298,34 @@ local function code_window()
   end
 end
 
+-- The row the cursor stopped on, shown in the code once it has stopped this
+-- long. Shown at each row, a key held down to go through the panel drew the
+-- code again at each row it passed, its file, its highlights and its notes,
+-- and the cursor went in jerks; a file picker waits the same way before it
+-- shows a preview.
+local SHOW_AFTER = 80
+local show_timer
+
+-- The step or heading under the cursor shown in the code, unless it is
+-- shown already. On a heading the start of its function is shown, and the
+-- cursor stays on the heading. Moved on by the panel to the step, past the
+-- heading the way the cursor went, it lost its way when the panel was drawn
+-- again in between, as it is once a lookup of a call comes back. The heading
+-- and the step under it are one step, shown at two places.
+local function show_current()
+  if not is_open() then
+    return
+  end
+  local item = panel.picker:current()
+  if not item then
+    return
+  end
+  local state, header = trace().state(), item.header or false
+  if item.row.step.id ~= state.current or header ~= state.on_function then
+    trace().show(item.row, code_window(), false, header)
+  end
+end
+
 -- The panel drawn again once what a lookup of a call waited for is known.
 function M.refresh_later()
   vim.schedule(function()
@@ -412,15 +440,10 @@ function M.open()
           return M.focus(current)
         end
       end
-      -- On a heading the start of its function is shown, and the cursor stays
-      -- on the heading. Moved on by the panel to the step, past the heading
-      -- the way the cursor went, it lost its way when the panel was drawn
-      -- again in between, as it is once a lookup of a call comes back. The
-      -- heading and the step under it are one step, shown at two places.
-      local header = item.header or false
-      if item.row.step.id ~= current or header ~= trace().state().on_function then
-        trace().show(item.row, code_window(), false, header)
-      end
+      -- Shown once the cursor stops (SHOW_AFTER).
+      show_timer = show_timer or vim.uv.new_timer()
+      show_timer:stop()
+      show_timer:start(SHOW_AFTER, 0, vim.schedule_wrap(show_current))
     end,
     confirm = function(picker, item)
       if not item then
