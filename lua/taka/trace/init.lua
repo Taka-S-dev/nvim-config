@@ -124,6 +124,8 @@ local function colours()
   -- The lines of the calls a row is inside: the colour of the guides of the
   -- indent in the code.
   set("TraceCallGuide", { link = "SnacksIndent" })
+  -- The number of steps a folded heading holds.
+  set("TraceFolded", { link = "Comment" })
 end
 colours()
 vim.api.nvim_create_autocmd("ColorScheme", {

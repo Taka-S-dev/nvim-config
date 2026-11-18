@@ -16,11 +16,19 @@
 --   R                read the trace again
 --   t                another trace
 --   X                put the trace away
+--   Enter, l         on a heading, fold the steps of its function, with the
+--                    calls it makes, or open them, as a folder of the file
+--                    tree opens and closes
+--   h                fold the function the cursor is in and go to its
+--                    heading; on a folded heading, go to the one above
+--   za, zM, zR       fold or open one, fold every function, open them all
 local M = {}
 
 local sidebar = require("taka.lib.sidebar")
 
-local panel = {} ---@type { picker: table?, path: string?, opening: boolean? }
+-- `folded`: the headings folded in the trace shown, by the id of the step
+-- each heads.
+local panel = { folded = {} } ---@type { picker: table?, path: string?, opening: boolean?, folded: table }
 
 local WIDTH = 50
 
@@ -125,7 +133,10 @@ local function heading_text(item, look, room)
   local width = vim.fn.strdisplaywidth
   local name = item.func .. "()"
   local via = item.via and ("  ← " .. item.via .. "()") or item.unknown and "  ← ?" or ""
-  local fits = (room or WIDTH - 2) - width(guides .. more) - width(file) - 4
+  local folded = item.hidden_steps and ("  ⋯ " .. item.hidden_steps) or ""
+  -- Open or folded, as the folders of the file tree show it.
+  local mark = panel.folded[item.row.step.id] and "▸ " or "▾ "
+  local fits = (room or WIDTH - 2) - width(guides .. more .. mark) - width(file) - 4 - width(folded)
   if width(name .. via) > fits then
     via = ""
   end
@@ -135,8 +146,10 @@ local function heading_text(item, look, room)
   return {
     { guides, "TraceCallGuide" },
     { more, "Comment" },
+    { mark, "TraceFolded" },
     { name, "TraceFunction" },
     { via, "Comment" },
+    { folded, "TraceFolded" },
     {
       col = 0,
       virt_text = { { " " }, { file, "TraceFile" }, { " " } },
@@ -148,7 +161,7 @@ end
 
 -- The rows of the panel: each step, and a heading above the first step of
 -- each run of steps in one function. A heading carries the step below it, so
--- what is done on it, a press of K or of Enter, is done to that step. Each
+-- what is done on it, a press of K or y, is done to that step. Each
 -- row has the depth of the calls its function is in.
 local function build_items()
   local items, file_above, func_above = {}, nil, nil
@@ -221,6 +234,47 @@ local function build_items()
   return items
 end
 
+-- The last row of what the heading at `index` of `items` holds: the steps
+-- of its function and of the calls it makes, up to a heading as shallow as
+-- it, or a step out of it.
+local function block_end(items, index)
+  local depth, last = items[index].depth, index
+  for at = index + 1, #items do
+    local item = items[at]
+    if (item.header and item.depth <= depth) or item.depth < depth then
+      break
+    end
+    last = at
+  end
+  return last
+end
+
+-- The rows shown, the ones a folded heading holds left out, and by the id of
+-- each step left out, the id of the heading that holds it: the outermost
+-- one folded, which is shown.
+local function visible_items()
+  local all, out, hidden = build_items(), {}, {}
+  local at = 1
+  while at <= #all do
+    local item = all[at]
+    out[#out + 1] = item
+    if item.header and panel.folded[item.row.step.id] then
+      local last, steps = block_end(all, at), 0
+      for inside = at + 1, last do
+        if not all[inside].header then
+          steps = steps + 1
+          hidden[all[inside].row.step.id] = item.row.step.id
+        end
+      end
+      item.hidden_steps = steps
+      at = last + 1
+    else
+      at = at + 1
+    end
+  end
+  return out, hidden
+end
+
 -- The text of a row as drawn: a heading, or a step.
 local function item_text(item, searching, look, room)
   if item.header then
@@ -252,18 +306,27 @@ function M.refresh_later()
 end
 
 -- The row of the panel a step is on, headings counted; with `header`, the
--- row of the heading above it, where it has one.
+-- row of the heading above it, where it has one. A step a fold holds is on
+-- the row of the folded heading.
 local function number_of(id, header)
+  local items, hidden = visible_items()
+  if hidden[id] then
+    id, header = hidden[id], true
+  end
   local heading
-  for index, item in ipairs(build_items()) do
+  for index, item in ipairs(items) do
     if item.row.step.id == id then
       if item.header then
         heading = index
-      else
-        return header and heading or index
+        if header then
+          return index
+        end
+      elseif not header then
+        return index
       end
     end
   end
+  return heading
 end
 
 local function title()
@@ -301,6 +364,9 @@ function M.open()
   end
   local look = sidebar.tree_look()
   local state = trace().state()
+  if panel.path ~= state.path then
+    panel.folded = {}
+  end
   panel.path, panel.opening = state.path, true
   require("taka.lib.sidebar").make_room()
   panel.picker = Snacks.picker({
@@ -308,7 +374,9 @@ function M.open()
     title = title(),
     -- Open with no trace yet too: the panel is where it will show up.
     show_empty = true,
-    finder = build_items,
+    finder = function()
+      return (visible_items())
+    end,
     -- While a filter is typed the rows between are hidden, and each names its
     -- file.
     format = function(item, picker)
@@ -354,10 +422,14 @@ function M.open()
         trace().show(item.row, code_window(), false, header)
       end
     end,
-    confirm = function(_, item)
-      if item then
-        trace().show(item.row, code_window(), true, item.header or false)
+    confirm = function(picker, item)
+      if not item then
+        return
       end
+      if item.header then
+        return M.toggle_fold(picker.list.cursor)
+      end
+      trace().show(item.row, code_window(), true)
     end,
     actions = {
       trace_notes = function()
@@ -398,6 +470,22 @@ function M.open()
       trace_close = function()
         trace().close()
       end,
+      trace_fold = function(picker, item)
+        if item then
+          M.toggle_fold(picker.list.cursor)
+        end
+      end,
+      trace_fold_all = function()
+        M.fold_all(true)
+      end,
+      trace_fold_close = function(picker, item)
+        if item then
+          M.close_fold(picker.list.cursor)
+        end
+      end,
+      trace_open_all = function()
+        M.fold_all(false)
+      end,
     },
     win = {
       input = {
@@ -416,6 +504,11 @@ function M.open()
           ["r"] = { "trace_edit", desc = "Edit the title and the note" },
           ["t"] = { "trace_pick", desc = "Another trace" },
           ["X"] = { "trace_close", desc = "Put the trace away" },
+          ["l"] = { "confirm", desc = "Open or fold the function, or go to the step" },
+          ["h"] = { "trace_fold_close", desc = "Fold the function and go to its heading" },
+          ["za"] = { "trace_fold", desc = "Fold the steps of the function, or open them" },
+          ["zM"] = { "trace_fold_all", desc = "Fold every function" },
+          ["zR"] = { "trace_open_all", desc = "Open every function" },
         },
       },
     },
@@ -459,9 +552,81 @@ function M.refresh()
   end
   local current = panel.picker:current()
   local id = state.current or (current and current.row.step.id)
-  -- A cursor on the heading of the step stays on it.
+  -- A cursor on the heading of the step stays on it, and one on a step a
+  -- fold now holds goes to the folded heading.
   local on_heading = current and current.header and current.row.step.id == id
+  local _, hidden = visible_items()
+  if hidden[id] then
+    id, on_heading = hidden[id], true
+  end
   sidebar.refresh(panel.picker, number_of(id, on_heading), wanted(id, on_heading))
+end
+
+-- The heading the row at `index` is under, folded or not: the row itself
+-- where it is one.
+local function heading_at(items, index)
+  for at = index, 1, -1 do
+    if items[at].header and block_end(items, at) >= index then
+      return items[at]
+    end
+  end
+end
+
+-- The steps under the heading the cursor is on, or under, folded, or opened
+-- again.
+function M.toggle_fold(index)
+  if not is_open() then
+    return
+  end
+  local items = panel.picker:items()
+  local heading = items[index] and heading_at(items, index)
+  if not heading then
+    return
+  end
+  local id = heading.row.step.id
+  panel.folded[id] = not panel.folded[id] or nil
+  sidebar.refresh(panel.picker, number_of(id, true), wanted(id, true))
+end
+
+-- The function the row at `index` is in folded, and the cursor on its
+-- heading; on a heading folded already, the cursor goes to the heading
+-- above it, as h does on a folder of the file tree.
+function M.close_fold(index)
+  if not is_open() then
+    return
+  end
+  local items = panel.picker:items()
+  local item = items[index]
+  local heading = item and heading_at(items, index)
+  if not heading then
+    return
+  end
+  local id = heading.row.step.id
+  if heading == item and panel.folded[id] then
+    local above = index > 1 and heading_at(items, index - 1)
+    if above then
+      sidebar.refresh(panel.picker, number_of(above.row.step.id, true), wanted(above.row.step.id, true))
+    end
+    return
+  end
+  panel.folded[id] = true
+  sidebar.refresh(panel.picker, number_of(id, true), wanted(id, true))
+end
+
+-- Every function folded, or every one opened.
+function M.fold_all(fold)
+  if not is_open() then
+    return
+  end
+  panel.folded = {}
+  if fold then
+    for _, item in ipairs(build_items()) do
+      if item.header then
+        panel.folded[item.row.step.id] = true
+      end
+    end
+  end
+  M.refresh()
 end
 
 -- The cursor of the panel put on a step.
@@ -469,10 +634,22 @@ function M.focus(id)
   if not is_open() then
     return
   end
-  -- On the step, or on its heading: the cursor is left where it is.
+  -- On the step, or on its heading: the cursor is left where it is. First:
+  -- the step of a heading just folded is one its fold holds, and shown from
+  -- the heading it opened the fold again.
   local current = panel.picker:current()
   if current and current.row.step.id == id then
     return
+  end
+  -- A step a fold holds, gone to from the code with ]n, opens the folds
+  -- around it, as a jump into a fold opens it in Vim.
+  local _, hidden = visible_items()
+  if hidden[id] then
+    while hidden[id] do
+      panel.folded[hidden[id]] = nil
+      _, hidden = visible_items()
+    end
+    return M.refresh()
   end
   local number = number_of(id)
   if number then

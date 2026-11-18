@@ -342,13 +342,13 @@ return function(T)
     -- its steps go on with no second heading; far() is called by nothing
     -- seen, so it stands at the left.
     local wanted = {
-      "outer()  @a.c",
+      "▾ outer()  @a.c",
       " 1 Calls inner  @:8",
-      "│ inner()  @a.c",
+      "│ ▾ inner()  @a.c",
       "│  2 Sets x  @:3",
       "│  3 Returns x  @:4",
       " 4 Back  @:9",
-      "far()  ← ?  @b.c",
+      "▾ far()  ← ?  @b.c",
       " 5 Elsewhere  @:3",
     }
     expect(vim.deep_equal(rows, wanted), "rows: " .. vim.inspect(rows))
@@ -403,9 +403,9 @@ return function(T)
     reset_editor()
     expect(ok, err)
     local wanted = {
-      "user()  @use.c",
+      "▾ user()  @use.c",
       " 1 Allocates  @:8",
-      "│ real_alloc()  @use.c",
+      "│ ▾ real_alloc()  @use.c",
       "│  2 Gives nothing  @:4",
     }
     expect(vim.deep_equal(rows, wanted), "rows: " .. vim.inspect(rows))
@@ -479,15 +479,15 @@ return function(T)
     expect(ok, err)
     local wanted = {
       w = {
-        "user()  @use.c",
+        "▾ user()  @use.c",
         " 1 Wraps  @:12",
-        "│ real_alloc()  ← wrap()  @use.c",
+        "│ ▾ real_alloc()  ← wrap()  @use.c",
         "│ └╴ 2 Gives nothing  @:4",
       },
       v = {
-        "user2()  @use.c",
+        "▾ user2()  @use.c",
         " 1 Wraps far  @:16",
-        "│ real_alloc()  ← far_wrap()  @use.c",
+        "│ ▾ real_alloc()  ← far_wrap()  @use.c",
         "│  2 Gives nothing  @:4",
       },
     }
@@ -530,8 +530,121 @@ return function(T)
     reset_editor()
     expect(ok, err)
     local guide = "│ "
-    expect(rows and rows[9] == guide:rep(4) .. "f4()  @d.c", "f4: " .. tostring(rows and rows[9]))
-    expect(rows and rows[11] == guide:rep(4) .. "+1 f5()  @d.c", "f5: " .. tostring(rows and rows[11]))
+    expect(rows and rows[9] == guide:rep(4) .. "▾ f4()  @d.c", "f4: " .. tostring(rows and rows[9]))
+    expect(rows and rows[11] == guide:rep(4) .. "+1 ▾ f5()  @d.c", "f5: " .. tostring(rows and rows[11]))
+  end)
+
+  -- As a folder of the file tree: h on a step folds the steps of its
+  -- function and of the calls it makes, the cursor going to the heading,
+  -- which says how many; Enter on a heading opens and folds it; ]n into a
+  -- fold opens it, as in Vim; zM folds every function and zR opens them.
+  check("trace: the steps of a function fold under its heading", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/f.c", {
+      "static int leaf(void)", -- 1
+      "{", -- 2
+      "    return 1;", -- 3
+      "}", -- 4
+      "static int inner(void)", -- 5
+      "{", -- 6
+      "    int x = leaf();", -- 7
+      "    return x;", -- 8
+      "}", -- 9
+      "int outer(void)", -- 10
+      "{", -- 11
+      "    int y = inner();", -- 12
+      "    return y;", -- 13
+      "}", -- 14
+    })
+    write(
+      folder .. "/f.jsonl",
+      lines_of({
+        { title = "Fold", root = code },
+        { id = "1", file = "f.c", line = 12, title = "Calls inner" },
+        { id = "2", file = "f.c", line = 7, title = "Calls leaf" },
+        { id = "3", file = "f.c", line = 3, title = "Returns one" },
+        { id = "4", file = "f.c", line = 8, title = "Returns x" },
+        { id = "5", file = "f.c", line = 13, title = "Back" },
+      })
+    )
+    local seen = {}
+    local panel = require("taka.trace.panel")
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/f.c")
+      key("<leader>ja")()
+      vim.wait(1000, function()
+        return #panel.lines() == 8
+      end, 20)
+      seen.open = panel.lines()
+      local picker = Snacks.picker.get({ source = "trace" })[1]
+      -- h on "Returns x", a row under the heading of inner().
+      picker.list:view(7)
+      picker:action("trace_fold_close")
+      vim.wait(1000, function()
+        return #panel.lines() == 4
+      end, 20)
+      -- And it stays folded once the heading the cursor went to is shown.
+      vim.wait(500)
+      seen.folded = panel.lines()
+      seen.cursor = picker.list.cursor
+      -- Enter on the heading opens it, and again folds it.
+      picker:action("confirm")
+      vim.wait(1000, function()
+        return #panel.lines() == 8
+      end, 20)
+      seen.entered = #panel.lines()
+      picker:action("confirm")
+      vim.wait(1000, function()
+        return #panel.lines() == 4
+      end, 20)
+      seen.entered_again = #panel.lines()
+      -- h on the folded heading goes to the heading above it, outer().
+      picker:action("trace_fold_close")
+      vim.wait(1000, function()
+        return picker.list.cursor == 1
+      end, 20)
+      seen.up = picker.list.cursor
+      -- ]n from the first step goes into the fold, which opens.
+      trace.show(trace.state().rows[1], vim.fn.win_getid(vim.fn.winnr("#")))
+      trace.step(1)
+      vim.wait(1000, function()
+        return #panel.lines() == 8
+      end, 20)
+      seen.reopened = #panel.lines()
+      picker:action("trace_fold_all")
+      vim.wait(1000, function()
+        return #panel.lines() == 1
+      end, 20)
+      seen.all = panel.lines()
+      picker:action("trace_open_all")
+      vim.wait(1000, function()
+        return #panel.lines() == 8
+      end, 20)
+      seen.none = #panel.lines()
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(#(seen.open or {}) == 8, "open: " .. vim.inspect(seen.open))
+    local folded = {
+      "▾ outer()  @f.c",
+      " 1 Calls inner  @:12",
+      "│ ▸ inner()  ⋯ 3  @f.c",
+      " 5 Back  @:13",
+    }
+    expect(vim.deep_equal(seen.folded, folded), "folded: " .. vim.inspect(seen.folded))
+    expect(seen.cursor == 3, "the cursor after folding is on row " .. tostring(seen.cursor))
+    expect(seen.up == 1, "h on the folded heading went to row " .. tostring(seen.up))
+    expect(
+      seen.entered == 8 and seen.entered_again == 4,
+      ("Enter: %s rows, then %s"):format(seen.entered, seen.entered_again)
+    )
+    expect(seen.reopened == 8, "]n into the fold left " .. tostring(seen.reopened) .. " rows")
+    expect(vim.deep_equal(seen.all, { "▸ outer()  ⋯ 5  @f.c" }), "zM: " .. vim.inspect(seen.all))
+    expect(seen.none == 8, "zR left " .. tostring(seen.none) .. " rows")
   end)
 
   -- A step that gives the text of its line is found by it once the code has
