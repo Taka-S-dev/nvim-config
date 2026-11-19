@@ -104,6 +104,25 @@ return function(T)
     expect(preview[1] == "/* 日本語のコメント */", "the preview: " .. tostring(preview[1]))
   end)
 
+  -- snacks cuts a long line of the preview at 500 bytes, often between the
+  -- two bytes of a character: the whole file then read as neither encoding,
+  -- and every line of the preview was garbled.
+  check("encoding: the preview of a Shift-JIS file with a long line reads as the file does", function()
+    local dir = temp_dir()
+    write(dir .. "/long.c", sjis("x" .. string.rep("あ", 260) .. "\r\n/* 日本語のコメント */\r\n"))
+    local picker = Snacks.picker.grep({ cwd = dir, search = "コメント", live = false })
+    vim.wait(300)
+    vim.wait(5000, function()
+      return not picker:is_active() and #picker:items() > 0
+    end, 20)
+    vim.wait(500)
+    local preview = vim.api.nvim_buf_get_lines(picker.preview.win.buf, 0, -1, false)
+    picker:close()
+    reset_editor()
+    expect(preview[2] == "/* 日本語のコメント */", "the preview: " .. vim.inspect(preview))
+    expect(preview[1] == "x" .. string.rep("あ", 260), "the long line: " .. tostring(preview[1]))
+  end)
+
   check("encoding: :grep results read as the files do", function()
     local dir = temp_dir()
     write(dir .. "/q.c", sjis("/* 語 */ int zeta;\n"))

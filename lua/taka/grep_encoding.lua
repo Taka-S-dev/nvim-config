@@ -93,6 +93,31 @@ function M.finder(opts, ctx)
   end
 end
 
+-- The lines of the file at `path` as the editor reads it, each cut to `most`
+-- characters as snacks cuts a line it previews; nil when they are UTF-8 or
+-- not cp932. Read from the file and not from the preview: snacks cuts a long
+-- line at a byte count, often between the two bytes of a character, and the
+-- whole file then read as neither encoding and was left garbled.
+local function file_lines(path, most)
+  local handle = path and io.open(path, "rb")
+  if not handle then
+    return nil
+  end
+  local data = handle:read("*a")
+  handle:close()
+  local lines = vim.split((data:gsub("\r\n", "\n"):gsub("\n$", "")), "\n", { plain = true })
+  local shown, converted = legacy.lines(lines)
+  if not converted then
+    return nil
+  end
+  for index, line in ipairs(shown) do
+    if most and vim.fn.strchars(line) > most then
+      shown[index] = vim.fn.strcharpart(line, 0, most) .. "..."
+    end
+  end
+  return shown
+end
+
 -- The preview of a file not open: snacks puts its bytes in as they are.
 local function wrap_preview()
   local preview = require("snacks.picker.preview")
@@ -104,10 +129,14 @@ local function wrap_preview()
     local result = file(ctx)
     local loaded = ctx.item.buf and vim.api.nvim_buf_is_loaded(ctx.item.buf)
     if not loaded and vim.api.nvim_buf_is_valid(ctx.buf) then
-      local lines, converted = legacy.lines(vim.api.nvim_buf_get_lines(ctx.buf, 0, -1, false))
-      if converted then
-        ctx.preview:set_lines(lines)
-        ctx.preview:loc()
+      local shown = table.concat(vim.api.nvim_buf_get_lines(ctx.buf, 0, -1, false), "\n")
+      if not legacy.is_utf8(shown) then
+        local options = ctx.picker.opts.previewers.file
+        local lines = file_lines(Snacks.picker.util.path(ctx.item), options.max_line_length)
+        if lines then
+          ctx.preview:set_lines(lines)
+          ctx.preview:loc()
+        end
       end
     end
     return result
