@@ -79,6 +79,59 @@ return function(T)
   -- stay level, Enter gives the revision's message, and putting it away gives
   -- the file its wrap back. A headless run fires no WinScrolled, so what it
   -- would call is called here.
+  -- Blame compares the base svn hands over with the buffer: the base as
+  -- bytes, every line of Japanese in a Shift-JIS file read as a local edit
+  -- and showed (local) instead of its revision. svn is stood in for here, so
+  -- this runs where it is not installed.
+  check("svn: blame matches the lines of a Shift-JIS file", function()
+    local dir = temp_dir()
+    local lines = { "int a;", vim.iconv("// 日本語のコメント", "utf-8", "cp932"), "int b;" }
+    local file = dir .. "/sj.c"
+    vim.fn.writefile(lines, file, "b")
+    local entries = {}
+    for n, revision in ipairs({ 3, 4, 3 }) do
+      entries[#entries + 1] = (
+        [[<entry line-number="%d"><commit revision="%d"><author>a</author>]]
+        .. [[<date>2024-01-0%dT00:00:00.000000Z</date></commit></entry>]]
+      ):format(n, revision, n)
+    end
+    local answers = {
+      cat = { code = 0, stdout = table.concat(lines, "\n") .. "\n", stderr = "" },
+      blame = {
+        code = 0,
+        stdout = '<?xml version="1.0"?><blame><target path="sj.c">' .. table.concat(entries) .. "</target></blame>",
+        stderr = "",
+      },
+    }
+    local executable, system = vim.fn.executable, vim.system
+    local rows
+    local ok, err = pcall(function()
+      vim.fn.executable = function(name)
+        return name == "svn" and 1 or executable(name)
+      end
+      vim.system = function(cmd, _, done)
+        done(answers[cmd[3]] or { code = 1, stdout = "", stderr = "" })
+        return {}
+      end
+      vim.cmd.edit(vim.fn.fnameescape(file))
+      expect(vim.bo.fileencoding == "cp932", "read as " .. vim.bo.fileencoding)
+      local blame = require("taka.svn.blame")
+      blame.toggle()
+      local win = vim.api.nvim_get_current_win()
+      vim.wait(1000, function()
+        return blame.window(win) ~= nil
+      end, 10)
+      rows = blame.lines(win)
+      blame.close(win)
+    end)
+    vim.fn.executable, vim.system = executable, system
+    reset_editor()
+    expect(ok, tostring(err))
+    local text = table.concat(rows or {}, "|")
+    expect(#(rows or {}) == 3 and not text:find("(local)", 1, true), "blame rows: " .. text)
+    expect((rows[2] or ""):find("r4", 1, true), "line 2 is not shown as r4: " .. text)
+  end)
+
   check("svn: blame beside the file, lined up with local edits, asked for once", function()
     need("svn", "svnadmin")
     local blame = require("taka.svn.blame")

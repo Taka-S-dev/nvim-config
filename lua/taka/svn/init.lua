@@ -41,6 +41,7 @@ end
 -- For lua/taka/svn/blame.lua, which runs svn the same way.
 M.run = run
 
+-- The lines of a file as svn hands them over, as the editor reads them.
 local function lines_of(text)
   local lines = vim.split((text or ""):gsub("\r\n", "\n"), "\n", { plain = true })
   if lines[#lines] == "" then
@@ -50,6 +51,7 @@ local function lines_of(text)
   -- with its own buffer differed on every line of Japanese.
   return (require("taka.lib.legacy_text").lines(lines))
 end
+M.lines_of = lines_of
 
 local function unescape(text)
   return (text:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("&apos;", "'"):gsub("&amp;", "&"))

@@ -73,12 +73,11 @@ function M.parse(xml)
   return lines
 end
 
+-- The base as the editor reads the file, so it matches the buffer: compared
+-- as bytes, every line of Japanese in a Shift-JIS file differed and was
+-- shown as a local edit.
 local function lines_of(text)
-  local lines = vim.split((text or ""):gsub("\r\n", "\n"), "\n", { plain = true })
-  if lines[#lines] == "" then
-    lines[#lines] = nil
-  end
-  return lines
+  return require("taka.svn").lines_of(text)
 end
 
 -- For each line of `current`, the line of `base` it is, or false where it was
