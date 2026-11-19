@@ -44,14 +44,36 @@ local not_a_name = require("taka.lib.enclosing").not_a_name
 -- The list as stored: a flat array whose order is the order among siblings,
 -- each pin naming its parent. Files written before pins had ids are read as a
 -- flat list.
+-- A file that cannot be read as pins is kept aside under a name of its own,
+-- once, and said so: read as no pins, the next pin put down wrote that empty
+-- list over it, and every note in it was gone without a word.
+local function keep_aside(path)
+  local aside = path:gsub("%.json$", "") .. ".unreadable.json"
+  if not vim.uv.fs_stat(aside) then
+    vim.uv.fs_copyfile(path, aside)
+  end
+  vim.notify(
+    ("Pins: %s could not be read, and was kept as %s"):format(path, vim.fs.basename(aside)),
+    vim.log.levels.WARN
+  )
+end
+
 local function load(root)
-  local file = io.open(store_path(root), "r")
+  local path = store_path(root)
+  local file = io.open(path, "r")
   if not file then
     return {}
   end
-  local ok, data = pcall(vim.json.decode, file:read("*a"))
+  local content = file:read("*a")
   file:close()
-  local pins = ok and type(data) == "table" and data.pins or {}
+  local ok, data = pcall(vim.json.decode, content)
+  if not (ok and type(data) == "table" and type(data.pins) == "table") then
+    if vim.trim(content) ~= "" then
+      keep_aside(path)
+    end
+    return {}
+  end
+  local pins = data.pins
   local known = {}
   for _, pin in ipairs(pins) do
     pin.id = pin.id or new_id(pins)
@@ -68,10 +90,20 @@ local function load(root)
   return pins
 end
 
+-- Written to a file beside it and then put in its place, so a crash or a
+-- second editor reading at that moment finds the old list or the new one,
+-- never a file cut short.
 local function save(root, pins)
-  local file = assert(io.open(store_path(root), "w"))
+  local path = store_path(root)
+  local next_path = ("%s.%d.tmp"):format(path, vim.fn.getpid())
+  local file = assert(io.open(next_path, "w"))
   file:write(vim.json.encode({ root = root, pins = pins }))
   file:close()
+  local ok, err = vim.uv.fs_rename(next_path, path)
+  if not ok then
+    os.remove(next_path)
+    error("pins could not be written: " .. tostring(err))
+  end
 end
 
 -- Undo for the panel. Each change the reader makes keeps the list as it was
@@ -135,30 +167,36 @@ local function outline(pins)
   return rows
 end
 
--- Where the pinned line is now: the recorded line if it still holds the
--- recorded text, else the nearest line that does.
-local function locate(buf, pin)
+-- Where the pinned line is now: `from`, the line its mark has followed
+-- through the edits since it was drawn, or else the recorded line, if that
+-- holds the recorded text; else the nearest line that does. Looked for from
+-- the recorded line alone, a pin on a line written often (a `}`, an `end`, a
+-- blank line) was put back where its number had been once lines went in
+-- above it, onto another line of the same text.
+local function locate(buf, pin, from)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  if pin.text == "" or (lines[pin.line] and vim.trim(lines[pin.line]) == pin.text) then
-    return math.min(pin.line, #lines), true
+  local start = from or pin.line
+  if pin.text == "" or (lines[start] and vim.trim(lines[start]) == pin.text) then
+    return math.max(1, math.min(start, #lines)), true
   end
   for distance = 1, #lines do
-    for _, candidate in ipairs({ pin.line - distance, pin.line + distance }) do
+    for _, candidate in ipairs({ start - distance, start + distance }) do
       if lines[candidate] and vim.trim(lines[candidate]) == pin.text then
         return candidate, true
       end
     end
   end
-  return math.max(1, math.min(pin.line, #lines)), false
+  return math.max(1, math.min(start, #lines)), false
 end
 
 -- The pins of a buffer with the line each is on now: { index, pin, line }.
-local function pins_in(buf, root, pins)
+-- `followed` holds, by pin id, the line a pin's mark is on in the buffer.
+local function pins_in(buf, root, pins, followed)
   local here = vim.fs.normalize(vim.api.nvim_buf_get_name(buf)):lower()
   local found = {}
   for index, pin in ipairs(pins) do
     if vim.fs.normalize(absolute(root, pin)):lower() == here then
-      local line, still_there = locate(buf, pin)
+      local line, still_there = locate(buf, pin, followed and followed[pin.id])
       found[#found + 1] = { index = index, pin = pin, line = line, moved = still_there and line ~= pin.line }
     end
   end

@@ -186,6 +186,96 @@ return function(T)
     expect(seen.kept == "2 after 1 question", "removing several, answered keep: " .. tostring(seen.kept))
     expect(seen.all_gone == 0 and seen.all_back == 2, "several removed, then one undo: " .. tostring(seen.all_back))
   end)
+  -- A pin follows its own line through the edits made in the editor. Placed
+  -- again from its stored number on a write, a pin on a line written often
+  -- (`}`, a blank line) went back to that number once lines went in above it,
+  -- onto another line of the same text; the mark had been right till then.
+  check("pins: a pin on a line written often stays on it when lines go in above", function()
+    local dir = temp_dir()
+    write(dir .. "/GTAGS", {})
+    write(dir .. "/b.c", { "int f(void)", "{", "}", "", "int g(void)", "{", "}" })
+    local root = vim.fs.normalize(dir)
+    local pins = require("taka.pins")
+    local store = pins.store_path(root)
+    local input = vim.ui.input
+    local seen = {}
+    local function marked_lines()
+      local rows = {}
+      for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_get_namespaces().config_pins, 0, -1, {})) do
+        rows[#rows + 1] = mark[2] + 1
+      end
+      table.sort(rows)
+      return table.concat(rows, ",")
+    end
+    local ok, err = pcall(function()
+      vim.ui.input = function(_, on_confirm)
+        on_confirm("pin")
+      end
+      vim.cmd.edit(dir .. "/b.c")
+      vim.fn.cursor(4, 1)
+      key("<leader>jm")()
+      vim.fn.cursor(7, 1)
+      key("<leader>jm")()
+      vim.api.nvim_buf_set_lines(0, 0, 0, false, { "/* one */", "/* two */" })
+      seen.before_write = marked_lines()
+      vim.cmd("silent write")
+      seen.after_write = marked_lines()
+      local lines = vim.tbl_map(function(pin)
+        return pin.line
+      end, vim.json.decode(table.concat(vim.fn.readfile(store))).pins)
+      table.sort(lines)
+      seen.stored = table.concat(lines, ",")
+    end)
+    vim.ui.input = input
+    vim.fn.delete(store)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.before_write == "6,9", "before the write: " .. tostring(seen.before_write))
+    expect(seen.after_write == "6,9", "after the write the marks are on " .. tostring(seen.after_write))
+    expect(seen.stored == "6,9", "stored lines " .. tostring(seen.stored))
+  end)
+
+  -- A store file that cannot be read is not written over: it was read as no
+  -- pins, and the next pin put down wrote that over every note in it.
+  check("pins: a store file that cannot be read is kept, not written over", function()
+    local dir = temp_dir()
+    write(dir .. "/GTAGS", {})
+    write(dir .. "/c.c", { "int a;", "int b;" })
+    local root = vim.fs.normalize(dir)
+    local pins = require("taka.pins")
+    local store = pins.store_path(root)
+    local aside = store:gsub("%.json$", "") .. ".unreadable.json"
+    local cut = '{"root": "x", "pins": [{"id": "1", "file": "c.c", "line": 1, "memo": "kept no'
+    local handle = assert(io.open(store, "wb"))
+    handle:write(cut)
+    handle:close()
+    local input, notify = vim.ui.input, vim.notify
+    local warned = {}
+    local ok, err = pcall(function()
+      vim.ui.input = function(_, on_confirm)
+        on_confirm("new")
+      end
+      vim.notify = function(message, level)
+        if level == vim.log.levels.WARN then
+          warned[#warned + 1] = message
+        end
+      end
+      vim.cmd.edit(dir .. "/c.c")
+      vim.fn.cursor(2, 1)
+      key("<leader>jm")()
+    end)
+    vim.ui.input, vim.notify = input, notify
+    local kept = vim.uv.fs_stat(aside) and table.concat(vim.fn.readfile(aside, "b"), "\n") or nil
+    local now = vim.json.decode(table.concat(vim.fn.readfile(store)))
+    vim.fn.delete(store)
+    vim.fn.delete(aside)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(kept == cut, "the file cut short was not kept: " .. tostring(kept))
+    expect(#warned > 0 and warned[1]:find("could not be read", 1, true), "warned: " .. vim.inspect(warned))
+    expect(#now.pins == 1 and now.pins[1].memo == "new", "the store now holds " .. vim.inspect(now.pins))
+  end)
+
   -- A pin stores its path relative to its project. With no GTAGS or .git above
   -- the file and the cwd somewhere else, that path was cut against the cwd and
   -- pointed at nothing.

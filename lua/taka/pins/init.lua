@@ -86,26 +86,50 @@ local function enclosing_function()
   return require("taka.lib.enclosing").at(0, vim.api.nvim_win_get_cursor(0)[1])
 end
 
--- Draws the marks of one buffer. A line that has moved since it was pinned,
--- through an edit here or a pull outside, is looked up by its text first, so
--- the mark is drawn where the line is and not where it was; the new line
--- number is stored.
-function M.refresh(buf)
+-- The pin each mark of a buffer is drawn for: { [buffer] = { [mark] = id } }.
+local drawn = {}
+
+-- The lines the marks of a buffer are on now, by pin id. A mark moves with
+-- its line as the buffer is edited, which a stored line number does not; a
+-- buffer read again from disk has marks that no longer say anything.
+local function followed_lines(buf)
+  local ids = drawn[buf]
+  if not ids then
+    return nil
+  end
+  local lines = {}
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, namespace, 0, -1, {})) do
+    local id = ids[mark[1]]
+    if id then
+      lines[id] = mark[2] + 1
+    end
+  end
+  return lines
+end
+
+-- Draws the marks of one buffer. A line that has moved since it was pinned
+-- is found where its mark has followed it through the edits, or, read again
+-- from disk (`reread`, as after a pull outside), by its text near the line
+-- stored, so the mark is drawn where the line is and not where it was; the
+-- new line number is stored.
+function M.refresh(buf, reread)
   buf = buf or vim.api.nvim_get_current_buf()
   local name = vim.api.nvim_buf_get_name(buf)
   if name == "" or vim.bo[buf].buftype ~= "" then
     return
   end
+  local followed = not reread and followed_lines(buf) or nil
   vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
+  drawn[buf] = {}
   local root = project_root(name)
   local pins = load(root)
   local moved = false
-  for _, at in ipairs(pins_in(buf, root, pins)) do
+  for _, at in ipairs(pins_in(buf, root, pins, followed)) do
     if at.moved then
       at.pin.line = at.line
       moved = true
     end
-    vim.api.nvim_buf_set_extmark(buf, namespace, at.line - 1, 0, {
+    drawn[buf][vim.api.nvim_buf_set_extmark(buf, namespace, at.line - 1, 0, {
       sign_text = marker,
       sign_hl_group = "PinSign",
       virt_text = notes_shown and at.pin.memo ~= "" and {
@@ -113,7 +137,8 @@ function M.refresh(buf)
         { at.pin.memo, "PinNote" },
       } or nil,
       virt_text_pos = "eol",
-    })
+    })] =
+      at.pin.id
   end
   if moved then
     save(root, pins)
@@ -468,10 +493,17 @@ end
 
 M.toggle_panel = require("taka.pins.panel").toggle
 
+local group = vim.api.nvim_create_augroup("config_pins", { clear = true })
 vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
-  group = vim.api.nvim_create_augroup("config_pins", { clear = true }),
+  group = group,
   callback = function(event)
-    M.refresh(event.buf)
+    M.refresh(event.buf, event.event == "BufReadPost")
+  end,
+})
+vim.api.nvim_create_autocmd("BufWipeout", {
+  group = group,
+  callback = function(event)
+    drawn[event.buf] = nil
   end,
 })
 
