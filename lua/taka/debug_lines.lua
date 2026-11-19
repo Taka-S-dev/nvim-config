@@ -411,6 +411,17 @@ function M.find(root, done, everywhere)
           })
         end
       end
+      -- The files known that the search did not give: one it passes over, as
+      -- a file named in .gitignore is, still holds the lines put into it, and
+      -- was let go of here with them in it.
+      for _, file in ipairs(known(root)) do
+        if not on_disk[same(file)] and not buffers[same(file)] then
+          local found = in_file(file)
+          if found and #found > 0 then
+            on_disk[same(file)] = { name = file, found = found }
+          end
+        end
+      end
       finish(on_disk)
     end)
   )
@@ -1118,7 +1129,8 @@ end
 --                          when the same line is there already
 --   list [GROUP]           the debug lines of the project the working
 --                          directory is in, in the files known to hold some
---   clear [GROUP]          takes out the lines an agent put in, and no other
+--   clear [GROUP]          takes out the lines an agent put in, and no other,
+--                          from every file of the project
 -- What it did goes to stdout; on a mistake it ends with exit code 1, and so
 -- does clear when a line it was to take out is still in a file.
 function M.cli(args)
@@ -1198,10 +1210,18 @@ function M.cli(args)
   if not root then
     return fail("not in a project (GTAGS, .git or .svn); run this from inside one")
   end
+  -- clear looks in every file: the files known are a record kept beside the
+  -- editor's data, and where it is lost, or was never made (the lines put in
+  -- on another machine and checked in), clear found nothing and said that
+  -- nothing was left. list reads the files known, as it is asked for often.
+  local everywhere = what == "clear" and vim.fn.executable("rg") == 1
+  if what == "clear" and not everywhere then
+    out("rg is not on PATH: only the files known to hold debug lines are read")
+  end
   local items
   M.find(root, function(found)
     items = found
-  end)
+  end, everywhere)
   vim.wait(60000, function()
     return items ~= nil
   end, 20)

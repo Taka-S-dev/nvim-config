@@ -726,16 +726,18 @@ return function(T)
     code, said = agent("{'add', 'a.c', '1'}", "x = 1;\n  y = 2;")
     expect(code == 0 and said:find("a.c:3:   y = 2; /* DBG-AI #2 */", 1, true), "a typed block: " .. said)
     -- Listed from the file the agent put lines in, which is then known; a mark
-    -- in a file it never touched is not looked for.
-    put(dir .. "/other.c", "int w; /* DBG-AI */\n")
+    -- in a file it never touched is not looked for by list. clear looks in
+    -- every file, so an agent's line is not left where no record tells of it.
+    put(dir .. "/other.c", "int v;\nint w; /* DBG-AI */\n")
     code, said = agent("{'list'}")
     expect(code == 0 and said:find("4 debug lines", 1, true) and not said:find("other.c", 1, true), "list: " .. said)
     code, said = agent("{'add', 'a.c', '99'}")
     expect(code == 1 and said:find("error: line 99", 1, true), "a line past the end: " .. code .. " " .. said)
     code, said = agent("{'clear'}")
-    expect(code == 0 and said:find("3 debug lines taken out", 1, true), "clear said: " .. said)
+    expect(code == 0 and said:find("4 debug lines taken out", 1, true), "clear said: " .. said)
+    expect(said:find("other.c: 1 taken out", 1, true), "clear did not tell of other.c: " .. said)
     expect(bytes(dir .. "/a.c") == original, "a.c is not as it was: " .. vim.inspect(bytes(dir .. "/a.c")))
-    expect(bytes(dir .. "/other.c") == "int w; /* DBG-AI */\n", "other.c was changed")
+    expect(bytes(dir .. "/other.c") == "int v;\n", "other.c became " .. vim.inspect(bytes(dir .. "/other.c")))
     -- A number is not given again once its lines are gone, so an old log
     -- does not lead to a line put in since.
     code, said = agent("{'add', 'a.c', '0'}", "z();")
@@ -751,6 +753,33 @@ return function(T)
     expect(code == 0 and said:find("/* DBG-AI:q #4 */", 1, true), "the same line in another group: " .. said)
     code, said = agent("{'add', 'a.c', '0'}", "w();")
     expect(code == 0 and said:find("w(); /* DBG-AI #5 */", 1, true), "another line at the same place: " .. said)
+  end)
+
+  -- clear looks in every file, and in the files known besides: the search
+  -- passes over a file named in an ignore file, and a line an agent put into
+  -- one stayed there, the file let go of as holding none.
+  check("debug lines: an agent's clear reaches a file the search passes over", function()
+    need("rg")
+    local dir = temp_dir()
+    vim.fn.mkdir(dir .. "/.svn", "p")
+    vim.fn.mkdir(dir .. "/gen", "p")
+    put(dir .. "/.ignore", "gen/\n")
+    put(dir .. "/gen/x.c", "int x;\n")
+    local function agent(call)
+      local result = vim
+        .system({ vim.v.progpath, "--headless", "+lua require('taka.debug_lines').cli" .. call, "+qa" }, {
+          cwd = dir,
+          text = true,
+          env = { DEBUG_LINE_TEXT = "g();", DEBUG_LINES_STORE = store, SHELL = "" },
+        })
+        :wait(60000)
+      return result.code, result.stdout or ""
+    end
+    local code, said = agent("{'add', 'gen/x.c', '1'}")
+    expect(code == 0 and bytes(dir .. "/gen/x.c"):find("DBG-AI", 1, true), "add: " .. code .. " " .. said)
+    code, said = agent("{'clear'}")
+    expect(code == 0 and said:find("gen/x.c: 1 taken out", 1, true), "clear: " .. code .. " " .. said)
+    expect(bytes(dir .. "/gen/x.c") == "int x;\n", "gen/x.c became " .. vim.inspect(bytes(dir .. "/gen/x.c")))
   end)
 
   -- What clear says is what the files hold afterwards: a file with a byte
