@@ -471,14 +471,34 @@ end
 
 -- Writes a buffer back as it was read. Without autocommands: a format on
 -- save would rewrite the whole file. A file loaded here keeps a last line
--- with no newline after it.
+-- with no newline after it. Returns whether it was written, and why not: a
+-- file that may not be written (read-only, or locked by a build) is not
+-- forced, and the lines stay the caller's to tell of.
 local function save(buf, loaded_here)
   if loaded_here then
     vim.bo[buf].fixendofline = false
   end
-  vim.api.nvim_buf_call(buf, function()
+  -- With 'confirm' a file that may not be written is asked about instead,
+  -- and with nobody to answer, as in a headless editor, the write is given up
+  -- without an error.
+  local confirm = vim.o.confirm
+  vim.o.confirm = false
+  local ok, err = pcall(vim.api.nvim_buf_call, buf, function()
     vim.cmd("noautocmd silent write")
   end)
+  vim.o.confirm = confirm
+  if ok then
+    return true
+  end
+  -- The message alone, without where in this file it was raised.
+  return false, (tostring(err):gsub("^.-(E%d+:)", "%1"):gsub("%s+", " "))
+end
+
+-- Why a file loaded here is not to be changed: it may not be written, as a
+-- file under a lock of version control is, and a change to its buffer would
+-- go nowhere.
+local function read_only(buf, loaded_here)
+  return loaded_here and vim.bo[buf].readonly and "it is read-only"
 end
 
 -- Whether every change of a buffer not yet written is in debug lines: the
@@ -500,6 +520,9 @@ local function only_debug_changes(buf)
   if encoding ~= "" and encoding ~= "utf-8" then
     data = vim.iconv(data, encoding, "utf-8") or data
   end
+  -- A byte order mark is not in the buffer's first line: left on the file's,
+  -- the two never read the same, and a file with one was never written.
+  data = data:gsub("^\239\187\191", "")
   local function code(lines)
     return vim.tbl_filter(function(line)
       return not M.parse(line)
@@ -510,27 +533,38 @@ local function only_debug_changes(buf)
 end
 
 -- Writes a buffer the debug line keys changed, when that is all that changed;
--- returns whether it was written.
+-- returns whether it was written, and when writing it failed, why. A buffer
+-- loaded here holds the file as it was read a moment ago and nothing of the
+-- reader's, so it is written without being compared.
 local function save_if_only_debug(buf, loaded_here)
-  if vim.api.nvim_buf_get_name(buf) == "" or not only_debug_changes(buf) then
+  if vim.api.nvim_buf_get_name(buf) == "" or not (loaded_here or only_debug_changes(buf)) then
     return false
   end
-  save(buf, loaded_here)
-  return true
+  return save(buf, loaded_here)
+end
+
+-- What is said of a buffer changed and not written: `why` when writing it
+-- failed, else that it has changes of the reader's.
+local function not_written(why)
+  return why and ("not written: " .. why) or "not written, as the file has other changes"
 end
 
 -- Takes the debug lines for which `wanted(mark, lnum)` holds out of `files`, and
 -- writes each file back. A file open with changes not yet written loses the
 -- lines in its buffer and is not written, so the changes stay the reader's to
 -- write. A file open with changes not written in another editor is not
--- touched. Returns the lines taken out, the files left to write, and the files
--- not touched.
+-- touched. A file that could not be written keeps its lines when it was
+-- loaded here, as nothing of the change is left then. Returns the lines taken
+-- out, the files left to write, the files not touched, and the files that
+-- could not be written, each as { file, why }.
 function M.remove(files, wanted)
-  local removed, unsaved, skipped = 0, {}, {}
+  local removed, unsaved, skipped, failed = 0, {}, {}, {}
   for _, file in ipairs(files) do
     local buf, loaded_here, other = load(file)
     if held(other) then
       skipped[#skipped + 1] = file
+    elseif read_only(buf, loaded_here) then
+      failed[#failed + 1] = { file = file, why = read_only(buf, loaded_here) }
     else
       local here = 0
       local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -541,16 +575,23 @@ function M.remove(files, wanted)
           here = here + 1
         end
       end
-      removed = removed + here
-      if here > 0 and not save_if_only_debug(buf, loaded_here) then
+      local written, why = true, nil
+      if here > 0 then
+        written, why = save_if_only_debug(buf, loaded_here)
+      end
+      if why then
+        failed[#failed + 1] = { file = file, why = why }
+        here = loaded_here and 0 or here
+      elseif not written then
         unsaved[#unsaved + 1] = file
       end
+      removed = removed + here
     end
     if loaded_here then
       vim.api.nvim_buf_delete(buf, { force = true })
     end
   end
-  return removed, unsaved, skipped
+  return removed, unsaved, skipped, failed
 end
 
 -- Puts a debug line in below the cursor: a template of the language, or a
@@ -660,8 +701,9 @@ function M.insert()
       remember(root_of(buf), file)
     end
     -- A file not written yet is the reader's to write the first time.
-    if not save_if_only_debug(buf, false) and file ~= "" and vim.uv.fs_stat(file) then
-      vim.notify("Debug line put in; not written, as the file has other changes")
+    local written, why = save_if_only_debug(buf, false)
+    if not written and file ~= "" and vim.uv.fs_stat(file) then
+      vim.notify("Debug line put in; " .. not_written(why), why and vim.log.levels.WARN or vim.log.levels.INFO)
     end
     M.refresh()
   end
@@ -733,14 +775,11 @@ function M.mark_selection()
   if count > 0 and file ~= "" then
     remember(root_of(buf), file)
   end
-  local written = count > 0 and file ~= "" and vim.uv.fs_stat(file) ~= nil and save_if_only_debug(buf, false)
-  vim.notify(
-    ("%d lines made debug line #%d%s"):format(
-      count,
-      n,
-      written == false and "; not written, as the file has other changes" or ""
-    )
-  )
+  local written, why = true, nil
+  if count > 0 and file ~= "" and vim.uv.fs_stat(file) ~= nil then
+    written, why = save_if_only_debug(buf, false)
+  end
+  vim.notify(("%d lines made debug line #%d%s"):format(count, n, written and "" or ("; " .. not_written(why))))
   M.refresh()
 end
 
@@ -874,10 +913,13 @@ function M.list(everywhere)
 end
 
 -- What taking lines out said: `done`, then the files left to write, as they
--- had other changes, and those not touched, open with changes in another
--- editor.
-function M.removal_message(done, unsaved, skipped)
+-- had other changes, those not touched, open with changes in another
+-- editor, and those that could not be written.
+function M.removal_message(done, unsaved, skipped, failed)
   local message = done
+  for _, entry in ipairs(failed or {}) do
+    message = message .. ("; not written: %s (%s)"):format(entry.file, entry.why)
+  end
   if #unsaved > 0 then
     message = message .. "; not written, as they had other changes: " .. table.concat(unsaved, ", ")
   end
@@ -905,10 +947,10 @@ function M.remove_entries(chosen)
       table.insert(by_file[file], data)
     end
   end
-  local removed, unsaved, skipped = 0, {}, {}
+  local removed, unsaved, skipped, failed = 0, {}, {}, {}
   for _, file in ipairs(files) do
     local entries = by_file[file]
-    local here, left, held_files = M.remove({ file }, function(mark, lnum)
+    local here, left, held_files, unwritten = M.remove({ file }, function(mark, lnum)
       for _, data in ipairs(entries) do
         if data.n and mark.n == data.n or not data.n and lnum == data.lnum then
           return true
@@ -919,8 +961,9 @@ function M.remove_entries(chosen)
     removed = removed + here
     vim.list_extend(unsaved, left)
     vim.list_extend(skipped, held_files)
+    vim.list_extend(failed, unwritten)
   end
-  vim.notify(M.removal_message(("%d lines taken out"):format(removed), unsaved, skipped))
+  vim.notify(M.removal_message(("%d lines taken out"):format(removed), unsaved, skipped, failed))
 end
 
 -- The number of the debug line a line of a log names, as printed by {tag}
@@ -1030,10 +1073,13 @@ function M.clear()
       if not entry then
         return
       end
-      local removed, unsaved, skipped = M.remove(entry.files, entry.wanted)
+      local removed, unsaved, skipped, failed = M.remove(entry.files, entry.wanted)
       -- Read again, so a file left with no lines is let go of.
       M.find(root, function() end)
-      vim.notify(M.removal_message(("%s: %d lines taken out"):format(entry.label, removed), unsaved, skipped))
+      vim.notify(
+        M.removal_message(("%s: %d lines taken out"):format(entry.label, removed), unsaved, skipped, failed),
+        #failed > 0 and vim.log.levels.WARN or vim.log.levels.INFO
+      )
     end)
   end)
 end
@@ -1046,7 +1092,8 @@ end
 --   list [GROUP]           the debug lines of the project the working
 --                          directory is in, in the files known to hold some
 --   clear [GROUP]          takes out the lines an agent put in, and no other
--- What it did goes to stdout; on a mistake it ends with exit code 1.
+-- What it did goes to stdout; on a mistake it ends with exit code 1, and so
+-- does clear when a line it was to take out is still in a file.
 function M.cli(args)
   args = type(args) == "string" and vim.split(vim.trim(args), "%s+") or args
   local function out(text)
@@ -1081,16 +1128,33 @@ function M.cli(args)
     if not text then
       return fail("no template for " .. (filetype ~= "" and filetype or "this file") .. "; set DEBUG_LINE_TEXT")
     end
-    local new = build(text, file, filetype, row, lines, true, group, take_number(root_of(buf), lines))
+    local function show(shown)
+      if lines[row] then
+        out(("%s:%d: %s"):format(file, row, lines[row]))
+      end
+      for i, line in ipairs(shown) do
+        out(("%s:%d: %s"):format(file, row + i, line))
+      end
+    end
+    if read_only(buf, loaded_here) then
+      return fail(("not put in %s: %s"):format(file, read_only(buf, loaded_here)))
+    end
+    local n = take_number(root_of(buf), lines)
+    local new = build(text, file, filetype, row, lines, true, group, n)
     vim.api.nvim_buf_set_lines(buf, row, row, false, new)
-    save(buf, loaded_here)
+    local written, why = save(buf, loaded_here)
+    if not written then
+      return fail(("not put in %s: %s"):format(file, why))
+    end
+    -- Read back from the file: what the buffer holds is not what a build reads.
+    local on_disk = #vim.tbl_filter(function(item)
+      return item.ai and item.n == n
+    end, in_file(file) or {})
+    if on_disk ~= #new then
+      return fail(("written, but %d of the %d lines are in %s"):format(on_disk, #new, file))
+    end
     remember(root_of(buf), file)
-    if lines[row] then
-      out(("%s:%d: %s"):format(file, row, lines[row]))
-    end
-    for i, line in ipairs(new) do
-      out(("%s:%d: %s"):format(file, row + i, line))
-    end
+    show(new)
     return
   end
   if what ~= "list" and what ~= "clear" then
@@ -1131,17 +1195,44 @@ function M.cli(args)
       files[#files + 1] = item.filename
     end
   end
-  local removed, _, skipped = M.remove(files, function(mark)
+  local function wanted(mark)
     return mark.ai and (not group or mark.group == group)
-  end)
-  M.find(root, function() end)
-  out(("%d debug lines taken out"):format(removed))
-  for _, file in ipairs(skipped) do
-    out(
-      ("not taken out of %s: it has changes not written in another editor; write it there first"):format(
-        vim.fs.normalize(vim.fn.fnamemodify(file, ":."))
+  end
+  local function name(file)
+    return vim.fs.normalize(vim.fn.fnamemodify(file, ":."))
+  end
+  -- A line a file: what was taken out of it, or why nothing was.
+  local removed = 0
+  for _, file in ipairs(files) do
+    local here, unsaved, skipped, failed = M.remove({ file }, wanted)
+    removed = removed + here
+    if #skipped > 0 then
+      out(
+        ("not taken out of %s: it has changes not written in another editor; write it there first"):format(name(file))
       )
-    )
+    elseif #failed > 0 then
+      out(("not taken out of %s: %s"):format(name(file), failed[1].why))
+    elseif #unsaved > 0 then
+      out(("not written, as it has other changes: %s"):format(name(file)))
+    else
+      out(("%s: %d taken out"):format(name(file), here))
+    end
+  end
+  out(("%d debug lines taken out"):format(removed))
+  -- The files read again, as the count above is of what was taken out of the
+  -- buffers: a line still in a file is told of, whatever kept it there, and
+  -- is a failure to whoever asked.
+  local left = {}
+  M.find(root, function(found)
+    left = vim.tbl_filter(wanted, found)
+  end)
+  for _, item in ipairs(left) do
+    out(("left: %s:%d: %s"):format(name(item.filename), item.lnum, item.text))
+  end
+  if #left > 0 then
+    out(("%d debug lines left"):format(#left))
+    io.stdout:flush()
+    vim.cmd("cquit 1")
   end
 end
 

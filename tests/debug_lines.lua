@@ -680,8 +680,12 @@ return function(T)
       local removed, _, skipped = debug_lines.remove({ file }, function()
         return true
       end)
+      local cleared, told = agent("{'clear'}")
       stop()
       expect(code == 1 and said:find("changes not written in another editor", 1, true), "add: " .. said)
+      -- The agent's clear ends as a failure, and names the lines still there.
+      expect(cleared == 1 and told:find("not taken out of o.c", 1, true), "clear: " .. cleared .. " " .. told)
+      expect(told:find("left: o.c:", 1, true) and told:find("debug lines left", 1, true), "clear told: " .. told)
       expect(removed == 0 and #skipped == 1, ("took %d out, skipped %d"):format(removed, #skipped))
       expect(bytes(file) == before, "o.c was written")
     end)
@@ -736,5 +740,125 @@ return function(T)
     -- does not lead to a line put in since.
     code, said = agent("{'add', 'a.c', '0'}", "z();")
     expect(code == 0 and said:find("/* DBG-AI #3 */", 1, true), "after clear: " .. said)
+  end)
+
+  -- What clear says is what the files hold afterwards: a file with a byte
+  -- order mark was never written, and clear said its lines were taken out. A
+  -- file that cannot be written keeps its lines, and clear names them and
+  -- ends as a failure.
+  check("debug lines: an agent's clear is told by the files, not by what it meant to do", function()
+    local dir = temp_dir()
+    vim.fn.mkdir(dir .. "/.svn", "p")
+    local file = dir .. "/b.c"
+    local original = "\239\187\191int f(void)\r\n{\r\n    return 0;\r\n}\r\n"
+    put(file, original)
+    local function agent(call)
+      local result = vim
+        .system({ vim.v.progpath, "--headless", "+lua require('taka.debug_lines').cli" .. call, "+qa" }, {
+          cwd = dir,
+          text = true,
+          env = { DEBUG_LINE_TEXT = "g();", DEBUG_LINES_STORE = store, SHELL = "" },
+        })
+        :wait(60000)
+      return result.code, result.stdout or ""
+    end
+    local code, said = agent("{'add', 'b.c', '2'}")
+    local with_line = bytes(file)
+    expect(code == 0 and with_line:find("g(); /* DBG-AI #", 1, true), "add: " .. code .. " " .. said)
+    expect(with_line:sub(1, 3) == "\239\187\191", "the byte order mark was lost")
+    code, said = agent("{'clear'}")
+    expect(code == 0 and said:find("b.c: 1 taken out", 1, true), "clear: " .. code .. " " .. said)
+    expect(bytes(file) == original, "b.c is not as it was: " .. vim.inspect(bytes(file)))
+
+    agent("{'add', 'b.c', '2'}")
+    with_line = bytes(file)
+    vim.fn.setfperm(file, "r--r--r--")
+    local ok, err = pcall(function()
+      code, said = agent("{'add', 'b.c', '4'}")
+      expect(code == 1 and said:find("not put in b.c: it is read-only", 1, true), "add: " .. code .. " " .. said)
+      code, said = agent("{'clear'}")
+      expect(code == 1 and said:find("not taken out of b.c: it is read-only", 1, true), "clear: " .. code .. said)
+      expect(said:find("0 debug lines taken out", 1, true), "clear counted lines it left: " .. said)
+      expect(said:find("left: b.c:3: g();", 1, true) and said:find("1 debug lines left", 1, true), "left: " .. said)
+      expect(bytes(file) == with_line, "the read-only file was written")
+    end)
+    vim.fn.setfperm(file, "rw-rw-rw-")
+    expect(ok, tostring(err))
+    code, said = agent("{'clear'}")
+    expect(code == 0 and bytes(file) == original, "once it may be written: " .. code .. " " .. said)
+  end)
+
+  -- The same in the editor: a file open there with a byte order mark is
+  -- written when the debug lines are all that changed, and a file that may
+  -- not be written is named with the reason, not counted as done.
+  check("debug lines: an open file with a byte order mark is written; one that cannot be is told of", function()
+    local debug_lines = require("taka.debug_lines")
+    local dir = temp_dir()
+    local function all()
+      return true
+    end
+    put(dir .. "/m.c", "\239\187\191int a;\nint b; /* DBG #1 */\n")
+    vim.cmd.edit(dir .. "/m.c")
+    expect(vim.bo.bomb, "the byte order mark was not read")
+    local removed, unsaved, _, failed = debug_lines.remove({ dir .. "/m.c" }, all)
+    expect(removed == 1 and #unsaved == 0 and #failed == 0, ("%d out, %d left to write"):format(removed, #unsaved))
+    expect(bytes(dir .. "/m.c") == "\239\187\191int a;\n", "m.c became " .. vim.inspect(bytes(dir .. "/m.c")))
+
+    local locked = "int a;\nint b; /* DBG #2 */\n"
+    put(dir .. "/r.c", locked)
+    vim.fn.setfperm(dir .. "/r.c", "r--r--r--")
+    local ok, err = pcall(function()
+      -- Not open: nothing is changed, so nothing is counted.
+      removed, unsaved, _, failed = debug_lines.remove({ dir .. "/r.c" }, all)
+      expect(removed == 0 and #failed == 1 and failed[1].why == "it is read-only", "not open: " .. vim.inspect(failed))
+      -- Open: the line leaves the buffer, and the file is said not written.
+      vim.cmd("silent edit " .. vim.fn.fnameescape(dir .. "/r.c"))
+      removed, unsaved, _, failed = debug_lines.remove({ dir .. "/r.c" }, all)
+      expect(removed == 1 and #unsaved == 0 and #failed == 1, "open: " .. vim.inspect({ removed, unsaved, failed }))
+      expect(failed[1].why:find("E45", 1, true), "why it was not written: " .. tostring(failed[1].why))
+      local message = debug_lines.removal_message("1 lines taken out", unsaved, {}, failed)
+      expect(message:find("not written: ", 1, true) and message:find("E45", 1, true), "said: " .. message)
+      expect(bytes(dir .. "/r.c") == locked, "the read-only file was written")
+    end)
+    vim.fn.setfperm(dir .. "/r.c", "rw-rw-rw-")
+    reset_editor()
+    expect(ok, tostring(err))
+  end)
+
+  -- A file another program holds open against writing, as a build or a
+  -- viewer does on Windows, reads as any file and fails only when written:
+  -- its lines are then still in it, and are not counted as taken out.
+  check("debug lines: the lines of a file that could not be written are not counted", function()
+    need("powershell")
+    local debug_lines = require("taka.debug_lines")
+    local dir = temp_dir()
+    local file = dir .. "/k.c"
+    local locked = "int a;\nint b; /* DBG #1 */\n"
+    put(file, locked)
+    local holder = vim.system({
+      "powershell",
+      "-NoProfile",
+      "-Command",
+      ("$f = [IO.File]::Open('%s', 'Open', 'Read', 'Read'); Start-Sleep 60"):format(file),
+    })
+    local ok, err = pcall(function()
+      local held = vim.wait(60000, function()
+        local handle = io.open(file, "r+")
+        if handle then
+          handle:close()
+        end
+        return handle == nil
+      end, 100)
+      expect(held, "the file was not held open")
+      local removed, unsaved, skipped, failed = debug_lines.remove({ file }, function()
+        return true
+      end)
+      expect(#failed == 1 and #unsaved == 0 and #skipped == 0, "told as: " .. vim.inspect({ unsaved, skipped, failed }))
+      expect(removed == 0, removed .. " lines counted as taken out")
+    end)
+    holder:kill(9)
+    holder:wait()
+    expect(ok, tostring(err))
+    expect(bytes(file) == locked, "the file held open was written")
   end)
 end
