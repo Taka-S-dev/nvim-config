@@ -1296,6 +1296,7 @@ return function(T)
       "        o.",
       "        o->next->",
       "        o->items[n + 1].",
+      "        o[0].",
       "        aliased->in.la",
       "        local.",
       "        the_global->",
@@ -1315,6 +1316,8 @@ return function(T)
       ["o."] = "fix " .. outer,
       ["o->next->"] = inner,
       ["o->items[n + 1]."] = inner,
+      -- A pointer subscripted is its element: the `.` is right as it is.
+      ["o[0]."] = outer,
       ["aliased->in.la"] = inner,
       ["local."] = inner,
       ["the_global->"] = outer,
@@ -1325,6 +1328,49 @@ return function(T)
     }) do
       expect(seen[text] == want, ("after %q: %s"):format(text, tostring(seen[text])))
     end
+  end)
+
+  -- A header changed since GTAGS was made, a struct put in above the one
+  -- looked for: the struct at the line GTAGS gives was another one, and its
+  -- members were offered. The struct or typedef of that name is looked for.
+  check("completion: the members of a type moved in a header GTAGS has not seen", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    write(dir .. "/s.h", { "struct alpha { int a_one; };", "typedef struct { int t_one; } TEE;" })
+    write(dir .. "/use.c", { '#include "s.h"', "void f(struct alpha *p, TEE *t)", "{", "    ;", "}" })
+    run({ "gtags" }, dir)
+    write(dir .. "/s.h", {
+      "struct beta { int b_one; };",
+      "typedef struct { int u_one; } YOU;",
+      "struct alpha { int a_one; };",
+      "typedef struct { int t_one; } TEE;",
+    })
+    vim.uv.fs_utime(dir .. "/s.h", os.time() + 10, os.time() + 10)
+    vim.cmd.edit(dir .. "/use.c")
+    local complete = require("taka.gtags.complete")
+    local function offered(text)
+      vim.api.nvim_buf_set_lines(0, 3, 4, false, { text })
+      local result, finished
+      complete.candidates(0, 3, #text, function(r)
+        result, finished = r, true
+      end)
+      vim.wait(10000, function()
+        return finished
+      end, 10)
+      return result
+          and table.concat(
+            vim.tbl_map(function(item)
+              return item.label
+            end, result.items),
+            ","
+          )
+        or "none"
+    end
+    local struct, typedef = offered("    p->"), offered("    t->")
+    vim.cmd("bwipeout!")
+    reset_editor()
+    expect(struct == "a_one", "after p->: " .. struct)
+    expect(typedef == "t_one", "after t->: " .. typedef)
   end)
 
   -- A language server that completes knows the types the GTAGS completion

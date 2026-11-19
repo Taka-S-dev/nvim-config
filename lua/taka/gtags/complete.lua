@@ -199,21 +199,58 @@ members = function(root, type, hops)
   return types[key] or nil
 end
 
+-- The struct or union named `tag` with a body in a file, the one nearest
+-- `line`. The line GTAGS gives goes stale as lines go in above it, and the
+-- struct found at it alone was another one, whose members were offered.
+local function struct_named(file, tag, line)
+  local best, distance
+  local function visit(node)
+    if STRUCT[node:type()] and node:field("body")[1] then
+      local name = node:field("name")[1]
+      if name and vim.treesitter.get_node_text(name, file.text) == tag then
+        local away = math.abs(node:range() - line)
+        if not distance or away < distance then
+          best, distance = node, away
+        end
+      end
+    end
+    for child in node:iter_children() do
+      visit(child)
+    end
+  end
+  visit(file.root)
+  return best
+end
+
 look_up = function(root, type, hops)
   local name = type.tag or type.name
   for _, at in ipairs(places(ask(root, { "-d", "-x", name }), root)) do
     local file = parsed(vim.fs.joinpath(root, at.path))
     if file then
       if type.tag or not type.name then
-        local node = around(file.root, at.line - 1, STRUCT)
+        local node = struct_named(file, name, at.line - 1)
         local found = node and type_of(node, file.text)
         if found and found.body then
           return members_of_body(found.body, file.text)
         end
       end
       if type.name then
-        local node = around(file.root, at.line - 1, TYPEDEF)
-        if node then
+        -- The typedef at the line GTAGS gives, else, as that line goes stale,
+        -- the one nearest it that names the type.
+        local typedefs = { around(file.root, at.line - 1, TYPEDEF) }
+        local function visit(node)
+          if TYPEDEF[node:type()] then
+            typedefs[#typedefs + 1] = node
+          end
+          for child in node:iter_children() do
+            visit(child)
+          end
+        end
+        visit(file.root)
+        table.sort(typedefs, function(a, b)
+          return math.abs(a:range() - at.line + 1) < math.abs(b:range() - at.line + 1)
+        end)
+        for _, node in ipairs(typedefs) do
           for _, d in ipairs(declarations(node, file.text)) do
             if d.name == name then
               return members(root, d.type, (hops or 0) + 1)
@@ -221,7 +258,7 @@ look_up = function(root, type, hops)
           end
         end
         -- A struct named without `struct`, as C++ allows.
-        local spec = around(file.root, at.line - 1, STRUCT)
+        local spec = struct_named(file, name, at.line - 1)
         local found = spec and type_of(spec, file.text)
         if found and found.body then
           return members_of_body(found.body, file.text)
@@ -312,21 +349,26 @@ function M.chain(before)
     return nil
   end
   rest = rest:gsub("%s*" .. vim.pesc(op) .. "%s*$", "")
-  local names = {}
+  -- Whether each name is subscripted, `list[0]`: the element, not the
+  -- pointer the name is.
+  local names, subscripted = {}, {}
   while true do
     rest = rest:gsub("%s+$", "")
+    local indexed = false
     while rest:sub(-1) == "]" do
       local cut = rest:gsub("%b[]$", "")
       if cut == rest then
         return nil
       end
       rest = cut:gsub("%s+$", "")
+      indexed = true
     end
     local name = rest:match("[%a_][%w_]*$")
     if not name then
       return nil
     end
     table.insert(names, 1, name)
+    table.insert(subscripted, 1, indexed)
     rest = rest:sub(1, #rest - #name)
     local trimmed = rest:gsub("%s+$", "")
     if trimmed:match("%->$") then
@@ -341,7 +383,7 @@ function M.chain(before)
       break
     end
   end
-  return { names = names, op = op, partial = partial }
+  return { names = names, subscripted = subscripted, op = op, partial = partial }
 end
 
 -- How often each name is used in the buffer.
@@ -362,7 +404,12 @@ local function member_candidates(root, buf, row, col, chain)
   if not head then
     return nil
   end
-  local type, pointer = head.type, head.pointer
+  -- A pointer subscripted is the element it points at: `list[0].` on a
+  -- `struct item *list` is no `.` on a pointer, and was turned into `->`.
+  local function after_subscript(i, is_pointer)
+    return is_pointer and not (chain.subscripted or {})[i]
+  end
+  local type, pointer = head.type, after_subscript(1, head.pointer)
   for i = 2, #chain.names do
     local list = members(root, type)
     local next
@@ -374,7 +421,7 @@ local function member_candidates(root, buf, row, col, chain)
     if not next then
       return nil
     end
-    type, pointer = next.type, next.pointer
+    type, pointer = next.type, after_subscript(i, next.pointer)
   end
   return members(root, type), pointer
 end
