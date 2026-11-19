@@ -232,7 +232,8 @@ end
 
 -- The lines of a trace file as records, each with the line it was read from;
 -- a file that is one JSON object is taken apart into lines, as it is written
--- back.
+-- back. A last line with no line break after it is being written, and is
+-- handed back apart, as `tail`, to be written back as it was.
 local function records_of(path)
   local content = content_of(path)
   if not content then
@@ -246,27 +247,31 @@ local function records_of(path)
     for _, step in ipairs(steps) do
       out[#out + 1] = { line = vim.json.encode(step), record = step }
     end
-    return out
+    return out, "", content
   end
   local out = {}
-  for line in content:gmatch("[^\r\n]+") do
+  local tail = content:match("[^\n]*$")
+  local body = content:sub(1, #content - #tail)
+  for line in body:gmatch("[^\r\n]+") do
     local fine, record = pcall(vim.json.decode, line)
     out[#out + 1] = { line = line, record = fine and type(record) == "table" and record or nil }
   end
-  return out
+  return out, tail, content
 end
 
-local function write_lines(path, lines)
+-- The lines written, then the line being written as it was, with no line
+-- break added: given one, the writer finishing it made two broken lines.
+local function write_lines(path, lines, tail)
   local file = assert(io.open(path, "w"))
-  file:write(table.concat(lines, "\n") .. "\n")
+  file:write(table.concat(lines, "\n") .. "\n" .. (tail or ""))
   file:close()
 end
 
 -- The step `id` of the trace in `path` given a new title and note, marked as
 -- edited; every other line of the file is written back as it was. False when
 -- the step is no longer in the file.
-function M.edit_step(path, id, title, note)
-  local entries = records_of(path)
+function M.edit_step(path, id, title, note, tries)
+  local entries, tail, read = records_of(path)
   local steps = {}
   for _, entry in ipairs(entries) do
     if entry.record and is_step(entry.record) then
@@ -285,11 +290,17 @@ function M.edit_step(path, id, title, note)
     end
   end
   if found then
+    -- A writer adding steps meanwhile: read again and the edit made anew on
+    -- what it wrote, so the steps it added are kept.
+    if content_of(path) ~= read and (tries or 0) < 5 then
+      return M.edit_step(path, id, title, note, (tries or 0) + 1)
+    end
     write_lines(
       path,
       vim.tbl_map(function(entry)
         return entry.line
-      end, entries)
+      end, entries),
+      tail
     )
   end
   return found

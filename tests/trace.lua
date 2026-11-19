@@ -845,8 +845,17 @@ return function(T)
       vim.fn.maparg("q", "n", false, true).callback()
       seen.closed = not vim.api.nvim_win_is_valid(editor)
       key("<leader>jn")()
+      -- Opened again for the same step while it is open: the window open is
+      -- gone back to, where an error said the buffer's name was taken.
+      local first = vim.api.nvim_get_current_win()
+      vim.api.nvim_set_current_win(code_win)
+      key("<leader>jn")()
+      seen.same_window = vim.api.nvim_get_current_win() == first
       vim.api.nvim_buf_set_lines(0, 0, -1, false, { "Calls f once", "", "f decides,", "", "and is never 0." })
       vim.cmd("write")
+      vim.wait(500, function()
+        return vim.api.nvim_get_current_win() == code_win
+      end, 10)
       seen.back = vim.api.nvim_get_current_win() == code_win
       seen.file = vim.fn.readfile(path)
       local namespace = vim.api.nvim_get_namespaces().config_trace
@@ -868,6 +877,7 @@ return function(T)
     expect(seen.opened, "no window opened")
     expect(vim.deep_equal(seen.shown, { "Calls f", "", "f decides" }), "the window held " .. vim.inspect(seen.shown))
     expect(seen.closed, "q did not close the window")
+    expect(seen.same_window, "the step's window open was not gone back to")
     expect(seen.back, ":w did not close the window")
     local step = vim.json.decode(seen.file[3])
     expect(
@@ -886,6 +896,76 @@ return function(T)
       "the card: " .. vim.inspect(seen.card)
     )
   end)
+  -- :wq, :x and ZZ in the window of a step keep the change and close that
+  -- window alone: :w closed it, and the :q after it closed the window
+  -- behind, or quit when that was the last one.
+  check("trace: :wq in a step's window closes that window only", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/m.c", { "int main(void)", "{", "    return f();", "}" })
+    local path = folder .. "/wq.jsonl"
+    write(path, lines_of({ { title = "Quit", root = code }, { id = "s", file = "m.c", line = 3, title = "Calls f" } }))
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(code .. "/m.c")
+      expect(trace.open(), "the trace was not found")
+      for _, command in ipairs({ "wq", "x", "normal ZZ" }) do
+        -- Windows enough behind that one closed wrongly is counted, and the
+        -- editor is not quit, which would end the checks with it.
+        while #vim.api.nvim_tabpage_list_wins(0) < 3 do
+          vim.cmd("vsplit")
+        end
+        local windows = #vim.api.nvim_tabpage_list_wins(0)
+        vim.api.nvim_win_set_cursor(0, { 3, 0 })
+        key("<leader>jn")()
+        vim.api.nvim_buf_set_lines(0, 0, 1, false, { "Calls f by " .. command })
+        vim.cmd(command)
+        vim.wait(300)
+        seen[command] = #vim.api.nvim_tabpage_list_wins(0) - windows
+      end
+      seen.title = vim.json.decode(vim.fn.readfile(path)[2]).title
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(seen.wq == 0 and seen.x == 0 and seen["normal ZZ"] == 0, "windows left, by command: " .. vim.inspect(seen))
+    expect(seen.title == "Calls f by normal ZZ", "the title written: " .. tostring(seen.title))
+  end)
+
+  -- A step edited while whoever writes the trace is still writing it: the
+  -- line being written is kept as it was, with no line break added, and the
+  -- writer's next lines go on from it. A line break added made two broken
+  -- lines of it once the writer finished, and the step was lost.
+  check("trace: a step edited while the trace is being written leaves the line being written", function()
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/m.c", { "int a;", "int b;" })
+    local path = folder .. "/w.jsonl"
+    local head = table.concat(
+      lines_of({ { title = "Being written", root = code }, { id = "a", file = "m.c", line = 1, title = "A" } }),
+      "\n"
+    )
+    local handle = assert(io.open(path, "wb"))
+    handle:write(head .. '\n{"id": "b", "file": "m.c", "li')
+    handle:close()
+    local ok, err = pcall(function()
+      expect(store.edit_step(path, "a", "A again", "note"), "the step was not found")
+      local more = assert(io.open(path, "ab"))
+      more:write('ne": 2, "title": "B"}\n')
+      more:close()
+    end)
+    local read = store.read(path)
+    store.dir = real_dir
+    expect(ok, err)
+    expect(
+      #read.steps == 2 and #read.problems == 0,
+      "steps and problems: " .. vim.inspect({ #read.steps, read.problems })
+    )
+    expect(read.steps[1].title == "A again" and read.steps[2].title == "B", "titles: " .. vim.inspect(read.steps))
+  end)
+
   -- A trace that answers a question about the code is copied whole with Y in
   -- the panel, as Markdown to answer from: the answer first, then every step
   -- with its place and note, a branch under its step, and what was not

@@ -765,10 +765,24 @@ function M.edit(row)
     return
   end
   local path, id = state.path, row.step.id
+  local name = ("trace://%s/%s"):format(vim.fn.fnamemodify(path, ":t:r"), id)
+  -- The step is being edited already, in a window left open behind: that
+  -- window is gone back to, with what was typed in it, as a second buffer of
+  -- the same name cannot be made.
+  local open = vim.iter(vim.api.nvim_list_bufs()):find(function(other)
+    return vim.api.nvim_buf_get_name(other) == name
+  end)
+  if open then
+    local shown = vim.fn.win_findbuf(open)[1]
+    if shown then
+      return vim.api.nvim_set_current_win(shown)
+    end
+    vim.api.nvim_buf_delete(open, { force = true })
+  end
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = "acwrite"
   vim.bo[buf].bufhidden = "wipe"
-  vim.api.nvim_buf_set_name(buf, ("trace://%s/%s"):format(vim.fn.fnamemodify(path, ":t:r"), id))
+  vim.api.nvim_buf_set_name(buf, name)
   local lines = { row.step.title, "" }
   vim.list_extend(lines, vim.split(row.step.note, "\n", { plain = true }))
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -798,7 +812,14 @@ function M.edit(row)
         return vim.notify("The step is no longer in the trace", vim.log.levels.WARN)
       end
       vim.bo[buf].modified = false
-      vim.api.nvim_win_close(win, true)
+      -- Closed once the command is done: closed here, the :q of :wq, :x or
+      -- ZZ went on to the window behind, and quit the editor when it was the
+      -- last one.
+      vim.schedule(function()
+        if vim.api.nvim_win_is_valid(win) then
+          vim.api.nvim_win_close(win, true)
+        end
+      end)
       -- The step edited is the one chosen, so its card shows what was written.
       if state.path == path then
         state.current = id
