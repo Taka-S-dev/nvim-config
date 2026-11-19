@@ -29,10 +29,11 @@ end
 -- is in it are worked out by snacks only when the row is drawn, so they are
 -- converted then; the text the list filters on goes with the rest of the
 -- result.
-local function convert(item)
+local function convert(item, seen)
+  local path = Snacks.picker.util.path(item)
   local head = ("%s:%d:%d:"):format(item.file, item.pos[1], item.pos[2] + 1)
   if item.text:sub(1, #head) == head then
-    item.text = head .. legacy.text(item.text:sub(#head + 1))
+    item.text = head .. legacy.line_of(item.text:sub(#head + 1), path, seen)
   end
   local resolve = item.resolve
   item.resolve = function(self)
@@ -41,7 +42,7 @@ local function convert(item)
     if not raw then
       return
     end
-    local line, converted = legacy.text(raw)
+    local line, converted = legacy.line_of(raw, path, seen)
     if not converted then
       return
     end
@@ -85,9 +86,11 @@ function M.finder(opts, ctx)
   if not ok then
     error(run, 0)
   end
+  -- What each file of the results was read as, worked out once a file.
+  local seen = {}
   return function(callback, ...)
     return run(function(item)
-      convert(item)
+      convert(item, seen)
       return callback(item)
     end, ...)
   end
@@ -149,9 +152,9 @@ end
 local function convert_list(args)
   local local_list = args.match:sub(1, 1) == "l"
   local items = local_list and vim.fn.getloclist(0) or vim.fn.getqflist()
-  local any = false
+  local any, seen = false, {}
   for _, item in ipairs(items) do
-    local text, converted = legacy.text(item.text)
+    local text, converted = legacy.line_of(item.text, vim.api.nvim_buf_get_name(item.bufnr), seen)
     if converted then
       item.col = legacy.column(item.text, item.col - 1) + 1
       item.text, any = text, true

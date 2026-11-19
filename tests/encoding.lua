@@ -123,6 +123,34 @@ return function(T)
     expect(preview[1] == "x" .. string.rep("あ", 260), "the long line: " .. tostring(preview[1]))
   end)
 
+  -- A line of a cp932 file whose bytes happen to be valid UTF-8 is shown as
+  -- the file reads: ﾃｽ is C3 BD, and read on its own the line showed ý, in
+  -- the list of a search and in the list of :grep, where the file opened
+  -- shows ﾃｽ.
+  check("encoding: a line of a Shift-JIS file that happens to be UTF-8 reads as the file does", function()
+    local dir = temp_dir()
+    write(dir .. "/k.c", sjis("/* 日本語 */\n/* ﾃｽ */ int kana;\n"))
+    local picker = Snacks.picker.grep({ cwd = dir, search = "kana", live = false })
+    vim.wait(300)
+    vim.wait(5000, function()
+      return not picker:is_active() and #picker:items() > 0
+    end, 20)
+    local item = picker:items()[1]
+    if item then
+      Snacks.picker.util.resolve(item)
+    end
+    local listed, text = item and item.line, item and item.text
+    picker:close()
+    vim.cmd.cd(dir)
+    vim.cmd("silent grep! kana")
+    local quick = (vim.fn.getqflist()[1] or {}).text
+    vim.fn.setqflist({}, "r")
+    reset_editor()
+    expect(listed == "/* ﾃｽ */ int kana;", "the line in the list: " .. tostring(listed))
+    expect((text or ""):find("ﾃｽ", 1, true), "the text filtered on: " .. tostring(text))
+    expect(quick == "/* ﾃｽ */ int kana;", "the line of :grep: " .. tostring(quick))
+  end)
+
   check("encoding: :grep results read as the files do", function()
     local dir = temp_dir()
     write(dir .. "/q.c", sjis("/* 語 */ int zeta;\n"))

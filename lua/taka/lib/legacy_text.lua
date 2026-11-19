@@ -67,6 +67,36 @@ function M.text(line)
   return converted or line, converted ~= nil
 end
 
+-- Whether the file at `path` reads as cp932, as the editor decides it for
+-- the whole file: not valid UTF-8, and valid cp932. `seen` keeps the answer
+-- for each file of one list.
+function M.file_is_cp932(path, seen)
+  seen = seen or {}
+  if seen[path] == nil then
+    local handle = path and io.open(path, "rb")
+    local data = handle and handle:read("*a") or ""
+    if handle then
+      handle:close()
+    end
+    seen[path] = not M.is_utf8(data) and is_cp932(data)
+  end
+  return seen[path]
+end
+
+-- One line of the file at `path` as the editor shows it, and whether it was
+-- converted: decided for the whole file, as a line of a cp932 file whose
+-- bytes happen to be valid UTF-8 (ﾃｽ is C3 BD) read on its own as UTF-8.
+function M.line_of(line, path, seen)
+  if not line:find("[\128-\255]") then
+    return line, false
+  end
+  if M.file_is_cp932(path, seen) then
+    local converted = from_cp932(line)
+    return converted or line, converted ~= nil
+  end
+  return M.text(line)
+end
+
 -- The lines of a whole file as the editor would show them, and whether they
 -- had to be converted: one encoding for the file, as it has when opened.
 function M.lines(lines)
