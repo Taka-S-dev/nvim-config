@@ -132,6 +132,68 @@ return function(T)
     expect((rows[2] or ""):find("r4", 1, true), "line 2 is not shown as r4: " .. text)
   end)
 
+  -- What svn status lists, svn stood in for: a working copy under a folder
+  -- whose name starts with a dot had every new file hidden as tool state, a
+  -- file with only its properties changed was listed as normal, and a file
+  -- named with an @ was asked about as a revision of another path.
+  check("svn: status under a dot folder, a change of properties, a name with an @", function()
+    local wc = vim.fs.normalize(temp_dir() .. "/.work/proj")
+    vim.fn.mkdir(wc .. "/.vs", "p")
+    local function entry(path, item, props)
+      return ('<entry path="%s/%s"><wc-status item="%s" props="%s"></wc-status></entry>'):format(wc, path, item, props)
+    end
+    local status = '<?xml version="1.0"?><status><target path="'
+      .. wc
+      .. '">'
+      .. entry("new file.c", "unversioned", "none")
+      .. entry(".vs/state", "unversioned", "none")
+      .. entry("p.c", "normal", "modified")
+      .. entry("a@2x.c", "modified", "none")
+      .. "</target></status>"
+    local executable, system = vim.fn.executable, vim.system
+    local asked = {}
+    local listed
+    local ok, err = pcall(function()
+      vim.fn.executable = function(name)
+        return name == "svn" and 1 or executable(name)
+      end
+      vim.system = function(cmd, _, done)
+        asked[#asked + 1] = cmd
+        done(
+          cmd[3] == "status" and { code = 0, stdout = status, stderr = "" } or { code = 1, stdout = "", stderr = "" }
+        )
+        return {}
+      end
+      require("taka.svn").status(wc)
+      vim.wait(500, function()
+        return #vim.fn.getqflist() > 0
+      end, 10)
+      listed = vim.tbl_map(function(item)
+        return vim.fs.basename(vim.api.nvim_buf_get_name(item.bufnr)) .. "=" .. item.text
+      end, vim.fn.getqflist())
+      table.sort(listed)
+      write(wc .. "/a@2x.c", { "int a;" })
+      vim.cmd.edit(vim.fn.fnameescape(wc .. "/a@2x.c"))
+      local blame = require("taka.svn.blame")
+      blame.toggle()
+      vim.wait(300)
+      blame.close(vim.api.nvim_get_current_win())
+    end)
+    vim.fn.executable, vim.system = executable, system
+    vim.fn.setqflist({}, "r")
+    reset_editor()
+    expect(ok, tostring(err))
+    local text = table.concat(listed or {}, " ")
+    expect(text == "a@2x.c=modified new file.c=unversioned p.c=modified", "listed: " .. text)
+    local cat
+    for _, cmd in ipairs(asked) do
+      if cmd[3] == "cat" then
+        cat = cmd[#cmd]
+      end
+    end
+    expect(cat and vim.fs.normalize(cat) == wc .. "/a@2x.c@", "svn cat was asked for " .. tostring(cat))
+  end)
+
   check("svn: blame beside the file, lined up with local edits, asked for once", function()
     need("svn", "svnadmin")
     local blame = require("taka.svn.blame")

@@ -356,7 +356,8 @@ function M.message(row)
   if not (row and row.revision) then
     return
   end
-  require("taka.svn").run({ "log", "-r", tostring(row.revision), "--", M.file_of(row) }, function(result)
+  local svn = require("taka.svn")
+  svn.run({ "log", "-r", tostring(row.revision), "--", svn.at_path(M.file_of(row)) }, function(result)
     local text = require("taka.lib.legacy_text").text(result.stdout ~= "" and result.stdout or result.stderr)
     vim.notify(vim.trim(text), vim.log.levels.INFO, { title = "svn" })
   end)
@@ -381,7 +382,7 @@ local function answer_for(buf, done)
     return done(nil, "(no file)")
   end
   local svn = require("taka.svn")
-  svn.run({ "cat", "-r", "BASE", "--", file }, function(cat)
+  svn.run({ "cat", "-r", "BASE", "--", svn.at_path(file) }, function(cat)
     if cat.code ~= 0 then
       return done(nil, "(not under svn)")
     end
@@ -391,7 +392,7 @@ local function answer_for(buf, done)
       return done(known)
     end
     local answered = require("taka.lib.activity").begin("svn blame: " .. vim.fs.basename(file))
-    svn.run({ "blame", "--xml", "-r", "BASE", "--", file }, function(result)
+    svn.run({ "blame", "--xml", "-r", "BASE", "--", svn.at_path(file) }, function(result)
       if result.code ~= 0 then
         answered("failed")
         return done(nil, "(svn blame failed)")

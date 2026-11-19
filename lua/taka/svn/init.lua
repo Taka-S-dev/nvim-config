@@ -41,6 +41,14 @@ end
 -- For lua/taka/svn/blame.lua, which runs svn the same way.
 M.run = run
 
+-- A path of the working copy as svn is to read it: svn takes what follows
+-- the last @ for a revision, so a file named `a@2x.c` was looked for as `a`
+-- at revision 2x and failed. A trailing @ says the path ends there.
+local function at_path(path)
+  return path:find("@", 1, true) and (path .. "@") or path
+end
+M.at_path = at_path
+
 -- The lines of a file as svn hands them over, as the editor reads them.
 local function lines_of(text)
   local lines = vim.split((text or ""):gsub("\r\n", "\n"), "\n", { plain = true })
@@ -177,7 +185,7 @@ function M.status(dir)
   if vim.fn.isdirectory(dir) ~= 1 then
     dir = vim.fs.dirname(dir)
   end
-  run({ "status", "--xml", "--", dir }, function(result)
+  run({ "status", "--xml", "--", at_path(dir) }, function(result)
     if result.code ~= 0 then
       say("svn status failed in " .. dir .. ":\n" .. vim.trim(result.stderr or ""), vim.log.levels.WARN)
       return
@@ -186,9 +194,17 @@ function M.status(dir)
     for path, body in (result.stdout or ""):gmatch('<entry%s+path="([^"]*)">(.-)</entry>') do
       path = vim.fs.normalize(unescape(path))
       local state = body:match('<wc%-status[^>]-item="([%w%-]+)"') or "?"
+      -- A file whose properties alone changed is changed all the same: read
+      -- by its text alone it was listed as normal.
+      if state == "normal" and body:match('<wc%-status[^>]-props="modified"') then
+        state = "modified"
+      end
       -- Unversioned dot files and dot folders are tool state (.vs, .cache,
-      -- .idea), never meant to be added; versioned ones still show.
-      local hidden = (state == "unversioned" or state == "ignored") and path:find("/%.[^/]") ~= nil
+      -- .idea), never meant to be added; versioned ones still show. Looked
+      -- for below the folder asked about: a working copy that is itself under
+      -- a dot folder had all its new files hidden.
+      local below = path:lower():sub(1, #dir + 1) == (dir:lower() .. "/") and path:sub(#dir + 1) or path
+      local hidden = (state == "unversioned" or state == "ignored") and below:find("/%.[^/]") ~= nil
       if not hidden then
         items[#items + 1] = { filename = path, text = state }
       end
@@ -239,7 +255,7 @@ function M.diff_file()
     return
   end
   local win, filetype = vim.api.nvim_get_current_win(), vim.bo.filetype
-  run({ "cat", "-r", "BASE", "--", file }, function(result)
+  run({ "cat", "-r", "BASE", "--", at_path(file) }, function(result)
     if result.code ~= 0 then
       say("No base to compare with: " .. vim.trim(result.stderr or ""), vim.log.levels.WARN)
       return
@@ -276,7 +292,7 @@ end
 -- Where a path is in the repository: the root of the repository and the path
 -- inside it, which is how the log names what a revision changed.
 local function where(path, done)
-  run({ "info", "--xml", "--", path }, function(result)
+  run({ "info", "--xml", "--", at_path(path) }, function(result)
     local xml = result.stdout or ""
     local url, root = xml:match("<url>(.-)</url>"), xml:match("<root>(.-)</root>")
     if result.code ~= 0 or not url or not root then
