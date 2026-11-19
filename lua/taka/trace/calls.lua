@@ -62,16 +62,16 @@ local function ask(root, names, done)
     known[root .. "\0" .. name] = "asking"
   end
   require("taka.lib.gtags_global").ask_names(root, { "-x", "-d" }, names, function(output)
-    local found = {}
+    local found, seen = {}, {}
     for line in (output or ""):gmatch("[^\r\n]+") do
-      local name, lnum, path, text = line:match("^(%S+)%s+(%d+)%s+(%S+)%s?(.*)$")
+      local name, lnum, path, text = require("taka.lib.gtags_global").x_line(line, root, seen)
       if name then
         local entry = found[name] or { files = {} }
         found[name] = entry
         local full = vim.fs.joinpath(root, path)
         if text:match("^%s*#%s*define%s+" .. vim.pesc(name) .. "%f[^%w_]") then
           entry.calls = entry.calls or {}
-          for called in pairs(names_in_define(full, tonumber(lnum))) do
+          for called in pairs(names_in_define(full, lnum)) do
             entry.calls[called] = true
           end
         else

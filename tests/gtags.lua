@@ -79,6 +79,61 @@ return function(T)
     expect(reported:find("(global, 1 found)", 1, true), "the statusline said: " .. reported)
     expect(asked == 2 and second == "main.c:3", ("global asked %d times, the second jump on %s"):format(asked, second))
   end)
+  -- A line of `global -x` with a space in its path: read as one word, the path
+  -- was cut at the space, every jump went to a folder, and the rest of the
+  -- path was taken for the source line. The path is the words that name a
+  -- file, as global pads its columns with spaces.
+  check("gtags: a path with a space in a global -x line is read whole", function()
+    local global = require("taka.lib.gtags_global")
+    local dir = temp_dir() .. "/my project"
+    write(dir .. "/src dir/a b.c", { "int helper(int x)" })
+    write(dir .. "/plain.c", { "int g;" })
+    local absolute = vim.fs.normalize(dir) .. "/src dir/a b.c"
+    local function read(line, root)
+      local name, lnum, path, text = global.x_line(line, root, {})
+      return ("%s|%s|%s|%s"):format(tostring(name), tostring(lnum), tostring(path), vim.trim(text or ""))
+    end
+    local cases = {
+      {
+        ("helper             1 %s int helper(int x)"):format(absolute),
+        nil,
+        "helper|1|" .. absolute .. "|int helper(int x)",
+      },
+      { "helper             1 src dir/a b.c    int helper(int x)", dir, "helper|1|src dir/a b.c|int helper(int x)" },
+      { "g                  1 plain.c          int g;", dir, "g|1|plain.c|int g;" },
+      -- No file by that name: the first word, as before.
+      { "z                  9 gone.c  int z;", dir, "z|9|gone.c|int z;" },
+      { "not a line of global", dir, "nil|nil|nil|" },
+    }
+    for _, case in ipairs(cases) do
+      local got = read(case[1], case[2])
+      expect(got == case[3], ("%q read as %s"):format(case[1], got))
+    end
+  end)
+
+  -- The jump in a project whose folder has a space in its name.
+  check("gtags: <C-]> lands on the definition in a folder with a space", function()
+    need("gtags", "global")
+    local dir = temp_dir() .. "/my project"
+    write(dir .. "/lib.c", { "int target_fn(void)", "{", "    return 42;", "}" })
+    write(dir .. "/main.c", { "int target_fn(void);", "", "int main(void)", "{", "    return target_fn();", "}" })
+    run({ "gtags" }, dir)
+    local landed
+    local ok, err = pcall(function()
+      vim.cmd.edit(vim.fn.fnameescape(dir .. "/main.c"))
+      vim.fn.cursor(5, 12)
+      local from = vim.api.nvim_get_current_buf()
+      key("<C-]>")()
+      vim.wait(15000, function()
+        return vim.api.nvim_get_current_buf() ~= from
+      end, 20)
+      landed = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(landed == "lib.c:1", "landed on " .. tostring(landed))
+  end)
+
   -- GTAGS is not brought up to date by an edit, and lines added above a
   -- definition carried the jump that many lines off. The line GTAGS keeps is
   -- looked for: in the buffer for an edit not saved, in the file for one made

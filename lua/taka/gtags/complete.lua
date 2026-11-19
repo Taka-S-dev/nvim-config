@@ -32,13 +32,13 @@ local function ask(root, args)
   return coroutine.yield()
 end
 
--- `global -x` lines: { name, line, path }.
-local function places(output)
-  local found = {}
+-- `global -x` lines: { name, line, path }, the path from `root`.
+local function places(output, root)
+  local found, seen = {}, {}
   for line in vim.gsplit(output, "\n", { trimempty = true }) do
-    local name, lnum, path = line:gsub("\r$", ""):match("^(%S+)%s+(%d+)%s+(%S+)")
+    local name, lnum, path = global.x_line(line, root, seen)
     if name then
-      found[#found + 1] = { name = name, line = tonumber(lnum), path = path }
+      found[#found + 1] = { name = name, line = lnum, path = path }
     end
   end
   return found
@@ -201,7 +201,7 @@ end
 
 look_up = function(root, type, hops)
   local name = type.tag or type.name
-  for _, at in ipairs(places(ask(root, { "-d", "-x", name }))) do
+  for _, at in ipairs(places(ask(root, { "-d", "-x", name }), root)) do
     local file = parsed(vim.fs.joinpath(root, at.path))
     if file then
       if type.tag or not type.name then
@@ -284,7 +284,7 @@ end
 -- are read too, the first few, for one that declares it.
 local function global_declaration(root, name)
   for _, kind in ipairs({ "-d", "-s" }) do
-    for index, at in ipairs(places(ask(root, { kind, "-x", name }))) do
+    for index, at in ipairs(places(ask(root, { kind, "-x", name }), root)) do
       if index > 20 then
         break
       end

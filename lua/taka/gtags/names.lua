@@ -33,9 +33,9 @@ end
 
 -- `global -dx` prints `name  line  path  source-line`, the path from the root.
 local function definitions(root, output)
-  local rows, named = {}, {}
+  local rows, named, seen = {}, {}, {}
   for line in vim.gsplit(output or "", "\n", { trimempty = true }) do
-    local name, lnum, path, text = line:gsub("\r$", ""):match("^(%S+)%s+(%d+)%s+(%S+)%s?(.*)$")
+    local name, lnum, path, text = require("taka.lib.gtags_global").x_line(line, root, seen)
     if name then
       named[name] = true
       rows[#rows + 1] = {

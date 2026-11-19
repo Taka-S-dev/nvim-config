@@ -293,6 +293,47 @@ function M.ask_names(root, args, names, done)
   next_group(1)
 end
 
+-- A line of `global -x`: `name  line  path  source-line`, the columns padded
+-- with spaces, the path absolute or from `root`. Read as one word, a path with
+-- a space in it (`C:/My Projects/a.c`) was cut there, every jump went to a
+-- folder and the rest of the path was read as the source line. The path is
+-- taken as the shortest run of words that names a file, the first word where
+-- none does; `seen` keeps what was found out for the files of one answer.
+-- Returns name, line, path and the source line, or nil for a line of another
+-- shape.
+function M.x_line(line, root, seen)
+  local name, lnum, rest = line:gsub("\r$", ""):match("^(%S+)%s+(%d+)%s+(.*)$")
+  if not name then
+    return nil
+  end
+  seen = seen or {}
+  local function is_file(path)
+    if seen[path] == nil then
+      local full = (path:match("^%a:[/\\]") or path:match("^/")) and path or vim.fs.joinpath(root or "", path)
+      local stat = vim.uv.fs_stat(full)
+      seen[path] = stat ~= nil and stat.type == "file"
+    end
+    return seen[path]
+  end
+  local first = rest:match("^%S+")
+  if not first then
+    return nil
+  end
+  local stop = #first
+  while true do
+    local path = rest:sub(1, stop)
+    if is_file(path) then
+      return name, tonumber(lnum), path, rest:sub(stop + 2)
+    end
+    local after = rest:find("%s%S", stop + 1)
+    if not after then
+      break
+    end
+    stop = rest:find("%S%f[%s]", after + 1) or #rest
+  end
+  return name, tonumber(lnum), first, rest:sub(#first + 2)
+end
+
 function M.status()
   load_transport()
   return ("gtags: route=%s, confirmed=%s, global=%s"):format(M.transport, tostring(verified), global_exe())

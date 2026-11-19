@@ -49,11 +49,11 @@ end
 
 -- `global -ax*` prints `name  line  absolute-path  source-line`.
 local function parse(output)
-  local items = {}
+  local items, seen = {}, {}
   for line in vim.gsplit(output, "\n", { trimempty = true }) do
-    local lnum, file, text = line:gsub("\r$", ""):match("^%S+%s+(%d+)%s+(%S+)%s?(.*)$")
+    local _, lnum, file, text = require("taka.lib.gtags_global").x_line(line, nil, seen)
     if lnum then
-      items[#items + 1] = { filename = file, lnum = tonumber(lnum), col = 1, text = vim.trim(text) }
+      items[#items + 1] = { filename = file, lnum = lnum, col = 1, text = vim.trim(text) }
     end
   end
   return items
