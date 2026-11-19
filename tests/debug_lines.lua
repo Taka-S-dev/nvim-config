@@ -740,6 +740,17 @@ return function(T)
     -- does not lead to a line put in since.
     code, said = agent("{'add', 'a.c', '0'}", "z();")
     expect(code == 0 and said:find("/* DBG-AI #3 */", 1, true), "after clear: " .. said)
+    -- The same line given again for the same place is not put in twice, as
+    -- an agent going over its steps again gives it; another line there is.
+    local once = bytes(dir .. "/a.c")
+    code, said = agent("{'add', 'a.c', '0'}", "z();")
+    expect(code == 0 and said:find("already there as #3", 1, true), "the same line again: " .. said)
+    expect(said:find("a.c:1: z(); /* DBG-AI #3 */", 1, true), "the line there was not shown: " .. said)
+    expect(bytes(dir .. "/a.c") == once, "a.c was changed by the same line given again")
+    code, said = agent("{'add', 'a.c', '0', 'q'}", "z();")
+    expect(code == 0 and said:find("/* DBG-AI:q #4 */", 1, true), "the same line in another group: " .. said)
+    code, said = agent("{'add', 'a.c', '0'}", "w();")
+    expect(code == 0 and said:find("w(); /* DBG-AI #5 */", 1, true), "another line at the same place: " .. said)
   end)
 
   -- What clear says is what the files hold afterwards: a file with a byte

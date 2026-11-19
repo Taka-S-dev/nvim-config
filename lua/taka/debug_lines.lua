@@ -1084,11 +1084,38 @@ function M.clear()
   end)
 end
 
+-- The lines an agent's `text` already stands as, right after line `row`, and
+-- their number: the same text in the same group put in at the same place
+-- before. An agent that goes over its steps again gives the same line again,
+-- and a second copy would print twice and count twice. The lines there are
+-- compared with what the text would be built into without them, under their
+-- number.
+local function already(text, file, filetype, row, lines, group)
+  local mark = lines[row + 1] and M.parse(lines[row + 1])
+  if not (mark and mark.ai and mark.n and mark.group == (group or "")) then
+    return nil
+  end
+  local block, rest, stop = {}, vim.list_slice(lines, 1, row), row + 1
+  while lines[stop] do
+    local below = M.parse(lines[stop])
+    if not (below and below.ai and below.n == mark.n) then
+      break
+    end
+    block[#block + 1] = lines[stop]
+    stop = stop + 1
+  end
+  vim.list_extend(rest, lines, stop)
+  if vim.deep_equal(build(text, file, filetype, row, rest, true, group, mark.n), block) then
+    return block, mark.n
+  end
+end
+
 -- The command line an agent uses, run in a headless editor:
 --   nvim --headless "+lua require('taka.debug_lines').cli{'add', 'src/a.c', '120', 'path-B'}" +qa
 --   add FILE LINE [GROUP]  puts a line in after LINE (0 for the top), the text
 --                          from $DEBUG_LINE_TEXT (lines split at \n), else the
---                          first template of the language
+--                          first template of the language; not a second time
+--                          when the same line is there already
 --   list [GROUP]           the debug lines of the project the working
 --                          directory is in, in the files known to hold some
 --   clear [GROUP]          takes out the lines an agent put in, and no other
@@ -1138,6 +1165,12 @@ function M.cli(args)
     end
     if read_only(buf, loaded_here) then
       return fail(("not put in %s: %s"):format(file, read_only(buf, loaded_here)))
+    end
+    local there, number = already(text, file, filetype, row, lines, group)
+    if there then
+      show(there)
+      out(("already there as #%d: not put in again"):format(number))
+      return
     end
     local n = take_number(root_of(buf), lines)
     local new = build(text, file, filetype, row, lines, true, group, n)
