@@ -1129,6 +1129,62 @@ return function(T)
   -- it on: lines that could not be read, and steps whose file or line is
   -- wrong. A last line not yet ended is being written and is no problem.
   -- Read for the panel, a trace with lines left out says so once.
+  -- Three ways a trace went wrong without a word: parents that go round, a
+  -- under b and b under a, left both out of the panel and out of the check;
+  -- a step whose file is gone read as found and opened an empty buffer of
+  -- that name; and a panel opened before any trace was written stayed empty
+  -- when one came, though it said it would show it.
+  check("trace: parents that go round, a file gone, and a trace written after the panel", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code = temp_dir()
+    write(code .. "/m.c", { "int a;", "int b;" })
+    local seen = {}
+    local ok, err = pcall(function()
+      -- Before any trace: watched all the same.
+      vim.cmd.edit(code .. "/m.c")
+      seen.opened_empty = trace.open()
+      write(
+        folder .. "/late.jsonl",
+        lines_of({
+          { title = "Late", root = code },
+          { id = "a", parent = "b", file = "m.c", line = 1, text = "int a;" },
+          { id = "b", parent = "a", file = "m.c", line = 2, text = "int b;" },
+          { id = "c", file = "gone.c", line = 1 },
+        })
+      )
+      vim.wait(3000, function()
+        return trace.state().trace ~= nil
+      end, 20)
+      local state = trace.state()
+      seen.shown = state.trace and state.trace.title
+      seen.rows = #state.rows
+      seen.check = trace.check(folder .. "/late.jsonl")
+      local gone = vim.tbl_filter(function(row)
+        return row.step.id == "c"
+      end, state.rows)[1]
+      seen.gone_lost = gone and trace.where(gone.step).lost
+      local notify = vim.notify
+      vim.notify = function() end
+      if gone then
+        trace.show(gone, vim.api.nvim_get_current_win(), false)
+      end
+      vim.notify = notify
+      seen.buffer_made = vim.fn.bufexists(vim.fs.joinpath(code, "gone.c")) == 1
+    end)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(seen.opened_empty == false, "a trace was opened from an empty folder")
+    expect(seen.shown == "Late", "the trace written after was not shown: " .. tostring(seen.shown))
+    expect(seen.rows == 3, "rows in the panel: " .. tostring(seen.rows))
+    local told = table.concat(seen.check or {}, "\n")
+    expect(told:find("go round", 1, true), "the check: " .. told)
+    expect(seen.gone_lost == true, "the step of the file gone reads as found")
+    expect(not seen.buffer_made, "a buffer was made for the file gone")
+  end)
+
   check("trace: a trace is checked as it is read, and lines left out are told", function()
     local trace = require("taka.trace")
     local folder = trace_folder()

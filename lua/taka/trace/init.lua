@@ -393,6 +393,13 @@ local function read_again()
   state.trace = store.read(state.path)
   state.rows = store.outline(state.trace)
   state.located = {}
+  -- A step whose file is not there is lost, whatever it says: shown, it
+  -- opened an empty buffer of that name, and its row read as a step found.
+  for _, row in ipairs(state.rows) do
+    if not vim.uv.fs_stat(row.step.file) then
+      state.located[row.step.id] = { line = row.step.line, lost = true }
+    end
+  end
   decorate_all()
   panel().refresh()
   -- Lines left out are told once for each change in them, not at every read.
@@ -474,6 +481,10 @@ function M.open(path, follow)
     follow = true
   end
   if not path then
+    -- Watched all the same, so the first trace written is shown once it
+    -- comes: the panel opened before any said so, and stayed empty.
+    state.follow = true
+    watch()
     return false
   end
   local changed = path ~= state.path
@@ -554,6 +565,10 @@ function M.show(row, win, go, at_function)
   end
   state.current = row.step.id
   state.on_function = at_function or false
+  if not vim.uv.fs_stat(row.step.file) then
+    panel().focus(row.step.id)
+    return vim.notify(("Step %d: %s is not there"):format(row.number, row.step.file), vim.log.levels.WARN)
+  end
   local buf = vim.fn.bufadd(row.step.file)
   vim.fn.bufload(buf)
   vim.bo[buf].buflisted = true

@@ -224,6 +224,24 @@ function M.read(path)
       step.parent = nil
     end
   end
+  -- Parents that go round, a under b and b under a, hang from no step at the
+  -- top: the panel, made from the top down, left them out without a word.
+  -- The step where the round is found is put at the top.
+  local by_id = {}
+  for _, step in ipairs(trace.steps) do
+    by_id[step.id] = step
+  end
+  for _, step in ipairs(trace.steps) do
+    local seen, at = {}, step
+    while at and at.parent and not seen[at.id] do
+      seen[at.id] = true
+      at = by_id[at.parent]
+    end
+    if at and at.parent and seen[at.id] then
+      problem(at.source, ("the parents of %q go round back to it"):format(at.id))
+      at.parent = nil
+    end
+  end
   if trace.title == "" then
     trace.title = vim.fn.fnamemodify(path, ":t:r")
   end
