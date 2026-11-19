@@ -795,6 +795,37 @@ return function(T)
     expect(bytes(dir .. "/gen/x.c") == "int x;\n", "gen/x.c became " .. vim.inspect(bytes(dir .. "/gen/x.c")))
   end)
 
+  -- An error nobody saw coming is a failure to whoever ran the command, not a
+  -- message above an exit code of 0: here the record of the files known
+  -- cannot be written, its folder being a file, and add has no number to
+  -- give its line.
+  check("debug lines: an error inside an agent's command ends it as a failure", function()
+    need("rg")
+    local dir = temp_dir()
+    vim.fn.mkdir(dir .. "/.svn", "p")
+    local file = dir .. "/e.c"
+    local original = "int a;\nint b; /* DBG-AI #1 */\n"
+    put(file, original)
+    put(dir .. "/no-folder", "")
+    local function agent(call)
+      local result = vim
+        .system({ vim.v.progpath, "--headless", "+lua require('taka.debug_lines').cli" .. call, "+qa" }, {
+          cwd = dir,
+          text = true,
+          env = { DEBUG_LINE_TEXT = "g();", DEBUG_LINES_STORE = dir .. "/no-folder", SHELL = "" },
+        })
+        :wait(60000)
+      return result.code, result.stdout or ""
+    end
+    local code, said = agent("{'add', 'e.c', '1'}")
+    expect(code == 1 and said:find("error: ", 1, true), "add: " .. code .. " " .. said)
+    expect(bytes(file) == original, "e.c became " .. vim.inspect(bytes(file)))
+    -- clear needs no record: it looks in every file, and takes the line out.
+    code, said = agent("{'clear'}")
+    expect(code == 0 and said:find("e.c: 1 taken out", 1, true), "clear: " .. code .. " " .. said)
+    expect(bytes(file) == "int a;\n", "e.c became " .. vim.inspect(bytes(file)))
+  end)
+
   -- What clear says is what the files hold afterwards: a file with a byte
   -- order mark was never written, and clear said its lines were taken out. A
   -- file that cannot be written keeps its lines, and clear names them and

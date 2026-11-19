@@ -229,7 +229,9 @@ M.store = vim.env.DEBUG_LINES_STORE or vim.fs.joinpath(vim.fn.stdpath("data"), "
 
 local function store_path(root)
   local dir = M.store
-  vim.fn.mkdir(dir, "p")
+  -- Not raised when it cannot be made: reading then finds no record, and
+  -- writing says why.
+  pcall(vim.fn.mkdir, dir, "p")
   return vim.fs.joinpath(dir, vim.fn.sha256(same(root)):sub(1, 16) .. ".json")
 end
 
@@ -367,7 +369,13 @@ function M.find(root, done, everywhere)
         items[#items + 1] = hit
       end
     end
-    keep(root, files)
+    -- The record is where to look next time, and what was found now does not
+    -- wait on it: a record that could not be written lost the answer with
+    -- it, and whoever asked waited for one that never came.
+    local kept, why = pcall(keep, root, files)
+    if not kept then
+      vim.notify("Debug lines: the files holding some could not be recorded: " .. tostring(why), vim.log.levels.WARN)
+    end
     table.sort(items, function(a, b)
       if a.filename ~= b.filename then
         return a.filename < b.filename
@@ -1144,7 +1152,7 @@ end
 --                          from every file of the project
 -- What it did goes to stdout; on a mistake it ends with exit code 1, and so
 -- does clear when a line it was to take out is still in a file.
-function M.cli(args)
+local function command(args)
   args = type(args) == "string" and vim.split(vim.trim(args), "%s+") or args
   local function out(text)
     io.stdout:write(text .. "\n")
@@ -1236,9 +1244,14 @@ function M.cli(args)
   vim.wait(60000, function()
     return items ~= nil
   end, 20)
+  -- No answer is not an answer of none: taken for one, clear said that no
+  -- lines were left of a project it had not read through.
+  if not items then
+    return fail("the debug lines of " .. root .. " were not read within a minute")
+  end
   items = vim.tbl_filter(function(item)
     return not group or item.group == group
-  end, items or {})
+  end, items)
   if what == "list" then
     for _, item in ipairs(items) do
       out(
@@ -1293,6 +1306,18 @@ function M.cli(args)
   end
   if #left > 0 then
     out(("%d debug lines left"):format(#left))
+    io.stdout:flush()
+    vim.cmd("cquit 1")
+  end
+end
+
+-- An error not seen coming ends the command as a failure too. Raised from
+-- the command line it was printed and the editor went on to quit with exit
+-- code 0, which whoever ran it read as done.
+function M.cli(args)
+  local ok, err = xpcall(command, debug.traceback, args)
+  if not ok then
+    io.stdout:write("error: " .. tostring(err) .. "\n")
     io.stdout:flush()
     vim.cmd("cquit 1")
   end
