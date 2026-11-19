@@ -63,6 +63,20 @@ DEBUG_LINE_TEXT='fprintf(stderr, "[{tag}] len=%d\n", (int)len);' \
   nvim --headless "+lua require('taka.debug_lines').cli{'add', 'ssl/d1_srtp.c', '60', 'srtp'}" +qa
 ```
 
+PowerShell では、中身を**一重引用符**で囲んで環境変数に入れる（二重引用符だと `$` や
+`` ` `` が展開される）。環境変数はそのシェルに残るので、入れ終わったら消す
+（残したままだと、次の `add` がひな形ではなく前の中身を入れる）:
+
+```powershell
+$env:DEBUG_LINE_TEXT = 'fprintf(stderr, "[{tag}] len=%d\n", (int)len);'
+nvim --headless "+lua require('taka.debug_lines').cli{'add', 'ssl/d1_srtp.c', '60', 'srtp'}" +qa
+Remove-Item Env:DEBUG_LINE_TEXT
+```
+
+どちらのシェルでも、`\n` は 2 文字のまま C の文字列に入り、実行時に改行になる
+（`\\n` と重ねない。重ねると `\n` という文字がそのまま出力される）。行を分けるのは
+本当の改行だけ。`add` が表示した行を読んで、意図した文字が入ったことを確かめる
+
 ## 進め方
 
 1. **入れる前にファイルを読んで、行番号を確かめる。** `add` は「その行の下」に入れる。
