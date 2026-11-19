@@ -10,6 +10,7 @@
 local M = {}
 
 local bit = require("bit")
+local ffi = require("ffi")
 
 local ONE = 1ULL
 
@@ -293,6 +294,11 @@ function unary(state)
   return primary(state)
 end
 
+-- A value as a signed integer of 64 bits, for the preprocessor's arithmetic.
+local function signed(v)
+  return ffi.cast("int64_t", v)
+end
+
 function binary_op(state, loosest)
   local left = unary(state)
   while left do
@@ -319,19 +325,24 @@ function binary_op(state, loosest)
       left = bit.band(left, right)
     elseif PRECEDENCE[op] <= 7 then
       state.compared = true
+      local l, r = left, right
+      if state.signed then
+        l, r = signed(left), signed(right)
+      end
       left = truth(
-        op == "==" and left == right
-          or op == "!=" and left ~= right
-          or op == "<" and left < right
-          or op == "<=" and left <= right
-          or op == ">" and left > right
-          or op == ">=" and left >= right
+        op == "==" and l == r
+          or op == "!=" and l ~= r
+          or op == "<" and l < r
+          or op == "<=" and l <= r
+          or op == ">" and l > r
+          or op == ">=" and l >= r
       )
     elseif op == "<<" or op == ">>" then
       if right > 63ULL then
         return nil
       end
-      left = (op == "<<" and bit.lshift or bit.rshift)(left, tonumber(right))
+      local shift = op == "<<" and bit.lshift or state.signed and bit.arshift or bit.rshift
+      left = shift(left, tonumber(right))
     elseif op == "+" then
       left = left + right
     elseif op == "-" then
@@ -343,7 +354,12 @@ function binary_op(state, loosest)
       if right == 0ULL then
         return nil
       end
-      left = op == "/" and left / right or left % right
+      if state.signed then
+        local l, r = signed(left), signed(right)
+        left = ffi.cast("uint64_t", op == "/" and l / r or l % r)
+      else
+        left = op == "/" and left / right or left % right
+      end
     end
   end
   return left
@@ -374,12 +390,15 @@ end
 -- An expression of literals and C's integer operators worked out: its value
 -- and what it was worked out from, whether it compared or went below zero, or
 -- nil when it is none: a name in it, a division by zero, a shift past 63.
-function M.evaluate(source)
+-- With `signed`, comparisons, division and the right shift take the values
+-- as signed, as the preprocessor does for #if: unsigned, `-1 < 0` was false
+-- and the branch it opens was greyed.
+function M.evaluate(source, signed_values)
   local list = tokens(source or "")
   if not list or #list == 0 then
     return nil
   end
-  local state = { tokens = list, at = 1 }
+  local state = { tokens = list, at = 1, signed = signed_values }
   local v = conditional(state)
   if not v or state.at <= #list then
     return nil

@@ -65,6 +65,35 @@ return function(T)
     -- A number's suffix or hex digits are not names: `10UL` and `0x1F` alone
     -- are worked out.
     expect(grey({ "#if 10UL > 0x1F", "big();", "#endif" }, "") == "2", "10UL > 0x1F")
+    -- The preprocessor's arithmetic is signed: worked out unsigned, a value
+    -- below zero was the largest there is, and these went the wrong way.
+    local signed = {
+      { "#if -1 < 0", "" },
+      { "#if (0 - 1) / 2 == 0", "" },
+      { "#if V - 2 >= 0", "2" },
+      { "#if -8 >> 1 == -4", "" },
+      { "#if -7 % 2 == -1", "" },
+    }
+    for _, case in ipairs(signed) do
+      local got = grey({ case[1], "body();", "#endif" }, "V=1")
+      expect(got == case[2], ("%q greyed %q, not %q"):format(case[1], got, case[2]))
+    end
+    -- A directive in a /* */ comment is none: a `#if 0` left in one with no
+    -- #endif greyed the rest of the file. One after the comment counts.
+    local commented = grey({
+      "/*", -- 1
+      "#if 0", -- 2
+      "*/", -- 3
+      "kept();", -- 4
+      "/* #if 0 */ also_kept();", -- 5
+      'puts("/*"); #if 0', -- 6
+      "#if 0 /* open", -- 7
+      "   still a comment */", -- 8
+      "out();", -- 9
+      "#endif", -- 10
+      "after();", -- 11
+    }, "")
+    expect(commented == "8 9", "with directives in comments, greyed " .. commented)
     local inactive = require("taka.inactive")
     expect(inactive.set("A B=2 !C") and inactive.text() == "A B=2 !C", "the text: " .. inactive.text())
     expect(not inactive.set("A 2B"), "2B taken as a name")

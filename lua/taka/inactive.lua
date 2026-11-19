@@ -87,7 +87,9 @@ local function truth(condition)
     end
     return value
   end
-  local expr = condition:gsub("/%*.-%*/", " "):gsub("//.*$", "")
+  -- A comment opened on the line and closed on a line after it ends the
+  -- condition, as one closed on it does.
+  local expr = condition:gsub("/%*.-%*/", " "):gsub("/%*.*$", ""):gsub("//.*$", "")
   expr = expr:gsub("defined%s*%(%s*([%a_][%w_]*)%s*%)", function(name)
     return known(name) == false and "0" or "1"
   end)
@@ -106,7 +108,7 @@ local function truth(condition)
   if unknown then
     return nil
   end
-  local value = require("taka.radix").evaluate(expr)
+  local value = require("taka.radix").evaluate(expr, true)
   if value == nil then
     return nil
   end
@@ -143,6 +145,42 @@ local function joined(lines, row)
     line = line:gsub("\\%s*$", " ") .. lines[row]
   end
   return row, line
+end
+
+-- Whether a line leaves a /* */ comment open, given whether it starts in
+-- one. A // comment ends the line, and a comment mark in a string or a
+-- character is none.
+local function comment_after(line, inside)
+  local at = 1
+  while at <= #line do
+    if inside then
+      local stop = line:find("*/", at, true)
+      if not stop then
+        return true
+      end
+      inside, at = false, stop + 2
+    else
+      local start = line:find("[/\"']", at)
+      if not start then
+        return false
+      end
+      local char, next_char = line:sub(start, start), line:sub(start + 1, start + 1)
+      if char == "/" and next_char == "*" then
+        inside, at = true, start + 2
+      elseif char == "/" and next_char == "/" then
+        return false
+      elseif char == "/" then
+        at = start + 1
+      else
+        local close = start + 1
+        while close <= #line and line:sub(close, close) ~= char do
+          close = close + (line:sub(close, close) == "\\" and 2 or 1)
+        end
+        at = close + 1
+      end
+    end
+  end
+  return inside
 end
 
 -- The macros the conditions of `lines` name, in the order they first come,
@@ -184,6 +222,9 @@ end
 -- when it ends a false branch, so where the grey stops is seen.
 function M.rows(lines)
   local out, stack = {}, {}
+  -- Whether the line read starts inside a /* */ comment: a `#if 0` there,
+  -- left in a comment with no #endif, greyed the file to its end.
+  local commented = false
   local function any_false(upto)
     for i = 1, upto do
       if stack[i].status == false then
@@ -196,7 +237,13 @@ function M.rows(lines)
   while row <= #lines do
     local first, line = row, nil
     row, line = joined(lines, row)
-    local kind, rest = line:match("^%s*#%s*(%a+)%s*(.*)$")
+    local kind, rest
+    if not commented then
+      kind, rest = line:match("^%s*#%s*(%a+)%s*(.*)$")
+    end
+    for r = first, row do
+      commented = comment_after(lines[r], commented)
+    end
     local frame = stack[#stack]
     local grey
     if OPEN[kind] then
