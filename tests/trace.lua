@@ -1097,6 +1097,33 @@ return function(T)
     expect(#notices == 1 and notices[1]:find("3 lines could not be read", 1, true), "notices: " .. vim.inspect(notices))
   end)
 
+  -- A trace is listed by the root its header gives. With whole paths in its
+  -- steps a wrong root breaks nothing else, and the trace is then not seen
+  -- where it is looked for: the check says so.
+  check("trace: the check tells of a root that holds none of the steps' files", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local code, elsewhere = temp_dir(), temp_dir()
+    write(code .. "/c.c", { "int a;", "int b;" })
+    local function checked(root, file)
+      local path = folder .. "/r.jsonl"
+      write(path, lines_of({ { title = "Root", root = root }, { file = file, line = 2, text = "int b;" } }))
+      return trace.check(path)
+    end
+    local report, count, fine, none
+    local ok, err = pcall(function()
+      report, count = checked(elsewhere, code .. "/c.c")
+      fine = { checked(code, code .. "/c.c") }
+      none = { checked(nil, code .. "/c.c") }
+    end)
+    store.dir = real_dir
+    expect(ok, err)
+    local told = ("the root %s holds none of the steps' files"):format(vim.fs.normalize(elsewhere))
+    expect(count == 1 and report[2]:find(told, 1, true), "a root elsewhere: " .. vim.inspect(report))
+    expect(fine[2] == 0, "the files' own root: " .. vim.inspect(fine[1]))
+    expect(none[2] == 0, "no root given: " .. vim.inspect(none[1]))
+  end)
+
   -- Traces are kept together but shown by project: the newest of the current
   -- project opens, the list holds its traces until <A-a> shows every one, and
   -- a new trace of another project does not replace the one shown.
@@ -1135,11 +1162,13 @@ return function(T)
         )
       end
       seen.listed = names()
+      seen.title = picker.title
       picker:action("trace_everywhere")
       vim.wait(1000, function()
         return #picker:items() == 2
       end, 20)
       seen.everywhere = names()
+      seen.title_everywhere = picker.title
       picker:close()
       -- A newer trace of the other project is not followed.
       trace_file("theirs-newer", there, "t.c")
@@ -1161,6 +1190,10 @@ return function(T)
     expect(ok, err)
     expect(seen.opened == "mine", "opened " .. tostring(seen.opened))
     expect(seen.listed == "mine", "listed " .. tostring(seen.listed))
+    -- The trace left out of the list is counted in its title.
+    local title = ("Traces (%s) · 1 more in other projects (<A-a>)"):format(vim.fs.basename(here))
+    expect(seen.title == title, "title " .. tostring(seen.title))
+    expect(seen.title_everywhere == "Traces (every project)", "title " .. tostring(seen.title_everywhere))
     expect(seen.everywhere == "theirs,mine", "every project: " .. tostring(seen.everywhere))
     expect(seen.followed == "mine", "followed " .. tostring(seen.followed))
     expect(seen.followed_here == "mine-newer-still", "followed in this project " .. tostring(seen.followed_here))

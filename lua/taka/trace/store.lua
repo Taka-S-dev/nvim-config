@@ -187,6 +187,9 @@ function M.read(path)
       root = record.root and text_of(record.root) or root
     end
   end
+  -- Whether the header gave the root, for the check: one taken from the
+  -- working directory says nothing of where the trace is listed.
+  trace.root_given = root ~= nil
   root = vim.fs.normalize(root or vim.fn.getcwd())
   trace.root = root
   local ids = ids_of(steps)

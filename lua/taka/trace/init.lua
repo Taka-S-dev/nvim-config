@@ -850,8 +850,17 @@ function M.pick()
   end
   local project = M.project()
   local everywhere = #store.files(project) == 0
+  -- The traces of other projects are out of the list, not gone: their number
+  -- is in the title, as a trace looked for and not seen there (its root
+  -- written wrongly, or made for another checkout) was taken for one never
+  -- written, and another was opened in its place.
   local function title()
-    return everywhere and "Traces (every project)" or ("Traces (%s)"):format(vim.fs.basename(project))
+    if everywhere then
+      return "Traces (every project)"
+    end
+    local more = #store.files() - #store.files(project)
+    local others = more > 0 and (" · %d more in other projects (<A-a>)"):format(more) or ""
+    return ("Traces (%s)%s"):format(vim.fs.basename(project), others)
   end
   Snacks.picker({
     source = "trace_files",
@@ -1017,6 +1026,21 @@ function M.check(path)
         problem(("the text is on line %d, not on line %d"):format(line, step.line))
       end
     end
+  end
+  -- A trace is listed by its root. One whose root holds none of the files
+  -- its steps are in passes every check above when the steps give whole
+  -- paths, and is then not seen in the project it is about.
+  local root, inside = trace.root:lower():gsub("/+$", "") .. "/", #trace.steps == 0
+  for _, step in ipairs(trace.steps) do
+    inside = inside or step.file:lower():sub(1, #root) == root
+  end
+  if trace.root_given and not inside then
+    problems[#problems + 1] = {
+      line = 0,
+      text = ("the root %s holds none of the steps' files: the trace is listed there, not in their project"):format(
+        trace.root
+      ),
+    }
   end
   table.sort(problems, function(a, b)
     return a.line < b.line
