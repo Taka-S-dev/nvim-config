@@ -476,8 +476,18 @@ end
 -- Why a file cannot be written now: open with changes not written in another
 -- editor, which would either lose the debug lines when it writes, or find the
 -- file changed under it.
+-- An editor that ended without writing, killed or crashed, leaves the same
+-- swap file with no process to it: the changes in it are still the reader's
+-- to recover, and there is no editor to write them in.
 local function held(other)
-  return other and other.dirty and ("it has changes not written in another editor (process %d)"):format(other.pid)
+  if not (other and other.dirty) then
+    return nil
+  end
+  if other.pid == 0 then
+    return "an editor that ended without writing it left changes in a swap file; "
+      .. "open the file in Neovim to recover or delete them first"
+  end
+  return ("it has changes not written in another editor (process %d); write it there first"):format(other.pid)
 end
 
 -- Writes a buffer back as it was read. Without autocommands: a format on
@@ -924,8 +934,9 @@ function M.list(everywhere)
 end
 
 -- What taking lines out said: `done`, then the files left to write, as they
--- had other changes, those not touched, open with changes in another
--- editor, and those that could not be written.
+-- had other changes, those not touched, with changes not written in a swap
+-- file (of another editor, or of one that ended without writing), and those
+-- that could not be written.
 function M.removal_message(done, unsaved, skipped, failed)
   local message = done
   for _, entry in ipairs(failed or {}) do
@@ -936,7 +947,7 @@ function M.removal_message(done, unsaved, skipped, failed)
   end
   if #skipped > 0 then
     message = message
-      .. "; not touched, as another editor has changes not written in them: "
+      .. "; not touched, as a swap file holds changes not written to them: "
       .. table.concat(skipped, ", ")
   end
   return message
@@ -1152,7 +1163,7 @@ function M.cli(args)
     end
     local buf, loaded_here, other = load(file)
     if held(other) then
-      return fail(("not put in %s: %s; write it there first"):format(file, held(other)))
+      return fail(("not put in %s: %s"):format(file, held(other)))
     end
     local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
     if not row or row < 0 or row > #lines or row % 1 ~= 0 then
@@ -1260,9 +1271,7 @@ function M.cli(args)
     local here, unsaved, skipped, failed = M.remove({ file }, wanted)
     removed = removed + here
     if #skipped > 0 then
-      out(
-        ("not taken out of %s: it has changes not written in another editor; write it there first"):format(name(file))
-      )
+      out(("not taken out of %s: %s"):format(name(file), held(other_editor(file)) or "another editor holds it"))
     elseif #failed > 0 then
       out(("not taken out of %s: %s"):format(name(file), failed[1].why))
     elseif #unsaved > 0 then

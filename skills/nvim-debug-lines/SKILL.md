@@ -55,6 +55,10 @@ nvim --headless "+lua require('taka.debug_lines').cli{'clear', 'path-B'}" +qa
   `clear` はそのファイルを飛ばして `not taken out of ...` と出す。書くと、そちらで保存した
   ときにデバッグ行が消えるか、ファイルが食い違うため。利用者に、そちらで保存してもらってから
   やり直す。変更の無い状態で開いているだけなら、そのまま書ける
+- 理由が `an editor that ended without writing it left changes in a swap file` のときは、
+  保存しないまま落ちたエディタのスワップファイルが残っている。保存してもらう相手が
+  いないので、利用者に、そのファイルを Neovim で開いて、変更を復元するかスワップ
+  ファイルを消してもらう。スワップファイルを自分で消さない（利用者の変更が入っている）
 
 中身を渡す例（Git Bash）:
 

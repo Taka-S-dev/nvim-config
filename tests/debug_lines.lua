@@ -686,6 +686,14 @@ return function(T)
       -- The agent's clear ends as a failure, and names the lines still there.
       expect(cleared == 1 and told:find("not taken out of o.c", 1, true), "clear: " .. cleared .. " " .. told)
       expect(told:find("left: o.c:", 1, true) and told:find("debug lines left", 1, true), "clear told: " .. told)
+      -- That editor was ended without writing: its swap file still holds the
+      -- change, with no editor left to write it in, and the reason says so.
+      code, said = agent("{'add', 'o.c', '1'}")
+      expect(code == 1 and said:find("ended without writing", 1, true), "add after it ended: " .. said)
+      expect(not said:find("process 0", 1, true) and not said:find("there first", 1, true), "add said: " .. said)
+      cleared, told = agent("{'clear'}")
+      expect(cleared == 1 and told:find("not taken out of o.c: an editor that ended", 1, true), "clear: " .. told)
+      expect(bytes(file) == before, "o.c was written after the editor ended")
       expect(removed == 0 and #skipped == 1, ("took %d out, skipped %d"):format(removed, #skipped))
       expect(bytes(file) == before, "o.c was written")
     end)
