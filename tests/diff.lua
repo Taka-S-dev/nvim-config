@@ -60,6 +60,20 @@ return function(T)
       seen.click_error = vim.v.errmsg
       vim.v.errmsg = errors
       seen.landed = vim.api.nvim_get_current_win() == right and vim.fn.line(".")
+      -- With a bar on top of the window, as the windows of an svn diff have,
+      -- the same row of the strip is one row lower on the screen.
+      vim.wo[right].winbar = "right"
+      vim.cmd("redraw")
+      local barred = (states(map.strip(right)):find("~", 1, true) or 1) - 1
+      vim.fn.getmousepos = function()
+        return { winid = right, wincol = vim.api.nvim_win_get_width(right) - 1, winrow = barred + 2 }
+      end
+      seen.under_bar = select(2, map.target())
+      vim.fn.getmousepos = function()
+        return { winid = right, wincol = vim.api.nvim_win_get_width(right) - 1, winrow = 1 }
+      end
+      seen.on_bar = map.target()
+      vim.wo[right].winbar = ""
       vim.fn.getmousepos = function()
         return { winid = right, wincol = 1, winrow = row + 1 }
       end
@@ -94,6 +108,8 @@ return function(T)
     )
     expect(seen.click_error == "", "the click raised: " .. tostring(seen.click_error))
     expect(seen.landed == 20, "a click on the change landed on " .. tostring(seen.landed))
+    expect(seen.under_bar == 20, "below a window's bar the click goes to " .. tostring(seen.under_bar))
+    expect(seen.on_bar == nil, "a click on the window's bar was taken by the strip")
     expect(seen.text_click == nil, "a click in the text was taken by the strip")
     expect(seen.edge_click == nil, "a click at the window's edge, by the border, was taken by the strip")
     expect(seen.after, "the strips outlived the diff")

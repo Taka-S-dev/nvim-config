@@ -209,7 +209,14 @@ function M.target()
   local win = mouse.winid
   local last = vim.api.nvim_win_get_width(win) - GAP
   if maps[win] and mouse.wincol > last - WIDTH and mouse.wincol <= last then
-    return win, line_at(win, mouse.winrow - 1)
+    -- The row counts the window's bar on top, which the strip starts below:
+    -- in the windows of an svn diff, which have one, every click went one
+    -- row of the strip too low.
+    local bar = (vim.fn.getwininfo(win)[1] or {}).winbar or 0
+    local row = mouse.winrow - 1 - bar
+    if row >= 0 then
+      return win, line_at(win, row)
+    end
   end
 end
 
