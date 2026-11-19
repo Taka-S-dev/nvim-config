@@ -264,7 +264,8 @@ local function jump(node, to_definition)
   end
   vim.cmd("normal! m'")
   vim.cmd.edit(vim.fn.fnameescape(place.file))
-  vim.api.nvim_win_set_cursor(0, { place.lnum, 0 })
+  -- A line GTAGS gives past the end of a file cut short since: the last.
+  vim.api.nvim_win_set_cursor(0, { math.max(1, math.min(place.lnum, vim.api.nvim_buf_line_count(0))), 0 })
   vim.cmd("normal! ^zz")
 end
 

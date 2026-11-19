@@ -134,6 +134,55 @@ return function(T)
     expect(landed == "lib.c:1", "landed on " .. tostring(landed))
   end)
 
+  -- The file of a definition cut short since GTAGS was made, its line gone:
+  -- the jump and the peek go to the last line there is. They put the cursor
+  -- past the end, an error raised after the jump was on the tag stack, and
+  -- the peek left open with no key to close it.
+  check("gtags: <C-]> and the peek go to the last line when the definition's is gone", function()
+    need("gtags", "global")
+    local dir = temp_dir()
+    local lib = {}
+    for i = 1, 10 do
+      lib[i] = "/* line " .. i .. " */"
+    end
+    vim.list_extend(lib, { "int target_fn(void)", "{", "    return 42;", "}" })
+    write(dir .. "/lib.c", lib)
+    write(dir .. "/main.c", { "int target_fn(void);", "", "int main(void)", "{", "    return target_fn();", "}" })
+    run({ "gtags" }, dir)
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/lib.c")
+      vim.api.nvim_buf_set_lines(0, 3, -1, false, {})
+      vim.cmd("messages clear")
+      vim.v.errmsg = ""
+      vim.cmd.edit(dir .. "/main.c")
+      vim.fn.cursor(5, 12)
+      local from = vim.api.nvim_get_current_buf()
+      key("<C-]>")()
+      vim.wait(15000, function()
+        return vim.api.nvim_get_current_buf() ~= from
+      end, 20)
+      vim.wait(200)
+      seen.jumped = vim.fn.expand("%:t") .. ":" .. vim.fn.line(".")
+      vim.cmd.edit(dir .. "/main.c")
+      vim.fn.cursor(5, 12)
+      local before = #floats()
+      key("<leader>jp")()
+      vim.wait(15000, function()
+        return #floats() > before
+      end, 20)
+      vim.wait(200)
+      local peek = floats()[#floats()]
+      seen.peeked = peek and vim.api.nvim_win_get_cursor(peek)[1]
+      seen.errors = vim.v.errmsg .. vim.fn.execute("messages"):gsub("%s+", " ")
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.jumped == "lib.c:3", "the jump went to " .. tostring(seen.jumped))
+    expect(seen.peeked ~= nil, "the peek did not open")
+    expect(not seen.errors:find("out of range", 1, true), "an error was raised: " .. seen.errors)
+  end)
+
   -- GTAGS is not brought up to date by an edit, and lines added above a
   -- definition carried the jump that many lines off. The line GTAGS keeps is
   -- looked for: in the buffer for an edit not saved, in the file for one made

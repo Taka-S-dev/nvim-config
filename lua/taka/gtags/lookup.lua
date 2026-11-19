@@ -92,12 +92,22 @@ end
 -- when that text stands on exactly one line: on none or on several, the number
 -- GTAGS gives is kept, rather than a place that looks right and is not. A text
 -- of the name alone, or of no more than a word, says too little to look for.
+-- A line past the end of a file cut short since GTAGS was made is its last
+-- line: the jump and the peek put the cursor on it, which raised an error
+-- past the end, after the jump had gone on the tag stack.
+local function within(item, lines)
+  if #lines > 0 and item.lnum > #lines then
+    return vim.tbl_extend("force", item, { lnum = #lines })
+  end
+  return item
+end
+
 local function heal(item)
+  local lines = current_lines(item.filename)
   local key = anchor_key(item.text or "")
   if not key:find("[^%w_]") then
-    return item
+    return within(item, lines)
   end
-  local lines = current_lines(item.filename)
   if lines[item.lnum] and anchor_key(lines[item.lnum]) == key then
     return item
   end
@@ -105,12 +115,12 @@ local function heal(item)
   for i, line in ipairs(lines) do
     if anchor_key(line) == key then
       if found then
-        return item
+        return within(item, lines)
       end
       found = i
     end
   end
-  return found and vim.tbl_extend("force", item, { lnum = found }) or item
+  return found and vim.tbl_extend("force", item, { lnum = found }) or within(item, lines)
 end
 
 -- How many a lookup found, for the statusline: "gtags: name  40 ms (global,
