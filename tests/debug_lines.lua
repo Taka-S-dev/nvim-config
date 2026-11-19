@@ -636,16 +636,21 @@ return function(T)
       end
       return found
     end
-    local function wait_for_swap()
-      vim.wait(5000, function()
+    -- Until the editor started has its swap file, with `changed` one that
+    -- tells of its change. The swap file of an editor stopped before has no
+    -- process, and is not taken for it: the next step ran before the change
+    -- was there, now and then.
+    local function wait_for_swap(changed)
+      local there = vim.wait(20000, function()
         for _, swap in ipairs(swaps_of_file()) do
           local info = vim.fn.swapinfo(swap)
-          if info.pid and info.pid ~= vim.fn.getpid() then
+          if (info.pid or 0) > 0 and info.pid ~= vim.fn.getpid() and (not changed or info.dirty == 1) then
             return true
           end
         end
         return false
       end, 50)
+      expect(there, "the other editor's swap file did not come")
     end
     local function agent(call)
       local result = vim
@@ -675,7 +680,7 @@ return function(T)
       -- Open with a change not written: nothing written, and the reason given.
       local before = bytes(file)
       running[1] = other("normal! Gox")
-      wait_for_swap()
+      wait_for_swap(true)
       code, said = agent("{'add', 'o.c', '1'}")
       local removed, _, skipped = debug_lines.remove({ file }, function()
         return true
