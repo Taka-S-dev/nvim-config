@@ -40,14 +40,21 @@ local function written(node, source)
   end
 end
 
--- The writes to `name` on the given lines of a file, read with the grammar.
+-- The writes to `name` on the given lines of a file, read with the grammar,
+-- each with its line as the editor shows it. The file is read as the editor
+-- reads it, one encoding for the whole of it: parsed as the bytes of
+-- Shift-JIS, a trail byte that is a backslash (in 表, 予, 能) went on a
+-- comment to the next line or escaped the quote ending a string, and the
+-- writes after it were missed.
 local function writes_in(file, name, lines)
   local handle = io.open(file, "rb")
   if not handle then
     return {}
   end
-  local source = handle:read("*a")
+  local text = vim.split(handle:read("*a"), "\n", { plain = true })
   handle:close()
+  text = require("taka.lib.legacy_text").lines(text)
+  local source = table.concat(text, "\n")
   local ok, parser = pcall(vim.treesitter.get_string_parser, source, "c")
   if not ok then
     return {}
@@ -63,7 +70,7 @@ local function writes_in(file, name, lines)
         local key = row .. ":" .. col
         if row == lnum - 1 and not seen[key] then
           seen[key] = true
-          found[#found + 1] = { lnum = row + 1, col = col + 1 }
+          found[#found + 1] = { lnum = row + 1, col = col + 1, text = (text[row + 1] or ""):gsub("\r$", "") }
         end
       end
     end
@@ -109,11 +116,7 @@ function M.find(name, root, done)
           index = index + 1
           local file = files[index]
           for _, hit in ipairs(writes_in(file, name, by_file[file])) do
-            local raw = vim.fn.readfile(file, "", hit.lnum)[hit.lnum] or ""
-            local legacy = require("taka.lib.legacy_text")
-            local text, converted = legacy.text(raw)
-            local col = converted and legacy.column(raw, hit.col - 1) + 1 or hit.col
-            items[#items + 1] = { filename = file, lnum = hit.lnum, col = col, text = vim.trim(text) }
+            items[#items + 1] = { filename = file, lnum = hit.lnum, col = hit.col, text = vim.trim(hit.text) }
           end
         end
         if index < #files then

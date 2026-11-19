@@ -55,4 +55,42 @@ return function(T)
     expect(count == "2:5 6:5 7:5 9:5 10:7 11:8 15:32", "count written at " .. count)
     expect(fp == "17:11", "fp written at " .. fp)
   end)
+
+  -- A Shift-JIS file is parsed as the editor reads it. As bytes, the trail
+  -- byte of 表 and 予 is a backslash: it carried a // comment on to the next
+  -- line and escaped the quote ending a string, and the writes there were
+  -- missed. Each line is shown as the whole file reads, so a line whose
+  -- bytes happen to be UTF-8 (ﾃｽ is C3 BD) is not read on its own as UTF-8.
+  check("writes: a Shift-JIS file is read as the editor reads it", function()
+    need("rg")
+    local writes = require("taka.writes")
+    local dir = temp_dir()
+    local lines = {
+      "// 予定表",
+      "count = 1;",
+      'puts("表");',
+      "count = 2;",
+      "/* ﾃｽ */ count = 3;",
+      "count += 4;",
+    }
+    local handle = assert(io.open(dir .. "/s.c", "wb"))
+    handle:write(vim.iconv(table.concat(lines, "\r\n") .. "\r\n", "utf-8", "cp932"))
+    handle:close()
+    local got
+    writes.find("count", dir, function(items)
+      got = items
+    end)
+    vim.wait(10000, function()
+      return got ~= nil
+    end, 20)
+    local places = table.concat(
+      vim.tbl_map(function(item)
+        return item.lnum .. ":" .. item.col
+      end, got or {}),
+      " "
+    )
+    expect(places == "2:1 4:1 5:14 6:1", "count written at " .. places)
+    local third = (got or {})[3] or {}
+    expect(third.text == "/* ﾃｽ */ count = 3;", "the line shown: " .. tostring(third.text))
+  end)
 end
