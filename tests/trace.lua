@@ -906,6 +906,13 @@ return function(T)
     write(code .. "/m.c", { "int main(void)", "{", "    return f();", "}" })
     local path = folder .. "/wq.jsonl"
     write(path, lines_of({ { title = "Quit", root = code }, { id = "s", file = "m.c", line = 3, title = "Calls f" } }))
+    -- The windows side by side: the strip of marks a file's window gets
+    -- (lua/taka/overview.lua) is a window too, drawn a moment later.
+    local function tiled()
+      return #vim.tbl_filter(function(win)
+        return vim.api.nvim_win_get_config(win).relative == ""
+      end, vim.api.nvim_tabpage_list_wins(0))
+    end
     local seen = {}
     local ok, err = pcall(function()
       vim.cmd.edit(code .. "/m.c")
@@ -913,16 +920,16 @@ return function(T)
       for _, command in ipairs({ "wq", "x", "normal ZZ" }) do
         -- Windows enough behind that one closed wrongly is counted, and the
         -- editor is not quit, which would end the checks with it.
-        while #vim.api.nvim_tabpage_list_wins(0) < 3 do
+        while tiled() < 3 do
           vim.cmd("vsplit")
         end
-        local windows = #vim.api.nvim_tabpage_list_wins(0)
+        local windows = tiled()
         vim.api.nvim_win_set_cursor(0, { 3, 0 })
         key("<leader>jn")()
         vim.api.nvim_buf_set_lines(0, 0, 1, false, { "Calls f by " .. command })
         vim.cmd(command)
         vim.wait(300)
-        seen[command] = #vim.api.nvim_tabpage_list_wins(0) - windows
+        seen[command] = tiled() - windows
       end
       seen.title = vim.json.decode(vim.fn.readfile(path)[2]).title
     end)

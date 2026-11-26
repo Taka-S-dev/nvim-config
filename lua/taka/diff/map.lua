@@ -186,14 +186,18 @@ local function refresh(rescan)
 end
 
 -- The line a row of the strip stands for: the first change within it, when
--- it shows one, rather than the top of the part of the file it covers.
-local function line_at(win, row)
+-- it shows one, rather than the top of the part of the file it covers. Under
+-- a drag, the top: snapped to changes, the view would jump as the mouse went.
+local function line_at(win, row, plain)
   local map = maps[win]
   local height, total = vim.api.nvim_win_get_height(win), math.max(#map.rows, 1)
   local from = math.floor(row * total / height) + 1
   local to = math.max(from, math.floor((row + 1) * total / height))
   local wanted = from
   for index = from, math.min(to, #map.rows) do
+    if plain then
+      break
+    end
     if map.rows[index] then
       wanted = index
       break
@@ -223,23 +227,14 @@ function M.target()
     local bar = (vim.fn.getwininfo(win)[1] or {}).winbar or 0
     local row = mouse.winrow - 1 - bar
     if row >= 0 then
-      return win, line_at(win, row)
+      return win, line_at(win, row), function(at)
+        return line_at(win, at, true)
+      end
     end
   end
 end
 
--- A click on a strip goes to that part of the file; any other click is left
--- to do what it does. The mapping only decides: an expression mapping may not
--- change windows (E565), so the move comes after it.
-vim.keymap.set("n", "<LeftMouse>", function()
-  local win, line = M.target()
-  -- The strip of marks of a window that is no diff (lua/taka/overview.lua).
-  if not win then
-    win, line = require("taka.overview").target()
-  end
-  if not win then
-    return "<LeftMouse>"
-  end
+local function go(win, line)
   vim.schedule(function()
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_set_current_win(win)
@@ -247,8 +242,52 @@ vim.keymap.set("n", "<LeftMouse>", function()
       vim.cmd("normal! zz")
     end
   end)
+end
+
+-- The strip a press of the button landed on, while it is held: the window,
+-- and the line each row of its strip stands for.
+local held
+
+-- A click on a strip goes to that part of the file; any other click is left
+-- to do what it does. The mapping only decides: an expression mapping may not
+-- change windows (E565), so the move comes after it.
+vim.keymap.set("n", "<LeftMouse>", function()
+  local win, line, at = M.target()
+  -- The strip of marks of a window that is no diff (lua/taka/overview.lua).
+  if not win then
+    win, line, at = require("taka.overview").target()
+  end
+  held = win and { win = win, at = at } or nil
+  if not win then
+    return "<LeftMouse>"
+  end
+  go(win, line)
   return ""
 end, { expr = true, desc = "Click, or go to where the strip at the right edge points" })
+
+-- Dragged on a strip, the window follows the mouse up and down it, also when
+-- the mouse leaves the strip's columns or the window.
+vim.keymap.set("n", "<LeftDrag>", function()
+  if not held or not vim.api.nvim_win_is_valid(held.win) then
+    held = nil
+    return "<LeftDrag>"
+  end
+  local win = held.win
+  local mouse = vim.fn.getmousepos()
+  local bar = (vim.fn.getwininfo(win)[1] or {}).winbar or 0
+  local row = mouse.screenrow - vim.fn.win_screenpos(win)[1] - bar
+  row = math.max(0, math.min(vim.api.nvim_win_get_height(win) - 1, row))
+  go(win, held.at(row))
+  return ""
+end, { expr = true, desc = "Drag, or scroll along the strip at the right edge" })
+
+vim.keymap.set("n", "<LeftRelease>", function()
+  if not held then
+    return "<LeftRelease>"
+  end
+  held = nil
+  return ""
+end, { expr = true, desc = "Let go of the mouse, or of the strip at the right edge" })
 
 local group = vim.api.nvim_create_augroup("config_diff_map", { clear = true })
 -- :highlight clear has emptied the groups: set them all again.

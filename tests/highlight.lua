@@ -431,8 +431,43 @@ return function(T)
         return { winid = win, wincol = vim.api.nvim_win_get_width(win) - 1, winrow = row(300) }
       end
       local target_win, target_line = overview.target()
-      vim.fn.getmousepos = mousepos
       seen.click = target_win == win and target_line
+      -- Pressed on the strip and dragged, the window follows the mouse along
+      -- it, to the top of the part each row stands for and not to its mark,
+      -- also below the foot of the window; let go, a drag is a drag again.
+      local top = vim.fn.win_screenpos(win)[1]
+      local function at(screenrow)
+        vim.fn.getmousepos = function()
+          return { winid = win, wincol = 1, winrow = 1, screenrow = screenrow }
+        end
+      end
+      local function line_after(keys)
+        local before = vim.fn.line(".")
+        press(keys)
+        vim.wait(500, function()
+          return vim.fn.line(".") ~= before
+        end, 10)
+        return vim.fn.line(".")
+      end
+      vim.fn.getmousepos = function()
+        return {
+          winid = win,
+          wincol = vim.api.nvim_win_get_width(win) - 1,
+          winrow = row(300),
+          screenrow = top + row(300) - 1,
+        }
+      end
+      seen.pressed = line_after("<LeftMouse>")
+      at(top + row(100) - 1)
+      seen.dragged = line_after("<LeftDrag>")
+      seen.dragged_want = math.floor((row(100) - 1) * 400 / height) + 1
+      at(top + height + 5)
+      seen.below = line_after("<LeftDrag>")
+      seen.below_want = math.floor((height - 1) * 400 / height) + 1
+      press("<LeftRelease>")
+      at(top + row(100) - 1)
+      seen.released = line_after("<LeftDrag>")
+      vim.fn.getmousepos = mousepos
       -- The colours follow those they are taken from, changed with no event:
       -- read once, the track kept a passing colour.
       local function bg(name)
@@ -471,6 +506,12 @@ return function(T)
     expect(seen.click == 300, "a click on the word's row goes to " .. tostring(seen.click))
     expect(seen.put_away and seen.back, "<leader>uM did not put it away and back")
     expect(seen.follows, "the strip's colours did not follow CursorLine and CursorLineNr")
+    expect(seen.pressed == 300, "a press on the strip went to " .. tostring(seen.pressed))
+    expect(
+      seen.dragged == seen.dragged_want and seen.below == seen.below_want,
+      ("dragged to %s and %s, not %s and %s"):format(seen.dragged, seen.below, seen.dragged_want, seen.below_want)
+    )
+    expect(seen.released == seen.below, "a drag after letting go moved to " .. tostring(seen.released))
   end)
 
   -- dm and a letter deletes the mark m and that letter set, and dm! every

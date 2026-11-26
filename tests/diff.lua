@@ -60,6 +60,20 @@ return function(T)
       seen.click_error = vim.v.errmsg
       vim.v.errmsg = errors
       seen.landed = vim.api.nvim_get_current_win() == right and vim.fn.line(".")
+      -- Held and dragged along the strip, the window follows the mouse: to
+      -- the top of the part a row stands for, not snapped to its change.
+      -- The 202 rows: the right's 201 lines and the one only on the left.
+      local top = vim.fn.win_screenpos(right)[1]
+      vim.fn.getmousepos = function()
+        return { winid = right, wincol = 1, winrow = 1, screenrow = top + row }
+      end
+      press("<LeftDrag>")
+      seen.dragged_want = math.floor(row * 202 / vim.api.nvim_win_get_height(right)) + 1
+      vim.wait(500, function()
+        return vim.fn.line(".") ~= 20
+      end, 10)
+      seen.dragged = vim.fn.line(".")
+      press("<LeftRelease>")
       -- With a bar on top of the window, as the windows of an svn diff have,
       -- the same row of the strip is one row lower on the screen.
       vim.wo[right].winbar = "right"
@@ -108,6 +122,7 @@ return function(T)
     )
     expect(seen.click_error == "", "the click raised: " .. tostring(seen.click_error))
     expect(seen.landed == 20, "a click on the change landed on " .. tostring(seen.landed))
+    expect(seen.dragged == seen.dragged_want, ("a drag went to %s, not %s"):format(seen.dragged, seen.dragged_want))
     expect(seen.under_bar == 20, "below a window's bar the click goes to " .. tostring(seen.under_bar))
     expect(seen.on_bar == nil, "a click on the window's bar was taken by the strip")
     expect(seen.text_click == nil, "a click in the text was taken by the strip")
@@ -291,6 +306,13 @@ return function(T)
     local function typed(keys)
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "xt", false)
     end
+    -- The windows side by side: the strip of marks a file's window gets
+    -- (lua/taka/overview.lua) is a window too, and no side left open.
+    local function tiled()
+      return vim.tbl_filter(function(win)
+        return vim.api.nvim_win_get_config(win).relative == ""
+      end, vim.api.nvim_tabpage_list_wins(0))
+    end
     local seen = {}
     local ok, err = pcall(function()
       local file = temp_dir() .. "/a.c"
@@ -305,9 +327,9 @@ return function(T)
       seen.here = quit.here()
       typed("q")
       vim.wait(500, function()
-        return #vim.api.nvim_tabpage_list_wins(0) == 1
+        return #tiled() == 1
       end, 20)
-      seen.file = #vim.api.nvim_tabpage_list_wins(0) .. " " .. tostring(vim.wo.diff) .. " " .. vim.fn.expand("%:t")
+      seen.file = #tiled() .. " " .. tostring(vim.wo.diff) .. " " .. vim.fn.expand("%:t")
 
       -- git's sides, as gitsigns opens them: a revision is nowrite and the
       -- index acwrite. Both close, except an index with edits not written
@@ -325,7 +347,7 @@ return function(T)
         vim.wait(500, function()
           return not vim.wo.diff
         end, 20)
-        local wins = vim.api.nvim_tabpage_list_wins(0)
+        local wins = tiled()
         seen.git[#seen.git + 1] = #wins .. " " .. tostring(vim.wo[wins[1]].diff)
         vim.cmd("only!")
       end
@@ -360,7 +382,7 @@ return function(T)
         return not vim.wo.diff
       end, 20)
       local modes = {}
-      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      for _, win in ipairs(tiled()) do
         modes[#modes + 1] = tostring(vim.wo[win].diff)
       end
       seen.files = #modes .. " " .. table.concat(modes, ",")

@@ -281,13 +281,16 @@ function M.refresh()
   end
 end
 
--- Drawn once the editor is idle after a run of changes: the marks of a large
--- file are searched for anew at each drawing.
+-- Drawn 80 ms after the first of a run of changes, and so at most that often:
+-- the marks of a large file are searched for anew at each drawing. Put off
+-- until the run ended, the part in view stood still while the strip was
+-- dragged.
 local timer
 local function soon()
   timer = timer or vim.uv.new_timer()
-  timer:stop()
-  timer:start(80, 0, vim.schedule_wrap(M.refresh))
+  if not timer:is_active() then
+    timer:start(80, 0, vim.schedule_wrap(M.refresh))
+  end
 end
 M.soon = soon
 
@@ -299,11 +302,15 @@ function M.toggle()
 end
 
 -- The line a row of a window's strip stands for: the first mark in it, when
--- it shows one, rather than the top of the part of the file it covers.
-local function line_at(win, row)
+-- it shows one, rather than the top of the part of the file it covers. Under
+-- a drag, the top: snapped to marks, the view would jump as the mouse went.
+local function line_at(win, row, plain)
   local buf = vim.api.nvim_win_get_buf(win)
   local height, total = vim.api.nvim_win_get_height(win), math.max(vim.api.nvim_buf_line_count(buf), 1)
   local first = math.floor(row * total / height) + 1
+  if plain then
+    return first
+  end
   local last = math.max(first, math.floor((row + 1) * total / height))
   local marks, changes = collect(buf)
   local best
@@ -315,7 +322,8 @@ local function line_at(win, row)
   return best or first
 end
 
--- Where a click lands, when it lands on a strip: the window and the line.
+-- Where a click lands, when it lands on a strip: the window, the line, and
+-- the line each row stands for under a drag.
 function M.target()
   local mouse = vim.fn.getmousepos()
   local win = mouse.winid
@@ -327,7 +335,9 @@ function M.target()
     local bar = (vim.fn.getwininfo(win)[1] or {}).winbar or 0
     local row = mouse.winrow - 1 - bar
     if row >= 0 then
-      return win, line_at(win, row)
+      return win, line_at(win, row), function(at)
+        return line_at(win, at, true)
+      end
     end
   end
 end
