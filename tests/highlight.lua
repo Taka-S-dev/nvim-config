@@ -387,6 +387,92 @@ return function(T)
     expect(seen.cleared == "", "after <leader>hL: " .. tostring(seen.cleared))
   end)
 
+  -- The strip at the right edge shows where the marks of a file are: a line
+  -- marked in both cells, a word lit and what the search finds in the right
+  -- cell, the part in view lighter; <leader>uM puts it away and shows it
+  -- again, and a click on it goes to the mark in that row.
+  check("overview: the strip shows where the marks are, and a click goes there", function()
+    local overview = require("taka.overview")
+    local dir = temp_dir()
+    local lines = {}
+    for i = 1, 400 do
+      lines[i] = i == 300 and "int needle;" or i == 100 and "int found_by_search;" or ("int plain_" .. i .. ";")
+    end
+    write(dir .. "/o.c", lines)
+    local seen = {}
+    local search, hlsearch = vim.fn.getreg("/"), vim.v.hlsearch
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/o.c")
+      local win = vim.api.nvim_get_current_win()
+      vim.api.nvim_win_set_cursor(0, { 200, 0 })
+      require("taka.line_marks").toggle()
+      vim.api.nvim_win_set_cursor(0, { 300, 4 })
+      require("taka.words").toggle()
+      vim.fn.setreg("/", "found_by_search")
+      vim.v.hlsearch = 1
+      vim.api.nvim_win_set_cursor(0, { 50, 0 })
+      vim.cmd("normal! mq")
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+      local strip = overview.strip(win)
+      local height = #strip
+      local function row(line)
+        return math.min(height - 1, math.floor((line - 1) * height / 400)) + 1
+      end
+      seen.line = strip[row(200)]
+      seen.word = strip[row(300)]
+      seen.search = strip[row(100)]
+      seen.mark = strip[row(50)]
+      seen.cursor = strip[1][1]
+      seen.top = strip[2][1]
+      seen.plain = strip[row(250)]
+      -- A click on the row of the word goes to its line.
+      local mousepos = vim.fn.getmousepos
+      vim.fn.getmousepos = function()
+        return { winid = win, wincol = vim.api.nvim_win_get_width(win) - 1, winrow = row(300) }
+      end
+      local target_win, target_line = overview.target()
+      vim.fn.getmousepos = mousepos
+      seen.click = target_win == win and target_line
+      -- The colours follow those they are taken from, changed with no event:
+      -- read once, the track kept a passing colour.
+      local function bg(name)
+        return vim.api.nvim_get_hl(0, { name = name, link = false }).bg
+      end
+      local cursorline = vim.api.nvim_get_hl(0, { name = "CursorLine" })
+      local number = vim.api.nvim_get_hl(0, { name = "CursorLineNr" })
+      vim.api.nvim_set_hl(0, "CursorLine", { bg = 0x123456 })
+      vim.api.nvim_set_hl(0, "CursorLineNr", { fg = 0x654321 })
+      overview.strip(win)
+      seen.follows = bg("OverviewTrack") == 0x123456
+        and bg("OverviewCursor") == 0x654321
+        and bg("OverviewView") ~= 0x123456
+      vim.api.nvim_set_hl(0, "CursorLine", cursorline)
+      vim.api.nvim_set_hl(0, "CursorLineNr", number)
+      key("<leader>uM")()
+      seen.put_away = overview.strip(win) == nil
+      key("<leader>uM")()
+      seen.back = overview.strip(win) ~= nil
+    end)
+    vim.fn.setreg("/", search)
+    vim.v.hlsearch = hlsearch
+    require("taka.words").clear()
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(vim.deep_equal(seen.line, { "Overviewline", "Overviewline" }), "a line marked: " .. vim.inspect(seen.line))
+    expect(seen.word and seen.word[2] == "OverviewWord1", "a word lit: " .. vim.inspect(seen.word))
+    expect(seen.search and seen.search[2] == "Overviewsearch", "the search: " .. vim.inspect(seen.search))
+    expect(seen.top == "OverviewView", "the part in view: " .. tostring(seen.top))
+    expect(seen.cursor == "OverviewCursor", "the cursor's row: " .. tostring(seen.cursor))
+    expect(seen.mark and seen.mark[2] == "Overviewmark", "a mark set with m: " .. vim.inspect(seen.mark))
+    expect(
+      vim.deep_equal(seen.plain, { "OverviewTrack", "OverviewTrack" }),
+      "a row of nothing: " .. vim.inspect(seen.plain)
+    )
+    expect(seen.click == 300, "a click on the word's row goes to " .. tostring(seen.click))
+    expect(seen.put_away and seen.back, "<leader>uM did not put it away and back")
+    expect(seen.follows, "the strip's colours did not follow CursorLine and CursorLineNr")
+  end)
+
   -- dm and a letter deletes the mark m and that letter set, and dm! every
   -- mark a to z of the file: :delmarks was the one way.
   check("marks: dm and a letter deletes that mark, dm! all of the file", function()

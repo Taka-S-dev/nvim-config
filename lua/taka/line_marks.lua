@@ -90,6 +90,7 @@ function M.toggle()
       mark(buf, row)
     end
   end
+  require("taka.overview").soon()
 end
 
 -- <leader>hj and <leader>hk: the next marked line below the cursor, or with
@@ -126,6 +127,7 @@ end
 -- <leader>hL: every mark of the buffer taken off.
 function M.clear()
   vim.api.nvim_buf_clear_namespace(0, ns, 0, -1)
+  require("taka.overview").soon()
 end
 
 return M

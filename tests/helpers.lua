@@ -77,9 +77,13 @@ local function key(lhs)
   return map.callback
 end
 
+-- The floating windows one can go into: the strips drawn at the right edge
+-- of the windows (lua/taka/overview.lua, lua/taka/diff/map.lua) take no
+-- focus, and are no window a check opened.
 local function floats()
   return vim.tbl_filter(function(win)
-    return vim.api.nvim_win_get_config(win).relative ~= ""
+    local config = vim.api.nvim_win_get_config(win)
+    return config.relative ~= "" and config.focusable ~= false
   end, vim.api.nvim_list_wins())
 end
 

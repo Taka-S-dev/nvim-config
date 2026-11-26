@@ -225,6 +225,10 @@ end
 -- change windows (E565), so the move comes after it.
 vim.keymap.set("n", "<LeftMouse>", function()
   local win, line = M.target()
+  -- The strip of marks of a window that is no diff (lua/taka/overview.lua).
+  if not win then
+    win, line = require("taka.overview").target()
+  end
   if not win then
     return "<LeftMouse>"
   end
@@ -236,7 +240,7 @@ vim.keymap.set("n", "<LeftMouse>", function()
     end
   end)
   return ""
-end, { expr = true, desc = "Click, or go to where the diff map points" })
+end, { expr = true, desc = "Click, or go to where the strip at the right edge points" })
 
 local group = vim.api.nvim_create_augroup("config_diff_map", { clear = true })
 vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = colours })

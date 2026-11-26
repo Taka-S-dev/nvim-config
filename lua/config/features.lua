@@ -28,6 +28,11 @@ key("n", "<leader>hj", "taka.line_marks", "jump", "Next marked line")
 key("n", "<leader>hk", "taka.line_marks", "jump", "Previous marked line", true)
 key("n", "<leader>hL", "taka.line_marks", "clear", "Take every line mark off")
 
+-- Where the marks of a file are, in a strip at the right edge of each window,
+-- <leader>uM to put it away and show it again (lua/taka/overview.lua).
+require("taka.overview")
+key("n", "<leader>uM", "taka.overview", "toggle", "Toggle the strip of marks")
+
 -- The scope line, pinned in place with <leader>jl (lua/taka/scope_pin.lua).
 require("taka.scope_pin")
 key("n", "<leader>jl", "taka.scope_pin", "toggle", "Pin the scope line")

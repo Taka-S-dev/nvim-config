@@ -99,6 +99,10 @@ local function put_out_done()
   if cursor_word then
     cursor_word.hold()
   end
+  local overview = package.loaded["taka.overview"]
+  if overview then
+    overview.soon()
+  end
 end
 
 local function selection()
@@ -171,6 +175,10 @@ function M.toggle()
   words[#words + 1] = { pattern = pattern, colour = colour, label = text }
   apply_everywhere()
   panel_refresh()
+  local overview = package.loaded["taka.overview"]
+  if overview then
+    overview.soon()
+  end
 end
 
 -- Whether `text` is lit as a whole word.
@@ -187,6 +195,14 @@ end
 function M.clear()
   words = {}
   put_out_done()
+end
+
+-- The words lit, for the strip of marks (lua/taka/overview.lua): each its
+-- pattern and colour.
+function M.lit()
+  return vim.tbl_map(function(word)
+    return { pattern = word.pattern, colour = word.colour }
+  end, words)
 end
 
 function M.jump(backwards)
