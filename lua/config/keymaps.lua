@@ -78,6 +78,26 @@ Snacks.toggle({
   end,
 }):map("<leader>uW")
 
+-- dm and a letter deletes that mark, the pair of m and a letter that sets it:
+-- :delmarks was the one way, and not one to keep in mind. dm! deletes the
+-- marks of the file, a to z; dm<Space> lists the marks to delete them with
+-- <C-x>. Free to take: m after d is no motion.
+vim.keymap.set("n", "dm", function()
+  local char = vim.fn.getcharstr()
+  if char == "!" then
+    vim.cmd("delmarks!")
+    return vim.notify("The marks a to z of this file are deleted")
+  end
+  if char == " " then
+    return Snacks.picker.marks()
+  end
+  if not char:match("^[%a%d\"%[%]<>.^']$") then
+    return
+  end
+  local ok = pcall(vim.cmd.delmarks, char)
+  vim.notify(ok and ("Mark " .. char .. " deleted") or ("No mark " .. char))
+end, { desc = "Delete a mark: dm{a-z}, dm! all of the file, dm<Space> list" })
+
 -- Names for the groups of keys this config adds, for the list which-key shows
 -- after <leader>; what each key does is in :h cfg.
 pcall(function()

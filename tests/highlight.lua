@@ -386,4 +386,51 @@ return function(T)
     expect(seen.range_off == "", "after the selection taken off: " .. tostring(seen.range_off))
     expect(seen.cleared == "", "after <leader>hL: " .. tostring(seen.cleared))
   end)
+
+  -- dm and a letter deletes the mark m and that letter set, and dm! every
+  -- mark a to z of the file: :delmarks was the one way.
+  check("marks: dm and a letter deletes that mark, dm! all of the file", function()
+    -- lua/config/keymaps.lua is read on VeryLazy, which a headless start
+    -- never reaches.
+    if vim.fn.maparg("dm", "n") == "" then
+      require("config.keymaps")
+    end
+    local dir = temp_dir()
+    write(dir .. "/k.c", { "one", "two", "three", "four" })
+    local seen = {}
+    local notify = vim.notify
+    vim.notify = function() end
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/k.c")
+      local function mark(name, row)
+        vim.api.nvim_win_set_cursor(0, { row, 0 })
+        press("m" .. name)
+      end
+      local function set()
+        local out = {}
+        for _, name in ipairs({ "a", "b", "c" }) do
+          if vim.api.nvim_buf_get_mark(0, name)[1] > 0 then
+            out[#out + 1] = name
+          end
+        end
+        return table.concat(out)
+      end
+      mark("a", 1)
+      mark("b", 2)
+      mark("c", 3)
+      seen.before = set()
+      press("dmb")
+      seen.one = set()
+      seen.lines = #vim.api.nvim_buf_get_lines(0, 0, -1, false)
+      press("dm!")
+      seen.all = set()
+    end)
+    vim.notify = notify
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.before == "abc", "set: " .. tostring(seen.before))
+    expect(seen.one == "ac", "after dmb: " .. tostring(seen.one))
+    expect(seen.lines == 4, "dm deleted lines: " .. tostring(seen.lines))
+    expect(seen.all == "", "after dm!: " .. tostring(seen.all))
+  end)
 end
