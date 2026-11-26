@@ -20,6 +20,17 @@ local WIDTH = 2
 -- strip and jump.
 local GAP = 1
 
+-- Read again at each drawing and set only when they differ from what was
+-- set: read once, at start, a passing colour stayed, the track's among them.
+local set = {}
+local function put(group, spec)
+  local key = vim.inspect(spec)
+  if set[group] ~= key then
+    vim.api.nvim_set_hl(0, group, spec)
+    set[group] = key
+  end
+end
+
 local function colours()
   local function colour(name, attr)
     local hl = vim.api.nvim_get_hl(0, { name = name, link = false })
@@ -39,16 +50,12 @@ local function colours()
     return mixed
   end
   local track, edge = colour("CursorLine", "bg"), colour("Comment", "fg")
-  vim.api.nvim_set_hl(0, "DiffMapTrack", { bg = track, default = true })
-  vim.api.nvim_set_hl(0, "DiffMapView", { bg = edge, default = true })
-  vim.api.nvim_set_hl(0, "DiffMapViewFill", { bg = between(track, edge), default = true })
-  vim.api.nvim_set_hl(0, "DiffMapAdd", { bg = colour("GitSignsAdd", "fg") or colour("Added", "fg"), default = true })
-  vim.api.nvim_set_hl(0, "DiffMapChange", { bg = colour("DiagnosticWarn", "fg"), default = true })
-  vim.api.nvim_set_hl(
-    0,
-    "DiffMapDelete",
-    { bg = colour("GitSignsDelete", "fg") or colour("Removed", "fg"), default = true }
-  )
+  put("DiffMapTrack", { bg = track })
+  put("DiffMapView", { bg = edge })
+  put("DiffMapViewFill", { bg = between(track, edge) })
+  put("DiffMapAdd", { bg = colour("GitSignsAdd", "fg") or colour("Added", "fg") })
+  put("DiffMapChange", { bg = colour("DiagnosticWarn", "fg") })
+  put("DiffMapDelete", { bg = colour("GitSignsDelete", "fg") or colour("Removed", "fg") })
 end
 
 local STATE = { DiffAdd = "add", DiffChange = "change", DiffText = "change" }
@@ -92,6 +99,7 @@ local function draw(win, rescan)
   if height < 3 or width < 20 then
     return close(win)
   end
+  colours()
   local map = maps[win]
   if not map or not vim.api.nvim_win_is_valid(map.float) then
     local buf = vim.api.nvim_create_buf(false, true)
@@ -243,7 +251,14 @@ vim.keymap.set("n", "<LeftMouse>", function()
 end, { expr = true, desc = "Click, or go to where the strip at the right edge points" })
 
 local group = vim.api.nvim_create_augroup("config_diff_map", { clear = true })
-vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = colours })
+-- :highlight clear has emptied the groups: set them all again.
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = group,
+  callback = function()
+    set = {}
+    colours()
+  end,
+})
 vim.api.nvim_create_autocmd({ "DiffUpdated", "BufWinEnter", "WinEnter", "TabEnter" }, {
   group = group,
   callback = function()
