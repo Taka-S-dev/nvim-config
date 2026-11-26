@@ -390,6 +390,7 @@ $env:LOCALAPPDATA\nvim\
 │   │   ├── debug_lines.lua # 目印つきのデバッグ行を入れ、一覧し、まとめて消す (<leader>di)
 │   │   ├── c_macros.lua    # C のマクロと enum の値を、使っている所で色分けする
 │   │   ├── words.lua       # 複数の単語を色分けして光らせる (<leader>hh)
+│   │   ├── line_marks.lua  # 行の背景に色を付けて目印にする (<leader>hl)
 │   │   ├── selection_matches.lua # 選んだ文字列と同じものを、選んでいる間だけ光らせる
 │   │   ├── cursor_word.lua # カーソルの単語と同じものを、止めている間だけ光らせる
 │   │   ├── explorer_menu.lua # ファイルツリーの右クリックメニュー(パスのコピーなど)

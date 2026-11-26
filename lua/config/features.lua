@@ -20,6 +20,14 @@ key("n", "<leader>hn", "taka.words", "jump", "Next lit word")
 key("n", "<leader>hp", "taka.words", "jump", "Previous lit word", true)
 key("n", "<leader>hc", "taka.words", "clear", "Put every word out")
 
+-- Lines tinted as marks to come back to, <leader>hl and friends
+-- (lua/taka/line_marks.lua).
+require("taka.line_marks")
+key({ "n", "x" }, "<leader>hl", "taka.line_marks", "toggle", "Mark this line / take it off")
+key("n", "<leader>hj", "taka.line_marks", "jump", "Next marked line")
+key("n", "<leader>hk", "taka.line_marks", "jump", "Previous marked line", true)
+key("n", "<leader>hL", "taka.line_marks", "clear", "Take every line mark off")
+
 -- The scope line, pinned in place with <leader>jl (lua/taka/scope_pin.lua).
 require("taka.scope_pin")
 key("n", "<leader>jl", "taka.scope_pin", "toggle", "Pin the scope line")

@@ -316,4 +316,74 @@ return function(T)
     expect(one == [[Word2=\V\<int\>]], "after putting len out: " .. one)
     expect(none == "", "after clearing: " .. none)
   end)
+
+  -- Lines marked by hand with <leader>hl, their background tinted: a line,
+  -- or the lines selected, marked and taken off again with the same key; a
+  -- mark moves with its line; <leader>hj and <leader>hk go round them, and
+  -- <leader>hL takes them all off.
+  check("line marks: lines marked, followed through edits, stepped through, taken off", function()
+    local marks = require("taka.line_marks")
+    local dir = temp_dir()
+    local lines = {}
+    for i = 1, 20 do
+      lines[i] = "line " .. i
+    end
+    write(dir .. "/m.c", lines)
+    local seen = {}
+    local function rows()
+      return table.concat(
+        vim.tbl_map(function(row)
+          return row + 1
+        end, marks.rows(0)),
+        " "
+      )
+    end
+    local ok, err = pcall(function()
+      vim.cmd.edit(dir .. "/m.c")
+      vim.api.nvim_win_set_cursor(0, { 5, 0 })
+      key("<leader>hl")()
+      press("<Esc>")
+      vim.api.nvim_win_set_cursor(0, { 10, 0 })
+      press("Vjj")
+      key("<leader>hl", "x")()
+      seen.marked = rows()
+      local mark = vim.api.nvim_buf_get_extmarks(0, -1, { 4, 0 }, { 4, -1 }, { details = true })[1]
+      seen.colour = mark and mark[4].line_hl_group
+      -- Lines put in above: the marks go down with their lines.
+      vim.api.nvim_buf_set_lines(0, 0, 0, false, { "new 1", "new 2" })
+      seen.moved = rows()
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+      local visits = {}
+      for _ = 1, 5 do
+        key("<leader>hj")()
+        visits[#visits + 1] = vim.fn.line(".")
+      end
+      seen.down = table.concat(visits, " ")
+      key("<leader>hk")()
+      seen.up = vim.fn.line(".")
+      -- The same key on a marked line takes its mark off; on a selection that
+      -- is all marked, every mark in it.
+      vim.api.nvim_win_set_cursor(0, { 7, 0 })
+      key("<leader>hl")()
+      seen.one_off = rows()
+      vim.api.nvim_win_set_cursor(0, { 12, 0 })
+      press("Vjj")
+      key("<leader>hl", "x")()
+      seen.range_off = rows()
+      vim.api.nvim_win_set_cursor(0, { 3, 0 })
+      key("<leader>hl")()
+      key("<leader>hL")()
+      seen.cleared = rows()
+    end)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.marked == "5 10 11 12", "marked: " .. tostring(seen.marked))
+    expect(seen.colour == "LineMark", "the line's colour: " .. tostring(seen.colour))
+    expect(seen.moved == "7 12 13 14", "after two lines above: " .. tostring(seen.moved))
+    expect(seen.down == "7 12 13 14 7", "<leader>hj went to " .. tostring(seen.down))
+    expect(seen.up == 14, "<leader>hk went to " .. tostring(seen.up))
+    expect(seen.one_off == "12 13 14", "after one taken off: " .. tostring(seen.one_off))
+    expect(seen.range_off == "", "after the selection taken off: " .. tostring(seen.range_off))
+    expect(seen.cleared == "", "after <leader>hL: " .. tostring(seen.cleared))
+  end)
 end
