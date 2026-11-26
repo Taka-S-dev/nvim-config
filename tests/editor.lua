@@ -508,7 +508,7 @@ return function(T)
     )
     expect(seen.kinds == "findme sub/ *.c *.h", "kinds chosen: " .. tostring(seen.kinds))
     expect(seen.grep_args == "-g *.c -g *.h", "rg given: " .. tostring(seen.grep_args))
-    expect(seen.footer == "Alt+. folder Alt+e kinds", "the keys named: " .. tostring(seen.footer))
+    expect(seen.footer == "Alt+. folder Alt+e kinds Alt+b last", "the keys named: " .. tostring(seen.footer))
     expect(
       vim.deep_equal(seen.found, { "sub/b.c", "sub/b.h", "sub/deep/a.c" }),
       "grep found: " .. vim.inspect(seen.found)
@@ -523,6 +523,105 @@ return function(T)
     expect(seen.whole == "*.c *.h", ". takes the folder off: " .. tostring(seen.whole))
     expect(seen.off == "", ":Scope off left: " .. tostring(seen.off))
   end)
+  -- What was last chosen in a project, the folder, the kinds and the grep's
+  -- buttons, is kept and put back at once with Alt+b, named at the foot of
+  -- the search with what it puts back; after a restart they were chosen again
+  -- from two lists each time. Nothing is put back without the key. The lists
+  -- are read when a search opens, so Alt+. and Alt+e show at once.
+  check("scope: Alt+b puts back the folder, kinds and buttons last chosen", function()
+    need("rg")
+    local dir = vim.fs.normalize(temp_dir())
+    write(dir .. "/sub/b.c", { "int findme;" })
+    write(dir .. "/sub/b.h", { "int findme;" })
+    write(dir .. "/top.c", { "int findme;" })
+    local scope, match = require("taka.scope"), require("taka.grep_match")
+    local kept_options = vim.deepcopy(match.options)
+    local cwd = vim.fn.getcwd()
+    local grep = Snacks.picker.grep
+    local seen = {}
+    local function footer()
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        local chunks = vim.api.nvim_win_get_config(win).footer
+        if type(chunks) == "table" and #chunks > 0 then
+          return vim
+            .trim(table.concat(vim.tbl_map(function(chunk)
+              return chunk[1]
+            end, chunks)))
+            :gsub("%s+", " ")
+        end
+      end
+    end
+    local function open()
+      local picker = grep({ search = "findme" })
+      vim.wait(3000, function()
+        return not picker:is_active()
+      end, 20)
+      return picker
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_set_current_dir(dir)
+      -- Chosen in this project, then taken off, as after a restart.
+      scope.set_dir("sub")
+      scope.set_exts({ "c", "h" })
+      local picker = open()
+      picker:action("grep_case")
+      vim.wait(300)
+      picker:close()
+      scope.clear()
+      match.options.case = false
+      seen.after_restart = scope.describe(scope.get())
+      picker = open()
+      seen.named = footer()
+      seen.not_put_back = scope.describe(scope.get())
+      local opened
+      Snacks.picker.grep = function(opts)
+        opened = opts
+      end
+      picker:action("scope_back")
+      vim.wait(1000, function()
+        return opened ~= nil
+      end, 10)
+      Snacks.picker.grep = grep
+      seen.put_back = scope.describe(scope.get())
+      seen.case = match.options.case
+      seen.search = opened and opened.search
+      -- Once put back, there is nothing to name.
+      picker = open()
+      seen.named_after = footer()
+      picker:close()
+      -- Read when the search opened: a kind added since is not in the list
+      -- until the next search reads it.
+      write(dir .. "/sub/new.xyz", { "" })
+      local kinds = require("taka.grep_kinds").kinds(dir, "sub")
+      seen.read_ahead = not vim.iter(kinds):any(function(kind)
+        return kind.ext == "xyz"
+      end)
+    end)
+    Snacks.picker.grep = grep
+    for _, picker in ipairs(Snacks.picker.get()) do
+      picker:close()
+    end
+    scope.clear()
+    match.options = kept_options
+    vim.api.nvim_set_current_dir(cwd)
+    reset_editor()
+    expect(ok, tostring(err))
+    expect(seen.after_restart == "", "the tab kept " .. tostring(seen.after_restart))
+    expect(
+      seen.named == "Alt+. folder Alt+e kinds Alt+b last: sub/ *.c *.h Aa",
+      "the foot of the search: " .. tostring(seen.named)
+    )
+    expect(seen.not_put_back == "", "put back without the key: " .. tostring(seen.not_put_back))
+    expect(seen.put_back == "sub/ *.c *.h", "put back: " .. tostring(seen.put_back))
+    expect(seen.case == true, "the case button was not put back")
+    expect(seen.search == "findme", "the search typed: " .. tostring(seen.search))
+    expect(
+      seen.named_after == "Alt+. folder Alt+e kinds Alt+b last",
+      "after Alt+b the foot says: " .. tostring(seen.named_after)
+    )
+    expect(seen.read_ahead, "the kinds were read again at Alt+e, not when the search opened")
+  end)
+
   -- The grep has VS Code's three buttons for how it matches, with its keys:
   -- the case typed always (Alt+c), whole words (Alt+w) and the pattern or
   -- the text as it is (Alt+r), lit while on. What a grep was set to is kept

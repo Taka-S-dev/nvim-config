@@ -12,6 +12,7 @@
 local keys = {
   ["<a-.>"] = { "scope_folder", mode = { "n", "i" } },
   ["<a-e>"] = { "scope_kinds", mode = { "n", "i" } },
+  ["<a-b>"] = { "scope_back", mode = { "n", "i" } },
 }
 
 local grep_keys = vim.tbl_extend("force", keys, {
@@ -27,6 +28,9 @@ local actions = {
   scope_kinds = function(picker)
     require("taka.grep_kinds").choose(picker)
   end,
+  scope_back = function(picker)
+    require("taka.scope").restore(picker)
+  end,
 }
 
 local grep_actions = vim.tbl_extend("force", actions, {
@@ -41,12 +45,15 @@ local grep_actions = vim.tbl_extend("force", actions, {
   end,
 })
 
--- The two keys, named under the frame that carries the search's title: they
+-- The keys, named under the frame that carries the search's title: they
 -- were found only in the help. In the grey of comments and at the right, so
 -- that the frame stays quiet; the keys in pills drew the eye from the list.
-local footer = { { " Alt+. folder  Alt+e kinds ", "SnacksPickerComment" } }
-
+-- Alt+b is named always, so that it is known, and with what it puts back
+-- while that differs from now: named only then, it was not seen to exist.
 local function show_keys(picker)
+  local last = require("taka.scope").last_text()
+  local text = " Alt+. folder  Alt+e kinds  Alt+b last" .. (last and (": " .. last) or "") .. " "
+  local footer = { { text, "SnacksPickerComment" } }
   local wins = { picker.layout.root }
   vim.list_extend(wins, vim.tbl_values(picker.layout.wins))
   vim.list_extend(wins, vim.tbl_values(picker.layout.box_wins))
@@ -75,6 +82,10 @@ local function source(hook)
     end,
     on_show = function(picker)
       show_keys(picker)
+      -- The two lists read now, so that Alt+. and Alt+e show at once.
+      local now = require("taka.scope").get()
+      require("taka.grep_kinds").read_ahead(vim.fn.getcwd(), now and now.dir)
+      require("taka.grep_folder").read_ahead(vim.fn.getcwd())
       if grep then
         require("taka.grep_match").attach(picker)
       end

@@ -111,6 +111,7 @@ function M.toggle(picker, name)
   state[name] = not state[name]
   if picker.opts.source == "grep" then
     M.options[name] = state[name]
+    require("taka.scope").remember({ match = vim.deepcopy(M.options) })
   end
   apply(picker.opts)
   M.draw(picker)

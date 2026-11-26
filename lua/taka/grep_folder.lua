@@ -49,20 +49,48 @@ local function label(path, cwd)
   return (rel or path) .. "/"
 end
 
+-- The folders from the output of fd.
+local function listed(stdout)
+  local out = {}
+  for line in vim.gsplit(stdout or "", "\n", { trimempty = true }) do
+    line = vim.trim(line):gsub("\\", "/")
+    out[#out + 1] = line:match("/$") and line or line .. "/"
+  end
+  table.sort(out)
+  return out
+end
+
+local FD = { "fd", "--type", "d", "--color", "never" }
+
+-- The folders read when a search opens (M.read_ahead), by `cwd`, so the list
+-- shows at once: listed at Alt+., it waited for fd to go through the whole
+-- tree at every press. Read again at every search opened.
+local read = {}
+
+function M.read_ahead(cwd)
+  if vim.fn.executable("fd") == 0 then
+    return
+  end
+  local key = vim.fs.normalize(cwd)
+  vim.system(FD, { cwd = cwd, text = true }, function(result)
+    if result.code == 0 then
+      read[key] = listed(result.stdout)
+    end
+  end)
+end
+
 -- The folders under `cwd`, from the cwd, each ending in /: fd's, which
 -- leaves out what .gitignore does and is quick on a large tree, or else a
 -- walk of the folders.
 function M.folders(cwd)
+  local kept = read[vim.fs.normalize(cwd)]
+  if kept then
+    return kept
+  end
   if vim.fn.executable("fd") == 1 then
-    local result = vim.system({ "fd", "--type", "d", "--color", "never" }, { cwd = cwd, text = true }):wait()
+    local result = vim.system(FD, { cwd = cwd, text = true }):wait()
     if result.code == 0 then
-      local out = {}
-      for line in vim.gsplit(result.stdout or "", "\n", { trimempty = true }) do
-        line = vim.trim(line):gsub("\\", "/")
-        out[#out + 1] = line:match("/$") and line or line .. "/"
-      end
-      table.sort(out)
-      return out
+      return listed(result.stdout)
     end
   end
   local out = {}

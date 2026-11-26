@@ -27,6 +27,8 @@ local function run_checks()
   -- The tools and their keys, which a start with a screen sets up on VeryLazy
   -- (lua/config/features.lua) and a headless one never reaches.
   require("config.features")
+  -- The last choices of a search's scope are kept apart from the real ones.
+  require("taka.scope").store = T.temp_dir()
   -- The keys ask before writing an index to a directory; the answer is yes.
   vim.fn.confirm = function()
     return 1

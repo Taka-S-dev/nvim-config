@@ -10,12 +10,10 @@
 -- statusline's pin, and named in the title.
 local M = {}
 
--- The extensions of the files under `dir` (from `cwd`), with their counts,
--- the most first: rg --files, which leaves out what the grep leaves out.
-function M.kinds(cwd, dir)
-  local result = vim.system({ "rg", "--files", dir or "." }, { cwd = cwd, text = true }):wait()
+-- The kinds from the output of rg --files.
+local function counted(stdout)
   local count = {}
-  for line in vim.gsplit(result.stdout or "", "\n", { trimempty = true }) do
+  for line in vim.gsplit(stdout or "", "\n", { trimempty = true }) do
     local ext = line:match("%.([%w_]+)%s*$")
     if ext then
       count[ext] = (count[ext] or 0) + 1
@@ -32,6 +30,41 @@ function M.kinds(cwd, dir)
     return a.ext < b.ext
   end)
   return list, count
+end
+
+-- What was read for a folder, by `cwd` and the folder: read when a search
+-- opens (M.read_ahead), so the list shows at once. Listed at Alt+e, the list
+-- waited for the whole tree to be read, a third of a second for a tree of
+-- 30,000 files, at every press. Read again at every search opened, so it is
+-- as new as the search.
+local read = {}
+
+local function key_of(cwd, dir)
+  return vim.fs.normalize(cwd) .. "\0" .. (dir or ".")
+end
+
+function M.read_ahead(cwd, dir)
+  if vim.fn.executable("rg") == 0 then
+    return
+  end
+  local key = key_of(cwd, dir)
+  vim.system({ "rg", "--files", dir or "." }, { cwd = cwd, text = true }, function(result)
+    if result.code == 0 then
+      local list, count = counted(result.stdout)
+      read[key] = { list = list, count = count }
+    end
+  end)
+end
+
+-- The extensions of the files under `dir` (from `cwd`), with their counts,
+-- the most first: rg --files, which leaves out what the grep leaves out.
+function M.kinds(cwd, dir)
+  local kept = read[key_of(cwd, dir)]
+  if kept then
+    return kept.list, kept.count
+  end
+  local result = vim.system({ "rg", "--files", dir or "." }, { cwd = cwd, text = true }):wait()
+  return counted(result.stdout)
 end
 
 -- The rows of the list; `now` the extensions the tab keeps to, marked on the
