@@ -20,6 +20,7 @@
 local M = {}
 
 local store = require("taka.trace.store")
+local editors = require("taka.trace.editors")
 
 local namespace = vim.api.nvim_create_namespace("config_trace")
 
@@ -489,15 +490,25 @@ end
 -- data directory, out of the projects they are about, and are sorted out by
 -- the root each gives: the newest shown, the one followed and those listed are
 -- the current project's.
+--
+-- The folder that marks a file's project is looked for once for each file,
+-- when it is first asked for or read again: the search reads every folder
+-- above the file, which on a slow disk or a share is slow, and the project
+-- is asked for at each move to another file (lua/taka/trace/editors.lua).
+local marks = {} ---@type table<string, string|false>
 function M.project()
   local cwd = vim.fs.normalize(vim.fn.getcwd())
   local name = vim.bo.buftype == "" and vim.api.nvim_buf_get_name(0) or ""
   if name == "" then
     return cwd
   end
-  local marked = require("taka.lib.gtags_global").root(name, { ".git", ".svn" })
+  if marks[name] == nil then
+    local found = require("taka.lib.gtags_global").root(name, { ".git", ".svn" })
+    marks[name] = found and vim.fs.normalize(found) or false
+  end
+  local marked = marks[name]
   if marked then
-    return vim.fs.normalize(marked)
+    return marked
   end
   local file = vim.fs.normalize(name)
   if file:lower():sub(1, #cwd + 1) == cwd:lower() .. "/" then
@@ -1164,6 +1175,25 @@ function M.check(path)
   for _, found in ipairs(problems) do
     report[#report + 1] = found.text
   end
+  -- Whether an editor open now reads the project the trace is about: one
+  -- that does not shows nothing of it. Told, not counted as a problem: a
+  -- trace may be meant for a project opened later.
+  local open = editors.list()
+  if trace.root_given and #open > 0 then
+    local reads = false
+    for _, editor in ipairs(open) do
+      reads = reads or store.belongs(trace.root, editor.project)
+    end
+    if not reads then
+      local projects = vim.tbl_map(function(editor)
+        return editor.project
+      end, open)
+      report[#report + 1] = ("note: no editor open has %s; they have %s"):format(
+        trace.root,
+        table.concat(projects, ", ")
+      )
+    end
+  end
   return report, #problems
 end
 
@@ -1184,6 +1214,14 @@ end, { nargs = "?", complete = "file", desc = "Check a trace file: the one given
 M.reload = read_again
 
 local group = vim.api.nvim_create_augroup("config_trace", { clear = true })
+-- A file read again (:edit) has its project looked for again, as when a
+-- .git or a GTAGS has been made above it since.
+vim.api.nvim_create_autocmd("BufReadPost", {
+  group = group,
+  callback = function(event)
+    marks[vim.api.nvim_buf_get_name(event.buf)] = nil
+  end,
+})
 -- Read on VeryLazy, after the screen has come: then watched at once.
 if #vim.api.nvim_list_uis() > 0 then
   M.lookout(true)

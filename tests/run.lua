@@ -29,6 +29,11 @@ local function run_checks()
   require("config.features")
   -- The last choices of a search's scope are kept apart from the real ones.
   require("taka.scope").store = T.temp_dir()
+  -- The editors open on this machine are not those of the checks.
+  local editors_dir = T.temp_dir()
+  require("taka.trace.editors").dir = function()
+    return editors_dir
+  end
   -- The keys ask before writing an index to a directory; the answer is yes.
   vim.fn.confirm = function()
     return 1

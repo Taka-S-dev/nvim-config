@@ -1488,4 +1488,102 @@ return function(T)
     expect(seen.put_away == "none", "the trace put away came back: " .. tostring(seen.put_away))
     expect(seen.after == "after.jsonl", "a new one after the trace was put away: " .. tostring(seen.after))
   end)
+
+  -- The folder that marks a file's project is looked for once for each file,
+  -- not at every move to it: the search reads every folder above the file.
+  -- A file read again looks again, and finds a .git made since.
+  check("trace: a file's project is looked for once, and again when it is read", function()
+    local trace = require("taka.trace")
+    local gtags_global = require("taka.lib.gtags_global")
+    local base = temp_dir()
+    vim.fn.mkdir(base .. "/p/.git", "p")
+    vim.fn.mkdir(base .. "/p/sub", "p")
+    write(base .. "/p/a.c", { "int a;" })
+    write(base .. "/p/sub/b.c", { "int b;" })
+    local root = gtags_global.root
+    local looked = 0
+    -- Counted for the project only: other tools look for roots of their own.
+    gtags_global.root = function(...)
+      if debug.getinfo(2, "S").source:find("trace[/\\]init%.lua") then
+        looked = looked + 1
+      end
+      return root(...)
+    end
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.cmd.edit(base .. "/p/a.c")
+      vim.cmd.edit(base .. "/p/sub/b.c")
+      for _ = 1, 10 do
+        vim.cmd("buffer " .. vim.fn.bufnr(base .. "/p/a.c"))
+        trace.project()
+        vim.cmd("buffer " .. vim.fn.bufnr(base .. "/p/sub/b.c"))
+        trace.project()
+      end
+      seen.looked = looked
+      seen.before = trace.project()
+      vim.fn.mkdir(base .. "/p/sub/.git", "p")
+      seen.cached = trace.project()
+      vim.cmd("edit!")
+      seen.again = trace.project()
+    end)
+    gtags_global.root = root
+    reset_editor()
+    expect(ok, err)
+    expect(seen.looked == 2, "looked for over 20 moves between 2 files: " .. tostring(seen.looked))
+    local p = vim.fs.normalize(base .. "/p")
+    expect(seen.before == p and seen.cached == p, ("before %s, kept %s"):format(seen.before, seen.cached))
+    expect(seen.again == p .. "/sub", "read again: " .. tostring(seen.again))
+  end)
+
+  -- The editors open are told by their files, one each, an editor's own
+  -- passed over once its process is gone; an editor with no screen writes
+  -- none. The check of a trace says when no editor open has its project.
+  check("trace: the projects open in the editors, for the root of a trace", function()
+    local editors = require("taka.trace.editors")
+    local dir = editors.dir()
+    local function record(pid, project, time)
+      write(dir .. "/" .. pid .. ".json", { vim.json.encode({ pid = pid, project = project, file = "", time = time }) })
+    end
+    -- A process that has ended: its number is free.
+    local job = vim.system({ "cmd", "/c", "exit" })
+    local gone = job.pid
+    local ended = job:wait()
+    local seen = {}
+    local ok, err = pcall(function()
+      expect(ended.code == 0, "cmd did not run")
+      record(vim.fn.getpid(), "C:/work/open", 200)
+      record(gone, "C:/work/closed", 300)
+      local open = editors.list()
+      seen.list = table.concat(
+        vim.tbl_map(function(editor)
+          return editor.project
+        end, open),
+        ","
+      )
+      seen.left = vim.uv.fs_stat(dir .. "/" .. gone .. ".json") ~= nil
+      editors.write(true)
+      seen.headless = #vim.fn.readdir(dir)
+      local folder = trace_folder()
+      local code = temp_dir()
+      write(code .. "/m.c", { "int main(void)", "{", "    return f();", "}" })
+      write(
+        folder .. "/t.jsonl",
+        lines_of({ { title = "T", root = code }, { id = "s", file = "m.c", line = 3, text = "return f();" } })
+      )
+      local report, count = require("taka.trace").check(folder .. "/t.jsonl")
+      seen.note = report[#report]
+      seen.count = count
+    end)
+    vim.fn.delete(dir, "rf")
+    vim.fn.mkdir(dir, "p")
+    store.dir = real_dir
+    expect(ok, err)
+    expect(seen.list == "C:/work/open", "the editors open: " .. tostring(seen.list))
+    expect(seen.left == false, "the file of an editor no longer running was left")
+    expect(seen.headless == 1, "an editor with no screen wrote its project: " .. tostring(seen.headless))
+    expect(
+      seen.count == 0 and seen.note:find("^note: no editor open has") and seen.note:find("C:/work/open", 1, true),
+      ("the check: %s problems, %q"):format(seen.count, seen.note)
+    )
+  end)
 end
