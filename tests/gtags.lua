@@ -374,6 +374,39 @@ return function(T)
     )
   end)
 
+  -- The root is found by asking each folder up for its names, not by reading
+  -- every name in it: with many files in a folder, or on a share, that was
+  -- slow, and it is asked as files are opened. The nearest folder with any of
+  -- the names is the root, and a file named gtags is no GTAGS.
+  check("gtags root: found without reading the folders up, the nearest first", function()
+    local dir = temp_dir()
+    write(dir .. "/p/sub/deep/a.c", { "int a;" })
+    vim.fn.mkdir(dir .. "/p/.git", "p")
+    vim.fn.mkdir(dir .. "/p/sub/.svn", "p")
+    local global = require("taka.lib.gtags_global")
+    local listing = vim.fs.dir
+    local read = 0
+    local seen = {}
+    local ok, err = pcall(function()
+      vim.fs.dir = function(...)
+        read = read + 1
+        return listing(...)
+      end
+      seen.nearest = global.root(dir .. "/p/sub/deep/a.c", { ".git", ".svn" })
+      seen.git = global.root(dir .. "/p/sub/deep/a.c", { ".git" })
+      seen.read = read
+      write(dir .. "/p/sub/deep/gtags", { "" })
+      seen.gtags = global.root(dir .. "/p/sub/deep/a.c")
+    end)
+    vim.fs.dir = listing
+    expect(ok, tostring(err))
+    local p = vim.fs.normalize(dir .. "/p")
+    expect(vim.fs.normalize(seen.nearest or "") == p .. "/sub", "the nearest: " .. tostring(seen.nearest))
+    expect(vim.fs.normalize(seen.git or "") == p, "by .git: " .. tostring(seen.git))
+    expect(seen.read == 0, "folders read: " .. tostring(seen.read))
+    expect(seen.gtags == nil, "a file named gtags made a root: " .. tostring(seen.gtags))
+  end)
+
   -- The list of names is narrowed as <leader>ff narrows files: words split
   -- at spaces must all be in the name, in any order, so bio ssl finds
   -- BIO_f_ssl; lower case matches any case and a capital only that one. The

@@ -26,25 +26,56 @@ local bash ---@type false|{ exe: string, tmp: string, prefix: string }|nil
 M.transport = nil
 
 -- The directory of the GTAGS above `path`, a file's name, or nil; `also` names
--- other things a project's root holds, such as .git, that end the search too.
--- Only a file named GTAGS, in that case, counts. Where names are compared
--- without case, as on Windows, vim.fs.root took a folder named gtags for one:
--- the Lua files under lua/taka/, beside lua/taka/gtags/, were looked up in a
--- GTAGS that is not there.
+-- other things a project's root holds, such as .git, that end the search too:
+-- the nearest folder that holds any of them. Only a file named GTAGS, in
+-- that case, counts. Where names are compared without case, as on Windows,
+-- vim.fs.root took a folder named gtags for one: the Lua files under
+-- lua/taka/, beside lua/taka/gtags/, were looked up in a GTAGS that is not
+-- there.
+--
+-- Each folder up is asked whether it has those names, as vim.fs.root does
+-- with names: given a function, as it was here, vim.fs.root read every name
+-- in every folder up, slow in a large folder or on a share, and this is asked
+-- by many tools as files are opened. A folder is read only to tell a GTAGS
+-- from a gtags where one of the two is there.
+local function is_gtags(dir)
+  local stat = vim.uv.fs_stat(vim.fs.joinpath(dir, "GTAGS"))
+  if not stat or stat.type ~= "file" then
+    return false
+  end
+  for name in vim.fs.dir(dir) do
+    if name == "GTAGS" then
+      return true
+    end
+  end
+  return false
+end
+
 function M.root(path, also)
   if not path or path == "" then
     return nil
   end
-  return vim.fs.root(path, function(name, where)
-    if name == "GTAGS" then
-      -- Searching upward, vim.fs.find hands over the directory the name is
-      -- in, where its documentation says the item's own path.
-      local full = vim.fs.basename(where) == name and where or vim.fs.joinpath(where, name)
-      local stat = vim.uv.fs_stat(full)
-      return stat ~= nil and stat.type == "file"
+  local function marks(dir)
+    if is_gtags(dir) then
+      return true
     end
-    return also ~= nil and vim.tbl_contains(also, name)
-  end)
+    for _, name in ipairs(also or {}) do
+      if vim.uv.fs_stat(vim.fs.joinpath(dir, name)) then
+        return true
+      end
+    end
+    return false
+  end
+  local start = vim.fs.abspath(path)
+  if marks(start) then
+    return start
+  end
+  for parent in vim.fs.parents(start) do
+    if marks(parent) then
+      return parent
+    end
+  end
+  return nil
 end
 
 local function load_transport()
