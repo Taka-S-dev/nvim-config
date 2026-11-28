@@ -1405,4 +1405,87 @@ return function(T)
       "clicks: " .. vim.inspect(seen)
     )
   end)
+
+  -- A trace written while the editor runs is shown when it is about the
+  -- project of the file read now, whether or not a trace was shown before
+  -- and after a move to another project; else it is told of, with why. A
+  -- trace picked from the list stays, the new one told of; the one put away
+  -- is not shown again as it is written on, a new one is.
+  check("trace: traces written as the editor runs are shown, or told of", function()
+    local trace = require("taka.trace")
+    local folder = trace_folder()
+    local base = temp_dir()
+    for _, project in ipairs({ "a", "b" }) do
+      vim.fn.mkdir(base .. "/" .. project .. "/.git", "p")
+      write(base .. "/" .. project .. "/m.c", { "int main(void)", "{", "    return f();", "}" })
+    end
+    local function trace_of(name, project)
+      write(
+        folder .. "/" .. name .. ".jsonl",
+        lines_of({
+          { title = name, root = base .. "/" .. project },
+          { id = "s", file = "m.c", line = 3, text = "return f();", title = "Calls f" },
+        })
+      )
+    end
+    local function shown(name)
+      vim.wait(2000, function()
+        return vim.fs.basename(trace.state().path or "") == name .. ".jsonl"
+      end, 20)
+      return vim.fs.basename(trace.state().path or "")
+    end
+    local told = {}
+    local notify = vim.notify
+    vim.notify = function(message)
+      told[#told + 1] = message
+    end
+    local function told_of(pattern)
+      vim.wait(2000, function()
+        return told[#told] and told[#told]:find(pattern) ~= nil
+      end, 20)
+      return told[#told] or ""
+    end
+    local seen = {}
+    local ok, err = pcall(function()
+      trace.close()
+      trace.lookout(true)
+      vim.cmd.edit(base .. "/a/m.c")
+      trace_of("first", "a")
+      seen.unopened = shown("first")
+      vim.cmd.edit(base .. "/b/m.c")
+      trace_of("moved", "b")
+      seen.moved = shown("moved")
+      trace_of("elsewhere", "c")
+      seen.elsewhere = told_of("not this project")
+      seen.elsewhere_shown = shown("moved")
+      trace.open(folder .. "/first.jsonl", false)
+      trace_of("picked", "b")
+      seen.picked = told_of("New trace")
+      seen.picked_shown = shown("first")
+      trace.close()
+      trace_of("first", "a")
+      vim.wait(500)
+      seen.put_away = trace.state().path or "none"
+      trace_of("after", "b")
+      seen.after = shown("after")
+    end)
+    vim.notify = notify
+    trace.lookout(false)
+    trace.close()
+    store.dir = real_dir
+    reset_editor()
+    expect(ok, err)
+    expect(seen.unopened == "first.jsonl", "written before any was shown: " .. tostring(seen.unopened))
+    expect(seen.moved == "moved.jsonl", "written after a move to another project: " .. tostring(seen.moved))
+    expect(
+      seen.elsewhere:find("elsewhere", 1, true) and seen.elsewhere_shown == "moved.jsonl",
+      ("another project's: told %q, shown %s"):format(seen.elsewhere, seen.elsewhere_shown)
+    )
+    expect(
+      seen.picked:find("picked", 1, true) and seen.picked_shown == "first.jsonl",
+      ("beside one picked: told %q, shown %s"):format(seen.picked, seen.picked_shown)
+    )
+    expect(seen.put_away == "none", "the trace put away came back: " .. tostring(seen.put_away))
+    expect(seen.after == "after.jsonl", "a new one after the trace was put away: " .. tostring(seen.after))
+  end)
 end

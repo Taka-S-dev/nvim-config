@@ -420,20 +420,67 @@ end
 -- The files are watched as a folder, through the system's notice of a change
 -- and not by looking again and again: nothing runs while nothing is written.
 -- A file written in pieces sends a notice per piece, so the reading waits for
--- them to stop. The watch starts with the first trace shown.
-local watcher, settle_timer
+-- them to stop, and then looks at the files the notices named. The watch
+-- starts with the editor's screen (M.lookout), so that a trace written before
+-- any was shown is shown as it comes, or else with the first trace shown.
+local watcher, settle_timer, watched
+local changed = {}
+-- Whether the folder is watched from the start, kept watched when the trace
+-- is put away.
+local lookout = false
+-- The traces told of and not shown: one written a step at a time is told of
+-- once, not at each step.
+local told = {}
 
 local function on_change()
-  if state.follow then
-    local newest = store.files(state.project)[1]
-    if newest and newest.path ~= state.path then
-      state.path, state.current = newest.path, nil
-      read_again()
-      vim.notify(("Trace: %s (%d steps)"):format(state.trace.title, #state.rows))
-      return
+  local names = changed
+  changed = {}
+  if names[""] then
+    names[""] = nil
+    local newest = store.files()[1]
+    if newest then
+      names[vim.fs.basename(newest.path)] = true
     end
   end
-  read_again()
+  -- The project of the file read now: taken once when the trace was opened,
+  -- it stayed after a move to another project, whose traces were then left
+  -- out as another's.
+  state.project = M.project()
+  local again = false
+  for name in pairs(names) do
+    local path = vim.fs.normalize(vim.fs.joinpath(store.dir(), name))
+    local trace_file = name:match("%.jsonl?$") and vim.uv.fs_stat(path)
+    if path == state.path then
+      again = true
+    elseif trace_file and path ~= state.put_away then
+      local root = store.root_of(path)
+      if store.belongs(root, state.project) then
+        if state.follow then
+          state.path, state.current, again = path, nil, false
+          read_again()
+          vim.notify(("Trace: %s (%d steps)"):format(state.trace.title, #state.rows))
+        elseif not told[path] then
+          told[path] = true
+          vim.notify(("New trace: %s (<leader>jA shows it)"):format(store.read(path).title))
+        end
+      elseif not told[path] then
+        -- Not shown, and said why: left out without a word, a trace written
+        -- for the wrong project looked like one never written.
+        told[path] = true
+        vim.notify(
+          ("Trace %s is about %s, not this project (%s): <leader>jA, then <A-a>, shows it"):format(
+            store.read(path).title,
+            root,
+            state.project
+          ),
+          vim.log.levels.WARN
+        )
+      end
+    end
+  end
+  if again then
+    read_again()
+  end
 end
 
 -- The project being read: the folder over the current file that holds GTAGS,
@@ -459,16 +506,45 @@ function M.project()
   return vim.fs.dirname(file)
 end
 
-local function watch()
+local function unwatch()
   if watcher then
+    watcher:close()
+    settle_timer:close()
+    watcher, settle_timer, watched = nil, nil, nil
+  end
+end
+
+local function watch()
+  local dir = store.dir()
+  if watcher and watched == dir then
     return
   end
-  vim.fn.mkdir(store.dir(), "p")
+  unwatch()
+  vim.fn.mkdir(dir, "p")
   watcher = assert(vim.uv.new_fs_event())
   settle_timer = assert(vim.uv.new_timer())
-  watcher:start(store.dir(), {}, function()
+  watched = dir
+  watcher:start(dir, {}, function(_, name)
+    changed[name or ""] = true
     settle_timer:start(150, 0, vim.schedule_wrap(on_change))
   end)
+end
+
+-- The folder watched from now on, or with false no longer, unless a trace is
+-- shown. Started with the editor's screen: an editor with none, as one run
+-- for a check, watches nothing.
+function M.lookout(on)
+  lookout = on ~= false
+  if lookout then
+    watch()
+  elseif not state.path then
+    unwatch()
+  end
+end
+
+-- For the checks: the folder watched, or nil.
+function M.watching()
+  return watched
 end
 
 -- Shows the trace in `path`, or the newest; `follow` keeps to the newest as
@@ -487,9 +563,9 @@ function M.open(path, follow)
     watch()
     return false
   end
-  local changed = path ~= state.path
-  state.path, state.follow = vim.fs.normalize(path), follow ~= false
-  if changed then
+  local other = path ~= state.path
+  state.path, state.follow, state.put_away = vim.fs.normalize(path), follow ~= false, nil
+  if other then
     state.current = nil
   end
   read_again()
@@ -498,13 +574,14 @@ function M.open(path, follow)
 end
 
 -- The trace put away: nothing drawn in the code, the panel closed, and the
--- folder no longer watched.
+-- folder no longer watched, unless it is from the start. A trace written
+-- after is shown, but not the one put away as it is written on.
 function M.close()
-  if watcher then
-    watcher:close()
-    settle_timer:close()
-    watcher, settle_timer = nil, nil
+  if not lookout then
+    unwatch()
   end
+  state.put_away = state.path
+  state.follow = true
   state.path, state.trace, state.rows, state.current, state.located = nil, nil, {}, nil, {}
   decorate_all()
   panel().close()
@@ -1107,6 +1184,18 @@ end, { nargs = "?", complete = "file", desc = "Check a trace file: the one given
 M.reload = read_again
 
 local group = vim.api.nvim_create_augroup("config_trace", { clear = true })
+-- Read on VeryLazy, after the screen has come: then watched at once.
+if #vim.api.nvim_list_uis() > 0 then
+  M.lookout(true)
+else
+  vim.api.nvim_create_autocmd("UIEnter", {
+    group = group,
+    once = true,
+    callback = function()
+      M.lookout(true)
+    end,
+  })
+end
 vim.api.nvim_create_autocmd("BufReadPost", {
   group = group,
   callback = function(event)
